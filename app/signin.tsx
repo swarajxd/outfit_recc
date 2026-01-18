@@ -1,7 +1,7 @@
 // app/signin.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from 'react-native';
-import { useSignIn } from '@clerk/clerk-expo';
+import { useSignIn, useUser } from '@clerk/clerk-expo';
 import { Link, useRouter } from 'expo-router';
 
 function safeText(obj: any) {
@@ -14,11 +14,20 @@ function safeText(obj: any) {
 
 export default function SignIn() {
   const { isLoaded, signIn, setActive } = useSignIn();
+  const { user } = useUser();                 // <-- detects an already-signed-in user
   const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // If user is already signed in, go to home immediately
+  useEffect(() => {
+    if (user?.id) {
+      // user object exists -> redirect to home
+      router.replace('/home');
+    }
+  }, [user?.id, router]);
 
   const handleSignIn = async () => {
     if (!isLoaded) return Alert.alert('Please wait', 'Auth SDK not ready');
@@ -33,14 +42,23 @@ export default function SignIn() {
         await setActive({ session: attempt.createdSessionId });
         router.replace('/home');
       } else {
-        // Not complete — usually this means additional verification (OTP)
-        Alert.alert('Additional verification required', safeText(attempt));
+        // Not complete — usually means extra verification (OTP). Show useful info.
+        Alert.alert('Additional verification required', 'See console for details.');
         console.warn('signIn.create not complete, object:', attempt);
       }
     } catch (err: any) {
       console.error('signIn error full:', err);
-      // Clerk returns useful error objects — surface the message
-      Alert.alert('Sign in failed', err?.message || safeText(err));
+
+      const msg = err?.message || String(err || '');
+      // Handle the "already signed in" case by redirecting to home.
+      if (msg.toLowerCase().includes("already signed in") || msg.toLowerCase().includes("already signed")) {
+        // If Clerk says user already signed in, redirect to home (session likely active)
+        router.replace('/home');
+        return;
+      }
+
+      // Generic fallback: show Clerk message so you can debug
+      Alert.alert('Sign in failed', msg);
     } finally {
       setLoading(false);
     }
@@ -49,8 +67,21 @@ export default function SignIn() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Sign in</Text>
-      <TextInput value={email} onChangeText={setEmail} placeholder="Email" autoCapitalize="none" style={styles.input} />
-      <TextInput value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry style={styles.input} />
+      <TextInput
+        value={email}
+        onChangeText={setEmail}
+        placeholder="Email"
+        autoCapitalize="none"
+        keyboardType="email-address"
+        style={styles.input}
+      />
+      <TextInput
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Password"
+        secureTextEntry
+        style={styles.input}
+      />
       <TouchableOpacity style={styles.button} onPress={handleSignIn} disabled={loading}>
         <Text style={styles.btnText}>{loading ? 'Signing in...' : 'Continue'}</Text>
       </TouchableOpacity>
