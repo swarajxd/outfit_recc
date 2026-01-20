@@ -30,6 +30,12 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# Python / ML
+aiwork/*.pth
+aiwork/*.pt
+aiwork/*.onnx
+aiwork/*.h5
+
 # local env files
 .env*.local
 .env
