@@ -21,6 +21,16 @@ function safeText(obj: any) {
   }
 }
 
+// Basic client-side password checks to catch easy problems early
+function validatePassword(password: string, username: string, email: string) {
+  const issues: string[] = [];
+  if (!password || password.length < 8) issues.push('Use at least 8 characters.');
+  if (password.toLowerCase().includes('password') || password === '12345678') issues.push('Avoid common passwords (e.g. "password", "12345678").');
+  if (username && password.toLowerCase().includes(username.toLowerCase())) issues.push('Password should not include your username.');
+  if (email && password.includes(email.split('@')[0])) issues.push('Password should not include part of your email.');
+  return issues;
+}
+
 export default function SignUp() {
   const { isLoaded, signUp, setActive } = useSignUp();
   const router = useRouter();
@@ -33,48 +43,92 @@ export default function SignUp() {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Start sign-up and request OTP
   const handleSignUp = async () => {
     if (!isLoaded) return Alert.alert('Please wait', 'Auth not loaded yet');
     if (!username || !email || !password) return Alert.alert('Missing', 'Fill username, email and password');
 
+    // client-side password checks
+    const pwIssues = validatePassword(password, username, email);
+    if (pwIssues.length) {
+      return Alert.alert('Weak password', pwIssues.join('\n'));
+    }
+
     setLoading(true);
     try {
-      // Include username here because your project requires it
+      if (!signUp) {
+        setLoading(false);
+        return Alert.alert('Auth not ready', 'Please wait a moment and try again.');
+      }
+
       const res = await signUp.create({
         username,
         emailAddress: email,
         password,
       });
 
-      // signUp.create returns sign-up attempt; inspect status
+      // Debug-safe log (won't print keys)
       console.log('signUp.create result:', safeText({ status: res?.status, id: res?.id }));
 
-      // If Clerk still reports missing fields, show them
-      if (res?._status === 'missing_requirements' && res?.missingFields?.length) {
-        Alert.alert('Missing fields', `Clerk requires: ${res.missingFields.join(', ')}`);
-        // keep in form state so user can fix it
+      // If Clerk created a session right away
+      if (res?.status === 'complete' && res?.createdSessionId) {
+        await setActive({ session: res.createdSessionId });
+        router.replace('/home');
+        return;
+      }
+
+      // If Clerk says email is unverified, request the email code and show verify UI
+      // res.unverifiedFields may include 'email_address'
+      const unverified = (res as any)?.unverifiedFields ?? [];
+      if (Array.isArray(unverified) && unverified.includes('email_address')) {
+        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+        setStep('verify');
+        Alert.alert('Code sent', 'A verification code has been sent to your email.');
+        return;
+      }
+
+      // If Clerk expects more fields
+      if (res?.status === 'missing_requirements' && (res as any)?.missingFields?.length) {
+        const missing = (res as any).missingFields.join(', ');
+        Alert.alert('Missing fields', `Clerk requires: ${missing}`);
+        return;
+      }
+
+      // If we reach here, show the object to help debugging
+      Alert.alert('Sign-up status', `Unexpected signUp response: ${safeText(res)}`);
+    } catch (err: any) {
+      console.error('signUp error full:', err);
+
+      // Clerk often puts readable message in err.message
+      const msg = err?.message || safeText(err);
+
+      // Specific helpful handling for breach-detected password
+      if (typeof msg === 'string' && msg.toLowerCase().includes('found in an online data breach')) {
+        Alert.alert(
+          'Unsafe password',
+          'That password has been found in an online data breach. Choose a new, stronger password (try 12+ chars, mix letters/numbers/symbols).'
+        );
         setLoading(false);
         return;
       }
 
-      // send OTP (email_code)
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      // If there are structured errors, try to present them
+      if (err?.errors && Array.isArray(err.errors)) {
+        const first = err.errors[0];
+        Alert.alert('Sign up failed', first?.message || JSON.stringify(first));
+        setLoading(false);
+        return;
+      }
 
-      setStep('verify');
-      Alert.alert('Code sent', 'A verification code has been sent to your email.');
-    } catch (err: any) {
-      console.error('signUp error full:', err);
-      // Surface helpful message
-      Alert.alert('Sign up failed', err?.message || safeText(err));
+      // Generic fallback
+      Alert.alert('Sign up failed', typeof msg === 'string' ? msg : 'Unknown error (see console).');
     } finally {
       setLoading(false);
     }
   };
 
-  // Resend verification code
   const handleResend = async () => {
     try {
+      if (!signUp) return Alert.alert('Auth not ready', 'Please wait a moment and try again.');
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       Alert.alert('Sent', 'Verification code resent. Check your email (spam too).');
     } catch (e: any) {
@@ -83,58 +137,50 @@ export default function SignUp() {
     }
   };
 
-  // Attempt to verify the OTP code
   const handleVerify = async () => {
     if (!isLoaded) return Alert.alert('Please wait', 'Auth not loaded yet');
     if (!code) return Alert.alert('Missing code', 'Enter the code you received via email');
 
     setLoading(true);
     try {
+      if (!signUp) {
+        setLoading(false);
+        return Alert.alert('Auth not ready', 'Please wait a moment and try again.');
+      }
+
       const attempt = await signUp.attemptEmailAddressVerification({ code });
       console.log('attemptEmailAddressVerification result:', safeText(attempt));
 
-      // If the sign-up attempt is complete and Clerk created a session — success
       if (attempt?.status === 'complete' && attempt?.createdSessionId) {
         await setActive({ session: attempt.createdSessionId });
         router.replace('/home');
         return;
       }
 
-      // If Clerk still lists missing fields (rare here), tell user
-      if (attempt?._status === 'missing_requirements' && attempt?.missingFields?.length) {
-        Alert.alert('Missing fields', `Clerk requires: ${attempt.missingFields.join(', ')}`);
-        // switch back to form so user can fill them (we already collected username; but handle generically)
+      if (attempt?.status === 'missing_requirements' && (attempt as any)?.missingFields?.length) {
+        Alert.alert('Missing fields', `Clerk requires: ${(attempt as any).missingFields.join(', ')}`);
         setStep('form');
         setLoading(false);
         return;
       }
 
-      // If verification was already verified (common if user clicked a magic link or re-used code),
-      // Clerk might throw "This verification has already been verified." We detect that via thrown error.
-      // In that case suggest the user to sign in (maybe the account is already active).
       Alert.alert('Verification not completed', 'Verification did not return a session. Check console for details.');
       console.warn('Verification attempt object:', attempt);
     } catch (err: any) {
-      console.error('verification error full:', err);
-
-      // Friendly handling for "This verification has already been verified."
+      console.error('verification error:', err);
       const message = err?.message || safeText(err);
-      if (message && message.toLowerCase().includes('already been verified')) {
-        Alert.alert(
-          'Already verified',
-          'Your email is already verified. Try signing in. If that fails, check the Clerk dashboard or use a fresh email.'
-        );
-        // Go to sign-in to let user try sign in immediately
+      if (typeof message === 'string' && message.toLowerCase().includes('already been verified')) {
+        Alert.alert('Already verified', 'Your email is already verified. Please sign in.');
         router.replace('/signin');
       } else {
-        Alert.alert('Verification failed', message);
+        Alert.alert('Verification failed', typeof message === 'string' ? message : 'Unknown error (see console).');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // UI: verification step
+  // Verify UI
   if (step === 'verify') {
     return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
@@ -167,7 +213,7 @@ export default function SignUp() {
     );
   }
 
-  // UI: initial form with username
+  // Sign-up form UI
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
       <Text style={styles.title}>Sign up</Text>
@@ -175,6 +221,10 @@ export default function SignUp() {
       <TextInput value={username} onChangeText={setUsername} placeholder="Username" autoCapitalize="none" style={styles.input} />
       <TextInput value={email} onChangeText={setEmail} placeholder="Email" autoCapitalize="none" style={styles.input} keyboardType="email-address" />
       <TextInput value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry style={styles.input} />
+
+      <Text style={{ marginBottom: 8, color: '#666' }}>
+        Use 8+ characters, avoid common words. If Clerk still rejects, choose a longer or more unique password.
+      </Text>
 
       <TouchableOpacity style={styles.button} onPress={handleSignUp} disabled={loading}>
         <Text style={styles.btnText}>{loading ? 'Sending code...' : 'Continue'}</Text>
