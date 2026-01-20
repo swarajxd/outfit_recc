@@ -1,0 +1,82 @@
+{
+  "user_38WQa2HLQlEVT7iI6f54E9lfDyi": {
+    "user_id": "user_38WQa2HLQlEVT7iI6f54E9lfDyi",
+    "created_at": "2026-01-20T18:24:56.548392",
+    "wardrobe": {
+      "tshirts": [
+        {
+          "id": "tshirt_1",
+          "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\tshirt_0.png",
+          "color": "gray",
+          "pattern": "solid",
+          "attributes": {
+            "type": "tshirt",
+            "color": {
+              "color": "gray",
+              "confidence": 0.85,
+              "rgb": [
+                114,
+                98,
+                95
+              ]
+            },
+            "pattern": {
+              "pattern": "solid",
+              "confidence": 0.8
+            },
+            "sleeve_type": {
+              "sleeve": "short",
+              "confidence": 0.7
+            },
+            "confidence": 0.7833333333333333,
+            "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\tshirt_0.png"
+          },
+          "added_at": "2026-01-20T18:24:56.550605",
+          "sleeve_type": "short"
+        }
+      ],
+      "jeans": [
+        {
+          "id": "jeans_1",
+          "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\jeans_0.png",
+          "color": "gray",
+          "pattern": "solid",
+          "attributes": {
+            "type": "jeans",
+            "color": {
+              "color": "gray",
+              "confidence": 0.85,
+              "rgb": [
+                114,
+                98,
+                95
+              ]
+            },
+            "pattern": {
+              "pattern": "solid",
+              "confidence": 0.8
+            },
+            "fit": {
+              "fit": "regular",
+              "confidence": 0.75
+            },
+            "shade": {
+              "shade": "dark",
+              "confidence": 0.8
+            },
+            "confidence": 0.7999999999999999,
+            "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\jeans_0.png"
+          },
+          "added_at": "2026-01-20T18:24:56.548742",
+          "fit": "regular",
+          "shade": "dark"
+        }
+      ],
+      "shoes": [],
+      "watches": [],
+      "caps": [],
+      "bags": []
+    },
+    "updated_at": "2026-01-20T18:24:56.550610"
+  }
+}
