@@ -1,5 +1,5 @@
 // app/home.tsx
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,16 @@ import {
   Platform,
   TextInput,
   Alert,
+  Animated,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useUser, useClerk } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const { width, height } = Dimensions.get('window');
 
 export default function Home() {
   const { user } = useUser();
@@ -26,32 +32,45 @@ export default function Home() {
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [results, setResults] = useState<any>(null);
   
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const imageScaleAnim = useRef(new Animated.Value(0)).current;
+
   // Get default URL based on platform
   const getDefaultApiUrl = () => {
-    // Using your computer's IP address works for both simulators and physical devices
-    // If you're on iOS simulator and want to use localhost, you can change it in settings
-    const computerIP = '192.168.1.102'; // Your computer's local IP address
+    const computerIP = '192.168.1.102';
     
     if (Platform.OS === 'android') {
-      // Android emulator: 10.0.2.2 maps to host machine's localhost
-      // Physical Android device: Use your computer's IP
-      // Try IP first - works for both emulator and physical device
       return `http://${computerIP}:8000`;
     } else if (Platform.OS === 'ios') {
-      // iOS: Use IP address - works for both simulator and physical device
-      // If localhost doesn't work, the IP will
       return `http://${computerIP}:8000`;
     }
-    // Default fallback - use your computer's IP
     return `http://${computerIP}:8000`;
   };
   
-  // Initialize with the correct URL immediately (no useEffect delay)
   const [apiUrl, setApiUrl] = useState<string>(() => getDefaultApiUrl());
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
 
   const API_BASE_URL = apiUrl || getDefaultApiUrl();
+
+  // Entrance animations
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 40,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   const pickImage = async () => {
     setResultMessage(null);
@@ -71,6 +90,15 @@ export default function Home() {
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setImageUri(result.assets[0].uri);
+      
+      // Animate image appearance
+      imageScaleAnim.setValue(0);
+      Animated.spring(imageScaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }).start();
     }
   };
 
@@ -129,10 +157,8 @@ export default function Home() {
     setResults(null);
 
     try {
-      // Create FormData for multipart/form-data upload
       const formData = new FormData();
       
-      // Extract filename from URI (or use a default)
       const filename = imageUri.split('/').pop() || 'outfit-photo.jpg';
       const fileType = filename.split('.').pop() || 'jpg';
       
@@ -142,24 +168,20 @@ export default function Home() {
         name: filename,
       } as any);
       
-      // Use Clerk user ID or fallback to email/username
       const userId = user?.id || user?.emailAddresses?.[0]?.emailAddress || 'default_user';
       formData.append('user_id', userId);
 
       console.log(`Uploading to: ${API_BASE_URL}/upload-outfit`);
       console.log(`User ID: ${userId}`);
 
-      // Call the FastAPI endpoint with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
 
       const response = await fetch(`${API_BASE_URL}/upload-outfit`, {
         method: 'POST',
         body: formData,
         signal: controller.signal,
-        headers: {
-          // Don't set Content-Type - let React Native set it with boundary
-        },
+        headers: {},
       });
 
       clearTimeout(timeoutId);
@@ -224,141 +246,188 @@ export default function Home() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.welcomeText}>Hey{user?.firstName ? `, ${user.firstName}` : ''}</Text>
-            <Text style={styles.subtitle}>Let&apos;s get your outfit analyzed.</Text>
-            {apiUrl && (
-              <Text style={styles.apiUrlText}>API: {apiUrl}</Text>
-            )}
-          </View>
-          <View style={styles.headerButtons}>
-            <TouchableOpacity style={styles.settingsButton} onPress={() => setShowApiConfig(!showApiConfig)}>
-              <Text style={styles.settingsButtonText}>⚙️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.signOutChip} onPress={handleSignOut}>
-              <Text style={styles.signOutText}>Sign out</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {/* Back Button */}
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => setShowApiConfig(!showApiConfig)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.backButtonText}>{'<'}</Text>
+        </TouchableOpacity>
 
+        {/* API Config Modal */}
         {showApiConfig && (
-          <View style={styles.apiConfigCard}>
-            <Text style={styles.apiConfigTitle}>Configure API Server</Text>
-            <Text style={styles.apiConfigHint}>
-              {Platform.OS === 'android' 
-                ? '• Emulator: http://10.0.2.2:8000\n• Physical Device: http://192.168.1.102:8000\n\nMake sure your device and computer are on the same WiFi network!'
-                : '• Simulator: http://localhost:8000\n• Physical Device: http://192.168.1.102:8000\n\nMake sure your device and computer are on the same WiFi network!'}
-            </Text>
-            <TextInput
-              style={styles.apiInput}
-              value={apiUrl}
-              onChangeText={setApiUrl}
-              placeholder="http://10.0.2.2:8000"
-              placeholderTextColor="#6b7280"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <View style={styles.apiConfigButtons}>
-              <TouchableOpacity 
-                style={styles.testButton} 
-                onPress={testConnection}
-                disabled={testingConnection || !apiUrl}
-              >
-                {testingConnection ? (
-                  <ActivityIndicator color="#f97316" size="small" />
-                ) : (
-                  <Text style={styles.testButtonText}>Test Connection</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.closeButton} 
-                onPress={() => setShowApiConfig(false)}
-              >
-                <Text style={styles.closeButtonText}>Close</Text>
-              </TouchableOpacity>
+          <Animated.View style={[styles.apiConfigModal, { opacity: fadeAnim }]}>
+            <View style={styles.apiConfigCard}>
+              <Text style={styles.apiConfigTitle}>⚙️ API Configuration</Text>
+              <Text style={styles.apiConfigHint}>
+                {Platform.OS === 'android' 
+                  ? '• Emulator: http://10.0.2.2:8000\n• Physical Device: http://192.168.1.102:8000'
+                  : '• Simulator: http://localhost:8000\n• Physical Device: http://192.168.1.102:8000'}
+              </Text>
+              <TextInput
+                style={styles.apiInput}
+                value={apiUrl}
+                onChangeText={setApiUrl}
+                placeholder="http://10.0.2.2:8000"
+                placeholderTextColor="#6b7280"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <View style={styles.apiConfigButtons}>
+                <TouchableOpacity 
+                  style={styles.testButton} 
+                  onPress={testConnection}
+                  disabled={testingConnection || !apiUrl}
+                  activeOpacity={0.8}
+                >
+                  {testingConnection ? (
+                    <ActivityIndicator color="#FF8C00" size="small" />
+                  ) : (
+                    <Text style={styles.testButtonText}>Test</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.closeButton} 
+                  onPress={() => setShowApiConfig(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.closeButtonText}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </Animated.View>
         )}
 
-        <View style={styles.heroCard}>
-          <Text style={styles.heroTitle}>Upload your look</Text>
-          <Text style={styles.heroDescription}>
-            Add a clear photo of yourself and we&apos;ll send it through YOLO detection and segmentation to power your
-            personalized outfit recommendations.
-          </Text>
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View 
+            style={[
+              styles.content,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }]
+              }
+            ]}
+          >
+            {/* Title */}
+            <Text style={styles.title}>
+              Upload your <Text style={styles.titleHighlight}>look</Text>
+            </Text>
+            <Text style={styles.description}>
+              Capture your style and let AI analyze your outfit with advanced YOLO detection
+            </Text>
 
-          <View style={styles.previewWrapper}>
-            <View style={styles.previewCircle}>
+            {/* Image Preview */}
+            <Animated.View 
+              style={[
+                styles.imageContainer,
+                imageUri && { transform: [{ scale: imageScaleAnim }] }
+              ]}
+            >
               {imageUri ? (
                 <Image source={{ uri: imageUri }} style={styles.previewImage} />
               ) : (
-                <View style={styles.previewPlaceholder}>
-                  <Text style={styles.previewPlaceholderIcon}>📸</Text>
-                  <Text style={styles.previewPlaceholderText}>Your photo will appear here</Text>
+                <View style={styles.placeholderContainer}>
+                  <View style={styles.placeholder} />
                 </View>
               )}
+            </Animated.View>
+
+            {/* Action Buttons */}
+            <View style={styles.buttonsRow}>
+              <TouchableOpacity 
+                style={styles.addButton} 
+                onPress={pickImage} 
+                disabled={uploading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.addButtonText}>Add Photo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.analyzeButton, uploading && { opacity: 0.7 }]}
+                onPress={handleRunPipeline}
+                disabled={uploading}
+                activeOpacity={0.9}
+              >
+                {uploading ? (
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator color="#000" size="small" />
+                    <Text style={styles.analyzeButtonText}>Analyzing...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.analyzeButtonText}>Analyze Style</Text>
+                )}
+              </TouchableOpacity>
             </View>
-          </View>
 
-          <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={pickImage} disabled={uploading}>
-              <Text style={styles.secondaryButtonText}>{imageUri ? 'Change photo' : 'Add a photo'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.primaryButton, uploading && { opacity: 0.8 }]}
-              onPress={handleRunPipeline}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <View style={styles.loadingRow}>
-                  <ActivityIndicator color="#000" size="small" />
-                  <Text style={styles.primaryButtonText}>Analyzing...</Text>
+            {/* Steps */}
+            <View style={styles.stepsContainer}>
+              <View style={styles.stepItem}>
+                <View style={styles.stepCircle}>
+                  <Text style={styles.stepNumber}>1</Text>
                 </View>
-              ) : (
-                <Text style={styles.primaryButtonText}>Run AI pipeline</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+                <View style={styles.stepLine} />
+              </View>
+              <View style={styles.stepItem}>
+                <View style={styles.stepCircle}>
+                  <Text style={styles.stepNumber}>2</Text>
+                </View>
+                <View style={styles.stepLine} />
+              </View>
+              <View style={styles.stepItem}>
+                <View style={[styles.stepCircle, styles.stepCircleInactive]}>
+                  <Text style={styles.stepNumber}>3</Text>
+                </View>
+              </View>
+            </View>
 
-          <View style={styles.stepsRow}>
-            <View style={styles.stepPill}>
-              <Text style={styles.stepNumber}>1</Text>
-              <Text style={styles.stepText}>Upload a clear full-body photo.</Text>
+            <View style={styles.stepLabelsContainer}>
+              <View style={styles.stepLabel}>
+                <Text style={styles.stepLabelText}>Upload clear full-</Text>
+                <Text style={styles.stepLabelText}>body photo</Text>
+              </View>
+              <View style={styles.stepLabel}>
+                <Text style={styles.stepLabelText}>AI detection</Text>
+              </View>
+              <View style={styles.stepLabel}>
+                <Text style={styles.stepLabelText}>Clothings added</Text>
+                <Text style={styles.stepLabelText}>to closet</Text>
+              </View>
             </View>
-            <View style={styles.stepPill}>
-              <Text style={styles.stepNumber}>2</Text>
-              <Text style={styles.stepText}>We detect your pose and segment clothing.</Text>
-            </View>
-            <View style={styles.stepPill}>
-              <Text style={styles.stepNumber}>3</Text>
-              <Text style={styles.stepText}>You get smart outfit recommendations.</Text>
-            </View>
-          </View>
 
-          {resultMessage && (
-            <View style={styles.resultBanner}>
-              <Text style={styles.resultText}>{resultMessage}</Text>
-            </View>
-          )}
+            {/* Result Message */}
+            {resultMessage && (
+              <Animated.View style={[styles.resultBanner, { opacity: fadeAnim }]}>
+                <Text style={styles.resultText}>{resultMessage}</Text>
+              </Animated.View>
+            )}
 
-          {results && results.items && results.items.length > 0 && (
-            <View style={styles.resultsContainer}>
-              <Text style={styles.resultsTitle}>Detected Items:</Text>
-              {results.items.slice(0, 5).map((item: any, index: number) => (
-                <View key={index} style={styles.resultItem}>
-                  <Text style={styles.resultItemText}>
-                    • {item.category} ({item.attributes?.color?.color || 'N/A'}, {item.attributes?.pattern?.pattern || 'solid'})
+            {/* Results */}
+            {results && results.items && results.items.length > 0 && (
+              <Animated.View style={[styles.resultsContainer, { opacity: fadeAnim }]}>
+                <Text style={styles.resultsTitle}>🎯 Detected Items</Text>
+                {results.items.slice(0, 5).map((item: any, index: number) => (
+                  <View key={index} style={styles.resultItem}>
+                    <View style={styles.resultDot} />
+                    <Text style={styles.resultItemText}>
+                      {item.category} • {item.attributes?.color?.color || 'N/A'} • {item.attributes?.pattern?.pattern || 'solid'}
+                    </Text>
+                  </View>
+                ))}
+                {results.items.length > 5 && (
+                  <Text style={styles.moreItemsText}>
+                    +{results.items.length - 5} more items detected
                   </Text>
-                </View>
-              ))}
-              {results.items.length > 5 && (
-                <Text style={styles.moreItemsText}>+ {results.items.length - 5} more items</Text>
-              )}
-            </View>
-          )}
-        </View>
+                )}
+              </Animated.View>
+            )}
+          </Animated.View>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -367,291 +436,94 @@ export default function Home() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#050509',
+    backgroundColor: '#1a1a1a',
   },
   container: {
     flex: 1,
+    backgroundColor: '#1a1a1a',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    zIndex: 100,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2a2a2a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonText: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  apiConfigModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    zIndex: 99,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-    backgroundColor: '#050509',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  welcomeText: {
-    color: '#f97316',
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  subtitle: {
-    color: '#e5e7eb',
-    fontSize: 14,
-    marginTop: 4,
-  },
-  apiUrlText: {
-    color: '#6b7280',
-    fontSize: 10,
-    marginTop: 2,
-    fontFamily: 'monospace',
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  settingsButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#f97316',
-    backgroundColor: '#111827',
-  },
-  settingsButtonText: {
-    fontSize: 16,
-  },
-  signOutChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#f97316',
-    backgroundColor: '#111827',
-  },
-  signOutText: {
-    color: '#f97316',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  heroCard: {
-    flex: 1,
-    backgroundColor: '#020617',
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#1f2937',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 30,
-    elevation: 10,
-  },
-  heroTitle: {
-    color: '#f9fafb',
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-  heroDescription: {
-    color: '#9ca3af',
-    fontSize: 13,
-    marginBottom: 20,
-  },
-  previewWrapper: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  previewCircle: {
-    width: 200,
-    height: 260,
-    borderRadius: 40,
-    borderWidth: 2,
-    borderColor: '#f97316',
-    backgroundColor: '#020617',
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  previewPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  previewPlaceholderIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  previewPlaceholderText: {
-    color: '#6b7280',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  secondaryButton: {
-    flex: 1,
-    marginRight: 10,
-    paddingVertical: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#f97316',
-    backgroundColor: '#020617',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryButtonText: {
-    color: '#f97316',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  primaryButton: {
-    flex: 1.2,
-    paddingVertical: 12,
-    borderRadius: 999,
-    backgroundColor: '#f97316',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: '#000',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepsRow: {
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  stepPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#0b1120',
-    marginBottom: 6,
-  },
-  stepNumber: {
-    width: 22,
-    height: 22,
-    borderRadius: 999,
-    backgroundColor: '#f97316',
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    color: '#000',
-    fontWeight: '800',
-    fontSize: 12,
-    marginRight: 8,
-  },
-  stepText: {
-    color: '#e5e7eb',
-    fontSize: 12,
-    flexShrink: 1,
-  },
-  resultBanner: {
-    marginTop: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: '#111827',
-    borderWidth: 1,
-    borderColor: '#f97316',
-  },
-  resultText: {
-    color: '#fde68a',
-    fontSize: 13,
-  },
-  resultsContainer: {
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#111827',
-    borderWidth: 1,
-    borderColor: '#1f2937',
-  },
-  resultsTitle: {
-    color: '#f97316',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  resultItem: {
-    marginBottom: 8,
-  },
-  resultItemText: {
-    color: '#e5e7eb',
-    fontSize: 13,
-  },
-  moreItemsText: {
-    color: '#9ca3af',
-    fontSize: 12,
-    marginTop: 4,
-    fontStyle: 'italic',
   },
   apiConfigCard: {
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#111827',
+    width: '100%',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 20,
+    padding: 24,
     borderWidth: 1,
-    borderColor: '#f97316',
+    borderColor: '#3a3a3a',
   },
   apiConfigTitle: {
-    color: '#f97316',
-    fontSize: 16,
+    color: '#ffffff',
+    fontSize: 20,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 16,
   },
   apiConfigHint: {
     color: '#9ca3af',
-    fontSize: 11,
-    marginBottom: 12,
-    lineHeight: 16,
+    fontSize: 12,
+    marginBottom: 16,
+    lineHeight: 18,
   },
   apiInput: {
-    backgroundColor: '#020617',
+    backgroundColor: '#1a1a1a',
     borderWidth: 1,
-    borderColor: '#1f2937',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: '#3a3a3a',
+    borderRadius: 12,
+    padding: 14,
     color: '#e5e7eb',
     fontSize: 14,
-    marginBottom: 12,
-    fontFamily: 'monospace',
+    marginBottom: 16,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   apiConfigButtons: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
   testButton: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#f97316',
-    backgroundColor: '#111827',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#FF8C00',
     alignItems: 'center',
     justifyContent: 'center',
   },
   testButtonText: {
-    color: '#f97316',
-    fontWeight: '600',
+    color: '#000000',
+    fontWeight: '700',
     fontSize: 14,
   },
   closeButton: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#6b7280',
-    backgroundColor: '#020617',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#3a3a3a',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -659,5 +531,203 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontWeight: '600',
     fontSize: 14,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingTop: 100,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  content: {
+    flex: 1,
+    alignItems: 'center',
+    marginTop: -20,
+  },
+  title: {
+    color: '#ffffff',
+    fontSize: 28,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  titleHighlight: {
+    color: '#FF8C00',
+    fontWeight: '600',
+  },
+  description: {
+    color: '#9ca3af',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 40,
+    lineHeight: 20,
+    paddingHorizontal: 20,
+  },
+  imageContainer: {
+    width: width - 80,
+    height: height * 0.4,
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 30,
+    backgroundColor: '#2a2a2a',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  placeholderContainer: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholder: {
+    width: '90%',
+    height: '90%',
+    borderRadius: 16,
+    backgroundColor: '#3a3a3a',
+  },
+  buttonsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+    marginBottom: 40,
+    paddingHorizontal: 10,
+  },
+  addButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: '#2a2a2a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  analyzeButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: '#FF8C00',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  analyzeButtonText: {
+    color: '#000000',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stepsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 10,
+  },
+  stepItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stepCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FF8C00',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepCircleInactive: {
+    backgroundColor: '#4a4a4a',
+  },
+  stepNumber: {
+    color: '#000000',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  stepLine: {
+    width: 60,
+    height: 2,
+    backgroundColor: '#4a4a4a',
+    marginHorizontal: 4,
+  },
+  stepLabelsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 10,
+    marginBottom: 30,
+  },
+  stepLabel: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  stepLabelText: {
+    color: '#9ca3af',
+    fontSize: 11,
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  resultBanner: {
+    width: '100%',
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+  },
+  resultText: {
+    color: '#e5e7eb',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  resultsContainer: {
+    width: '100%',
+    marginTop: 20,
+    padding: 20,
+    borderRadius: 16,
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+  },
+  resultsTitle: {
+    color: '#FF8C00',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  resultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  resultDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FF8C00',
+    marginRight: 12,
+  },
+  resultItemText: {
+    color: '#e5e7eb',
+    fontSize: 14,
+    flex: 1,
+  },
+  moreItemsText: {
+    color: '#9ca3af',
+    fontSize: 13,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });
