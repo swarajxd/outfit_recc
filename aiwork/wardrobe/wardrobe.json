@@ -63,6 +63,66 @@
           },
           "added_at": "2026-01-20T19:00:38.326578",
           "sleeve_type": "short"
+        },
+        {
+          "id": "tshirt_3",
+          "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\tshirt_0.png",
+          "color": "gray",
+          "pattern": "solid",
+          "attributes": {
+            "type": "tshirt",
+            "color": {
+              "color": "gray",
+              "confidence": 0.85,
+              "rgb": [
+                104,
+                99,
+                98
+              ]
+            },
+            "pattern": {
+              "pattern": "solid",
+              "confidence": 0.8
+            },
+            "sleeve_type": {
+              "sleeve": "short",
+              "confidence": 0.7
+            },
+            "confidence": 0.7833333333333333,
+            "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\tshirt_0.png"
+          },
+          "added_at": "2026-01-24T14:12:20.797591",
+          "sleeve_type": "short"
+        },
+        {
+          "id": "tshirt_4",
+          "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\tshirt_0.png",
+          "color": "gray",
+          "pattern": "solid",
+          "attributes": {
+            "type": "tshirt",
+            "color": {
+              "color": "gray",
+              "confidence": 0.85,
+              "rgb": [
+                103,
+                99,
+                78
+              ]
+            },
+            "pattern": {
+              "pattern": "solid",
+              "confidence": 0.8
+            },
+            "sleeve_type": {
+              "sleeve": "short",
+              "confidence": 0.7
+            },
+            "confidence": 0.7833333333333333,
+            "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\tshirt_0.png"
+          },
+          "added_at": "2026-01-24T14:13:53.751213",
+          "sleeve_type": "short"
         }
       ],
       "jeans": [
@@ -135,6 +195,76 @@
           "added_at": "2026-01-20T19:00:38.324819",
           "fit": "regular",
           "shade": "dark"
+        },
+        {
+          "id": "jeans_3",
+          "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\jeans_0.png",
+          "color": "gray",
+          "pattern": "solid",
+          "attributes": {
+            "type": "jeans",
+            "color": {
+              "color": "gray",
+              "confidence": 0.85,
+              "rgb": [
+                104,
+                99,
+                98
+              ]
+            },
+            "pattern": {
+              "pattern": "solid",
+              "confidence": 0.8
+            },
+            "fit": {
+              "fit": "regular",
+              "confidence": 0.75
+            },
+            "shade": {
+              "shade": "dark",
+              "confidence": 0.8
+            },
+            "confidence": 0.7999999999999999,
+            "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\jeans_0.png"
+          },
+          "added_at": "2026-01-24T14:12:20.794711",
+          "fit": "regular",
+          "shade": "dark"
+        },
+        {
+          "id": "jeans_4",
+          "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\jeans_0.png",
+          "color": "gray",
+          "pattern": "solid",
+          "attributes": {
+            "type": "jeans",
+            "color": {
+              "color": "gray",
+              "confidence": 0.85,
+              "rgb": [
+                103,
+                99,
+                78
+              ]
+            },
+            "pattern": {
+              "pattern": "solid",
+              "confidence": 0.8
+            },
+            "fit": {
+              "fit": "regular",
+              "confidence": 0.75
+            },
+            "shade": {
+              "shade": "dark",
+              "confidence": 0.8
+            },
+            "confidence": 0.7999999999999999,
+            "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\jeans_0.png"
+          },
+          "added_at": "2026-01-24T14:13:53.749703",
+          "fit": "regular",
+          "shade": "dark"
         }
       ],
       "shoes": [
@@ -167,12 +297,72 @@
           },
           "added_at": "2026-01-20T19:00:38.328484",
           "shoe_type": "sneakers"
+        },
+        {
+          "id": "shoes_2",
+          "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\shoes_0.png",
+          "color": "gray",
+          "pattern": "solid",
+          "attributes": {
+            "type": "shoes",
+            "color": {
+              "color": "gray",
+              "confidence": 0.85,
+              "rgb": [
+                104,
+                99,
+                98
+              ]
+            },
+            "pattern": {
+              "pattern": "solid",
+              "confidence": 0.8
+            },
+            "shoe_type": {
+              "type": "sneakers",
+              "confidence": 0.75
+            },
+            "confidence": 0.7999999999999999,
+            "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\shoes_0.png"
+          },
+          "added_at": "2026-01-24T14:12:20.798790",
+          "shoe_type": "sneakers"
+        },
+        {
+          "id": "shoes_3",
+          "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\shoes_0.png",
+          "color": "gray",
+          "pattern": "solid",
+          "attributes": {
+            "type": "shoes",
+            "color": {
+              "color": "gray",
+              "confidence": 0.85,
+              "rgb": [
+                103,
+                99,
+                78
+              ]
+            },
+            "pattern": {
+              "pattern": "solid",
+              "confidence": 0.8
+            },
+            "shoe_type": {
+              "type": "sneakers",
+              "confidence": 0.75
+            },
+            "confidence": 0.7999999999999999,
+            "image": "E:\\fitsenseapp\\outfit_recc\\aiwork\\wardrobe\\user_38WQa2HLQlEVT7iI6f54E9lfDyi\\images\\shoes_0.png"
+          },
+          "added_at": "2026-01-24T14:13:53.752727",
+          "shoe_type": "sneakers"
         }
       ],
       "watches": [],
       "caps": [],
       "bags": []
     },
-    "updated_at": "2026-01-20T19:00:38.328490"
+    "updated_at": "2026-01-24T14:13:53.752732"
   }
 }

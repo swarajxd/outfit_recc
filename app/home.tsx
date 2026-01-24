@@ -31,6 +31,7 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [results, setResults] = useState<any>(null);
+  const [currentStage, setCurrentStage] = useState<number>(0); // 0 = no stage, 1 = upload, 2 = analyzing, 3 = complete
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -39,7 +40,7 @@ export default function Home() {
 
   // Get default URL based on platform
   const getDefaultApiUrl = () => {
-    const computerIP = '192.168.1.102';
+    const computerIP = '192.168.1.104'; // Updated to correct IP
     
     if (Platform.OS === 'android') {
       return `http://${computerIP}:8000`;
@@ -84,12 +85,15 @@ export default function Home() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.9,
+      quality: 0.4, // VERY LOW quality for fastest upload possible
       aspect: [3, 4],
+      // Resize to max 1024px width to reduce file size
+      allowsMultipleSelection: false,
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setImageUri(result.assets[0].uri);
+      setCurrentStage(1); // Stage 1: Image uploaded
       
       // Animate image appearance
       imageScaleAnim.setValue(0);
@@ -104,34 +108,68 @@ export default function Home() {
 
   const testConnection = async () => {
     setTestingConnection(true);
+    setResultMessage('🔄 Testing connection...');
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      // Use XMLHttpRequest for better error handling
+      const testResult = await new Promise<any>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', `${API_BASE_URL}/health`);
+        xhr.timeout = 5000; // 5 second timeout
+        
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve({ success: true, data });
+            } catch (e) {
+              resolve({ success: true, data: { status: 'ok' } });
+            }
+          } else {
+            reject(new Error(`Server returned status ${xhr.status}`));
+          }
+        };
+        
+        xhr.onerror = () => {
+          reject(new Error(`Cannot connect to ${API_BASE_URL}`));
+        };
+        
+        xhr.ontimeout = () => {
+          reject(new Error(`Connection timeout - server not responding`));
+        };
+        
+        xhr.send();
       });
       
-      if (response.ok) {
-        Alert.alert('✅ Connection Successful', `Connected to: ${API_BASE_URL}`);
-        setShowApiConfig(false);
-      } else {
-        throw new Error('Server responded with error');
-      }
+      // Success!
+      Alert.alert(
+        '✅ Connection Successful', 
+        `Successfully connected to:\n${API_BASE_URL}\n\nServer is running and ready!`,
+        [{ text: 'OK', onPress: () => setShowApiConfig(false) }]
+      );
+      setResultMessage(null);
     } catch (err: any) {
+      const errorMsg = err?.message || 'Unknown error';
+      console.error('Connection test error:', errorMsg);
+      
       Alert.alert(
         '❌ Connection Failed',
-        `Cannot reach API server at ${API_BASE_URL}\n\n` +
-        `Troubleshooting:\n` +
+        `Cannot reach API server at:\n${API_BASE_URL}\n\n` +
+        `Error: ${errorMsg}\n\n` +
+        `Troubleshooting Steps:\n\n` +
         `1. Make sure FastAPI server is running:\n` +
-        `   cd aiwork && python api.py\n\n` +
-        `2. Check your API URL:\n` +
-        `   • Android Emulator: http://10.0.2.2:8000\n` +
-        `   • iOS Simulator: http://localhost:8000\n` +
-        `   • Physical Device: http://192.168.1.102:8000\n\n` +
-        `3. Ensure device & computer are on the same WiFi\n\n` +
-        `4. Check Windows Firewall allows port 8000`
+        `   Open terminal and run:\n` +
+        `   cd e:\\fitsenseapp\\outfit_recc\\aiwork\n` +
+        `   python api.py\n\n` +
+        `2. Wait for this message in terminal:\n` +
+        `   "📱 Mobile app should connect to: http://192.168.1.102:8000"\n\n` +
+        `3. Keep the terminal window OPEN\n\n` +
+        `4. Check your API URL matches the server IP\n\n` +
+        `5. Ensure device & computer are on same WiFi\n\n` +
+        `6. Check Windows Firewall allows port 8000`,
+        [{ text: 'OK' }]
       );
+      setResultMessage(`❌ Connection failed: ${errorMsg}`);
     } finally {
       setTestingConnection(false);
     }
@@ -155,6 +193,7 @@ export default function Home() {
     setUploading(true);
     setResultMessage(null);
     setResults(null);
+    setCurrentStage(2); // Stage 2: AI Analysis in progress
 
     try {
       const formData = new FormData();
@@ -174,61 +213,172 @@ export default function Home() {
       console.log(`Uploading to: ${API_BASE_URL}/upload-outfit`);
       console.log(`User ID: ${userId}`);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
+      // NEW APPROACH: Upload immediately, then poll for results (no timeout issues!)
+      setResultMessage('🔄 Uploading image... Processing will start shortly.');
 
-      const response = await fetch(`${API_BASE_URL}/upload-outfit`, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-        headers: {},
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `Server error: ${response.status}`);
-      }
-
-      const data = await response.json();
+      // Step 1: Upload with MANUAL timeout (React Native's timeout doesn't work)
+      const uploadData = await Promise.race([
+        new Promise<any>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${API_BASE_URL}/upload-outfit`);
+          
+          let uploadStartTime = Date.now();
+          let lastProgressTime = Date.now();
+          
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const data = JSON.parse(xhr.responseText);
+                resolve(data);
+              } catch (e) {
+                reject(new Error('Failed to parse upload response'));
+              }
+            } else {
+              try {
+                const errorData = JSON.parse(xhr.responseText);
+                reject(new Error(errorData.error || `Server error: ${xhr.status}`));
+              } catch {
+                reject(new Error(`Server error: ${xhr.status}`));
+              }
+            }
+          };
+          
+          xhr.onerror = () => {
+            const errorMsg = `Upload failed. Server at ${API_BASE_URL} is not responding.\n\n` +
+              `Possible issues:\n` +
+              `1. Server is not running - Run: cd aiwork && python api.py\n` +
+              `2. Wrong IP address - Check your computer's IP\n` +
+              `3. Firewall blocking connection - Check Windows Firewall\n` +
+              `4. Device and computer not on same WiFi`;
+            reject(new Error(errorMsg));
+          };
+          
+          // Show upload progress and check for stall
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const percentComplete = (e.loaded / e.total) * 100;
+              const elapsed = (Date.now() - uploadStartTime) / 1000;
+              setResultMessage(`🔄 Uploading image... ${Math.round(percentComplete)}% (${Math.round(elapsed)}s)`);
+              lastProgressTime = Date.now();
+            }
+          };
+          
+          // Check every 5 seconds if upload is stalled
+          const progressCheckInterval = setInterval(() => {
+            const timeSinceLastProgress = Date.now() - lastProgressTime;
+            const totalElapsed = Date.now() - uploadStartTime;
+            
+            // If no progress for 30 seconds, abort
+            if (timeSinceLastProgress > 30000) {
+              clearInterval(progressCheckInterval);
+              xhr.abort();
+              reject(new Error('Upload stalled. Network may be too slow. Try a smaller image or better WiFi.'));
+            }
+          }, 5000);
+          
+          xhr.onloadend = () => clearInterval(progressCheckInterval);
+          
+          xhr.send(formData as any);
+        }),
+        // Manual timeout: 2 minutes max for upload
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Upload timeout after 2 minutes. Image may be too large or network too slow.'));
+          }, 120000); // 2 minutes
+        })
+      ]);
       
-      if (data.success) {
-        setResults(data.results);
-        const detections = data.results.detections || {};
-        const itemsCount = data.results.items_classified || 0;
-        
-        const detectionSummary = Object.entries(detections)
-          .filter(([_, count]: [string, any]) => count > 0)
-          .map(([item, count]: [string, any]) => `${item}: ${count}`)
-          .join(', ');
-        
-        setResultMessage(
-          `✅ Success! Detected ${itemsCount} clothing items. ${detectionSummary ? `(${detectionSummary})` : ''}`
-        );
-      } else {
-        throw new Error(data.error || 'Processing failed');
+      if (!uploadData.success || !uploadData.job_id) {
+        throw new Error('Failed to start processing');
       }
+
+      const jobId = uploadData.job_id;
+      setResultMessage('🔄 Processing image through AI pipeline...\n\nThis may take 1-3 minutes. Please wait...');
+
+      // Step 2: Poll for results (quick requests, no long timeout)
+      let attempts = 0;
+      const maxAttempts = 300; // 5 minutes max (1 second intervals) - AI can take time
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        
+        // Use XMLHttpRequest for polling too (no timeout issues)
+        const statusData = await new Promise<any>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('GET', `${API_BASE_URL}/job/${jobId}`);
+          xhr.timeout = 10000; // 10 seconds for status check (should be instant)
+          
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                resolve(JSON.parse(xhr.responseText));
+              } catch (e) {
+                reject(new Error('Failed to parse status response'));
+              }
+            } else {
+              reject(new Error(`Failed to check job status: ${xhr.status}`));
+            }
+          };
+          
+          xhr.onerror = () => reject(new Error('Network error checking status'));
+          xhr.ontimeout = () => reject(new Error('Status check timed out'));
+          
+          xhr.send();
+        });
+        
+        if (statusData.status === 'completed') {
+          // Success!
+          const results = statusData.results;
+          setResults(results);
+          setCurrentStage(3); // Stage 3: Complete
+          
+          const detections = results.detections || {};
+          const itemsCount = results.items_classified || 0;
+          
+          const detectionSummary = Object.entries(detections)
+            .filter(([_, count]: [string, any]) => count > 0)
+            .map(([item, count]: [string, any]) => `${item}: ${count}`)
+            .join(', ');
+          
+          setResultMessage(
+            `✅ Success! Detected ${itemsCount} clothing items. ${detectionSummary ? `(${detectionSummary})` : ''}`
+          );
+          return; // Exit successfully
+        } else if (statusData.status === 'error') {
+          throw new Error(statusData.error || 'Processing failed');
+        }
+        
+        // Still processing, continue polling
+        attempts++;
+      }
+      
+      // Timeout after max attempts
+      throw new Error('Processing is taking longer than expected. Please try again.');
     } catch (err: any) {
       console.error('Pipeline error:', err);
       
-      let errorMessage = 'Failed to process image. ';
+      let errorMessage = '';
       
-      if (err.name === 'AbortError' || err.message.includes('timeout')) {
-        errorMessage += 'Request timed out. The image might be too large or processing is taking too long.';
-      } else if (err.message.includes('Network request failed') || err.message.includes('fetch')) {
-        errorMessage += `Cannot connect to API server at ${API_BASE_URL}.\n\n` +
-          `Quick Fix:\n` +
-          `1. Start server: cd aiwork && python api.py\n` +
-          `2. Use correct URL:\n` +
-          `   • Physical device: http://192.168.1.102:8000\n` +
-          `   • Emulator/Simulator: Check settings\n` +
-          `3. Same WiFi network required`;
+      if (err.name === 'AbortError' || err.message.includes('timeout') || err.message.includes('timed out')) {
+        errorMessage = '⏱️ Processing is taking longer than expected.\n\n' +
+          'The AI pipeline (YOLO + Segmentation) can take 3-5 minutes for high-quality images.\n\n' +
+          'Please try again, or check if the server is still processing your image.';
+      } else if (err.message.includes('Network request failed') || err.message.includes('fetch') || err.message.includes('Failed to fetch')) {
+        errorMessage = `❌ Cannot connect to API server.\n\n` +
+          `Troubleshooting:\n` +
+          `1. Make sure server is running: cd aiwork && python api.py\n` +
+          `2. Check API URL: ${API_BASE_URL}\n` +
+          `3. Ensure device & computer are on same WiFi\n` +
+          `4. Try the "Test Connection" button in settings`;
+      } else if (err.message.includes('aborted') || err.message.includes('Abort')) {
+        errorMessage = 'Request was cancelled. Please try again.';
       } else {
-        errorMessage += err?.message || 'Make sure the API server is running.';
+        errorMessage = `Error: ${err?.message || 'Unknown error occurred'}\n\n` +
+          `Make sure the API server is running and try again.`;
       }
       
-      setResultMessage(`❌ ${errorMessage}`);
+      setResultMessage(errorMessage);
+      setCurrentStage(1); // Reset to stage 1 on error
     } finally {
       setUploading(false);
     }
@@ -262,8 +412,8 @@ export default function Home() {
               <Text style={styles.apiConfigTitle}>⚙️ API Configuration</Text>
               <Text style={styles.apiConfigHint}>
                 {Platform.OS === 'android' 
-                  ? '• Emulator: http://10.0.2.2:8000\n• Physical Device: http://192.168.1.102:8000'
-                  : '• Simulator: http://localhost:8000\n• Physical Device: http://192.168.1.102:8000'}
+                  ? '• Emulator: http://10.0.2.2:8000\n• Physical Device: http://192.168.1.104:8000'
+                  : '• Simulator: http://localhost:8000\n• Physical Device: http://192.168.1.104:8000'}
               </Text>
               <TextInput
                 style={styles.apiInput}
@@ -351,7 +501,7 @@ export default function Home() {
               <TouchableOpacity
                 style={[styles.analyzeButton, uploading && { opacity: 0.7 }]}
                 onPress={handleRunPipeline}
-                disabled={uploading}
+                disabled={uploading || !imageUri}
                 activeOpacity={0.9}
               >
                 {uploading ? (
@@ -365,22 +515,48 @@ export default function Home() {
               </TouchableOpacity>
             </View>
 
-            {/* Steps */}
+            {/* View Wardrobe Button - Show when stage 3 is complete */}
+            {currentStage >= 3 && results && (
+              <TouchableOpacity
+                style={styles.wardrobeButton}
+                onPress={() => router.push('/wardrobe')}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.wardrobeButtonText}>View Digital Wardrobe →</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Steps with Progress */}
             <View style={styles.stepsContainer}>
               <View style={styles.stepItem}>
-                <View style={styles.stepCircle}>
+                <View style={[
+                  styles.stepCircle, 
+                  currentStage >= 1 ? styles.stepCircleActive : styles.stepCircleInactive
+                ]}>
                   <Text style={styles.stepNumber}>1</Text>
                 </View>
-                <View style={styles.stepLine} />
+                <View style={[
+                  styles.stepLine,
+                  currentStage >= 2 ? styles.stepLineActive : styles.stepLineInactive
+                ]} />
               </View>
               <View style={styles.stepItem}>
-                <View style={styles.stepCircle}>
+                <View style={[
+                  styles.stepCircle,
+                  currentStage >= 2 ? styles.stepCircleActive : styles.stepCircleInactive
+                ]}>
                   <Text style={styles.stepNumber}>2</Text>
                 </View>
-                <View style={styles.stepLine} />
+                <View style={[
+                  styles.stepLine,
+                  currentStage >= 3 ? styles.stepLineActive : styles.stepLineInactive
+                ]} />
               </View>
               <View style={styles.stepItem}>
-                <View style={[styles.stepCircle, styles.stepCircleInactive]}>
+                <View style={[
+                  styles.stepCircle,
+                  currentStage >= 3 ? styles.stepCircleActive : styles.stepCircleInactive
+                ]}>
                   <Text style={styles.stepNumber}>3</Text>
                 </View>
               </View>
@@ -643,9 +819,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FF8C00',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  stepCircleActive: {
+    backgroundColor: '#FF8C00',
   },
   stepCircleInactive: {
     backgroundColor: '#4a4a4a',
@@ -658,8 +836,29 @@ const styles = StyleSheet.create({
   stepLine: {
     width: 60,
     height: 2,
-    backgroundColor: '#4a4a4a',
     marginHorizontal: 4,
+  },
+  stepLineActive: {
+    backgroundColor: '#FF8C00',
+  },
+  stepLineInactive: {
+    backgroundColor: '#4a4a4a',
+  },
+  wardrobeButton: {
+    width: '100%',
+    marginTop: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: '#2a2a2a',
+    borderWidth: 2,
+    borderColor: '#FF8C00',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wardrobeButtonText: {
+    color: '#FF8C00',
+    fontWeight: '700',
+    fontSize: 16,
   },
   stepLabelsContainer: {
     flexDirection: 'row',
