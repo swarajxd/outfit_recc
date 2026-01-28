@@ -14,18 +14,17 @@ function safeText(obj: any) {
 
 export default function SignIn() {
   const { isLoaded, signIn, setActive } = useSignIn();
-  const { user } = useUser();                 // <-- detects an already-signed-in user
+  const { user } = useUser();                 // detects an already-signed-in user
   const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // If user is already signed in, go to home immediately
+  // If user is already signed in, go to discover immediately
   useEffect(() => {
     if (user?.id) {
-      // user object exists -> redirect to home
-      router.replace('/home');
+      router.replace('/discover');
     }
   }, [user?.id, router]);
 
@@ -40,7 +39,8 @@ export default function SignIn() {
 
       if (attempt?.status === 'complete' && attempt?.createdSessionId) {
         await setActive({ session: attempt.createdSessionId });
-        router.replace('/home');
+        // go to Discover after successful sign-in
+        router.replace('/discover');
       } else {
         // Not complete — usually means extra verification (OTP). Show useful info.
         Alert.alert('Additional verification required', 'See console for details.');
@@ -49,16 +49,16 @@ export default function SignIn() {
     } catch (err: any) {
       console.error('signIn error full:', err);
 
-      const msg = err?.message || String(err || '');
-      // Handle the "already signed in" case by redirecting to home.
-      if (msg.toLowerCase().includes("already signed in") || msg.toLowerCase().includes("already signed")) {
-        // If Clerk says user already signed in, redirect to home (session likely active)
-        router.replace('/home');
+      const msg = (err?.message || String(err || '')).toLowerCase();
+      // Handle the "already signed in" case by redirecting to discover.
+      if (msg.includes('already signed in') || msg.includes('already signed')) {
+        router.replace('/discover');
+        setLoading(false);
         return;
       }
 
       // Generic fallback: show Clerk message so you can debug
-      Alert.alert('Sign in failed', msg);
+      Alert.alert('Sign in failed', err?.message ?? String(err));
     } finally {
       setLoading(false);
     }
