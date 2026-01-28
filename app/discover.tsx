@@ -32,37 +32,79 @@ export default function Discover() {
     return Math.floor((SCREEN_WIDTH - totalHorizontal) / NUM_COLUMNS);
   }, []);
 
+  // EXPLICIT require list for Metro bundler (do NOT dynamically build requires)
+  const localImages = useMemo(() => ([
+    require('../assets/img1.jpg'),
+    require('../assets/img2.jpg'),
+    require('../assets/img3.jpg'),
+    require('../assets/img4.jpg'),
+    require('../assets/img5.jpg'),
+    require('../assets/img6.jpg'),
+    require('../assets/img7.jpg'),
+    require('../assets/img8.jpg'),
+    require('../assets/img9.jpg'),
+    require('../assets/img10.jpg'),
+    require('../assets/img11.jpg'),
+    require('../assets/img12.jpg'),
+    require('../assets/img13.jpg'),
+    require('../assets/img14.jpg'),
+    require('../assets/img15.jpg'),
+    require('../assets/img16.jpg'),
+    require('../assets/img17.jpg'),
+    require('../assets/img18.jpg'),
+    require('../assets/img19.jpg'),
+    require('../assets/img20.jpg'),
+  ]), []);
+
   const fetchPosts = useCallback(async (reset = false, q = query) => {
     try {
       if (loading) return;
       setLoading(true);
-      const offset = reset ? 0 : page * LIMIT;
-      const url = new URL(`${API_BASE}/api/posts`);
-      url.searchParams.set("limit", String(LIMIT));
-      url.searchParams.set("offset", String(offset));
-      if (q) url.searchParams.set("q", q);
-      // optionally pass user id for personalised feed
-      if (user?.id) url.searchParams.set("userId", user.id);
 
-      const res = await fetch(url.toString());
-      const json = await res.json();
-      if (!res.ok) {
-        console.warn("discover fetch failed", json);
-        // fallback to empty
-        setHasMore(false);
-        setLoading(false);
-        return;
+      // Try API first
+      try {
+        const offset = reset ? 0 : page * LIMIT;
+        const url = new URL(`${API_BASE}/api/posts`);
+        url.searchParams.set("limit", String(LIMIT));
+        url.searchParams.set("offset", String(offset));
+        if (q) url.searchParams.set("q", q);
+        if (user?.id) url.searchParams.set("userId", user.id);
+
+        const res = await fetch(url.toString(), { method: "GET", headers: { Accept: "application/json" } });
+        if (res.ok) {
+          const json = await res.json();
+          const incoming = Array.isArray(json.posts) ? json.posts : (Array.isArray(json) ? json : json.items ?? []);
+          if (reset) {
+            setPosts(incoming);
+            setPage(1);
+          } else {
+            setPosts(prev => [...prev, ...incoming]);
+            setPage(p => p + 1);
+          }
+          setHasMore(incoming.length >= LIMIT);
+          return;
+        }
+        // if API returned non-ok, fallback to local images below
+        console.warn('discover fetch non-ok, falling back to local images', res.status);
+      } catch (e) {
+        console.warn("API fetch failed, falling back to local images:", e);
       }
 
-      const incoming = Array.isArray(json.posts) ? json.posts : (Array.isArray(json) ? json : json.items ?? []);
-      if (reset) {
-        setPosts(incoming);
-        setPage(1);
-      } else {
-        setPosts(prev => [...prev, ...incoming]);
-        setPage(p => p + 1);
-      }
-      setHasMore(incoming.length >= LIMIT);
+      // Fallback: show local images (map each require -> post shape)
+      const mapped = localImages.map((src, idx) => ({
+        id: `local-${idx + 1}`,
+        image: src, // require(...) asset
+        author: `LocalUser${(idx % 6) + 1}`,
+        likes: Math.floor(Math.random() * 120),
+        liked: false,
+        saves: Math.floor(Math.random() * 30),
+        saved: false,
+        caption: `Sample look ${idx + 1}`
+      }));
+
+      setPosts(mapped);
+      setHasMore(false);
+      setPage(1);
     } catch (err) {
       console.error("discover fetch error", err);
       setHasMore(false);
@@ -70,11 +112,12 @@ export default function Discover() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [API_BASE, LIMIT, page, query, user?.id, loading]);
+  }, [API_BASE, LIMIT, page, query, user?.id, loading, localImages]);
 
   useEffect(() => {
     // first load
     fetchPosts(true, "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // search effect: when query changes, reset feed
@@ -84,7 +127,7 @@ export default function Discover() {
       fetchPosts(true, query);
     }, 350);
     return () => clearTimeout(timeout);
-  }, [query]);
+  }, [query, fetchPosts]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -118,7 +161,7 @@ export default function Discover() {
           router.push(`/post/${encodeURIComponent(p.id)}`);
         }}
         onLike={async (postId, newLiked) => {
-          // optimistic handled in card; call backend
+          // optimistic handled in card; call backend if available
           try {
             await fetch(`${API_BASE}/api/interactions/${newLiked ? "like" : "unlike"}`, {
               method: "POST",
