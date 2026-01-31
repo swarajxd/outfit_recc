@@ -1,13 +1,11 @@
 // app/_layout.tsx
-import 'react-native-url-polyfill/auto';
-import React from 'react';
-import { Slot } from 'expo-router';
-import Constants from 'expo-constants';
-import { ClerkProvider } from '@clerk/clerk-expo';
-import { tokenCache } from '@clerk/clerk-expo/token-cache';
-import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useUser } from '@clerk/clerk-expo';
+import { ClerkProvider, useUser } from "@clerk/clerk-expo";
+import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import Constants from "expo-constants";
+import { Slot, useRouter } from "expo-router";
+import React from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import "react-native-url-polyfill/auto";
 
 export default function Layout() {
   const publishableKey =
@@ -32,9 +30,9 @@ function GlobalCreateFab() {
   if (!user?.id) return null;
 
   return (
-    <View pointerEvents="box-none" style={styles.fabContainer}>
+    <View style={styles.fabContainer}>
       <TouchableOpacity
-        onPress={() => router.push('/create-post')}
+        onPress={() => router.push("/create-post")}
         style={styles.fab}
         accessibilityLabel="Create post"
       >
@@ -46,27 +44,29 @@ function GlobalCreateFab() {
 
 const styles = StyleSheet.create({
   fabContainer: {
-    position: 'absolute',
+    position: "absolute",
     right: 20,
     bottom: 28,
     zIndex: 1000,
+    pointerEvents: "box-none",
   },
   fab: {
     width: 62,
     height: 62,
     borderRadius: 31,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
     elevation: 6,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.25,
     shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
   fabText: {
     fontSize: 32,
     lineHeight: 32,
-    color: '#000',
-    fontWeight: '700',
+    color: "#000",
+    fontWeight: "700",
   },
 });
