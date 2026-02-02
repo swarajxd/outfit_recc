@@ -40,7 +40,7 @@ export default function Home() {
 
   // Get default URL based on platform
   const getDefaultApiUrl = () => {
-    const computerIP = '192.168.1.104'; // Updated to correct IP
+    const computerIP = '192.168.1.108'; // Updated to correct IP
     
     if (Platform.OS === 'android') {
       return `http://${computerIP}:8000`;
@@ -412,8 +412,8 @@ export default function Home() {
               <Text style={styles.apiConfigTitle}>⚙️ API Configuration</Text>
               <Text style={styles.apiConfigHint}>
                 {Platform.OS === 'android' 
-                  ? '• Emulator: http://10.0.2.2:8000\n• Physical Device: http://192.168.1.104:8000'
-                  : '• Simulator: http://localhost:8000\n• Physical Device: http://192.168.1.104:8000'}
+                  ? '• Emulator: http://10.0.2.2:8000\n• Physical Device: http://192.168.1.108:8000'
+                  : '• Simulator: http://localhost:8000\n• Physical Device: http://192.168.1.108:8000'}
               </Text>
               <TextInput
                 style={styles.apiInput}

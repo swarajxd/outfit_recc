@@ -1,5 +1,5 @@
 // app/wardrobe.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,8 @@ import {
   Image,
   ActivityIndicator,
   SafeAreaView,
-  ScrollView,
-  Dimensions,
-  Animated,
   FlatList,
+  Dimensions,
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
@@ -24,28 +22,31 @@ export default function Wardrobe() {
   const router = useRouter();
   const [wardrobeItems, setWardrobeItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [apiUrl, setApiUrl] = useState('http://192.168.1.104:8000');
+  const [apiUrl, setApiUrl] = useState('http://192.168.1.108:8000');
 
   // Get default API URL
   const getDefaultApiUrl = () => {
-    return 'http://192.168.1.104:8000';
+    return 'http://192.168.1.108:8000';
   };
 
   useEffect(() => {
     const defaultUrl = getDefaultApiUrl();
     setApiUrl(defaultUrl);
-    fetchWardrobe();
+    // Fetch wardrobe after setting URL
+    const fetchData = async () => {
+      const userId = user?.id || user?.emailAddresses?.[0]?.emailAddress || 'default_user';
+      await fetchWardrobeWithUrl(defaultUrl, userId);
+    };
+    fetchData();
   }, [user]);
-
-  const fetchWardrobe = async () => {
+  
+  const fetchWardrobeWithUrl = async (url: string, userId: string) => {
     setLoading(true);
     try {
-      const userId = user?.id || user?.emailAddresses?.[0]?.emailAddress || 'default_user';
-      
       // Use XMLHttpRequest to avoid timeout issues
       const data = await new Promise<any>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('GET', `${apiUrl}/wardrobe/${userId}`);
+        xhr.open('GET', `${url}/wardrobe/${userId}`);
         xhr.timeout = 10000; // 10 second timeout
         
         xhr.onload = () => {
@@ -61,7 +62,7 @@ export default function Wardrobe() {
         };
         
         xhr.onerror = () => {
-          reject(new Error(`Cannot connect to server at ${apiUrl}`));
+          reject(new Error(`Cannot connect to server at ${url}`));
         };
         
         xhr.ontimeout = () => {
@@ -92,14 +93,14 @@ export default function Wardrobe() {
                   if (parts.length > 1) {
                     // Remove any drive letter or leading slashes
                     const relativePath = parts[1].replace(/^[A-Z]:\/?/, '').replace(/^\//, '');
-                    imageUrl = `${apiUrl}/static/wardrobe/${relativePath}`;
+                    imageUrl = `${url}/static/wardrobe/${relativePath}`;
                   }
                 } else if (imagePath.includes('uploads/')) {
                   // Extract path after uploads/
                   const parts = imagePath.split('uploads/');
                   if (parts.length > 1) {
                     const relativePath = parts[1].replace(/^[A-Z]:\/?/, '').replace(/^\//, '');
-                    imageUrl = `${apiUrl}/static/uploads/${relativePath}`;
+                    imageUrl = `${url}/static/uploads/${relativePath}`;
                   }
                 } else if (imagePath.startsWith('/') || /^[A-Z]:/.test(imagePath)) {
                   // Absolute path (Unix or Windows) - try to extract relative part
@@ -108,16 +109,16 @@ export default function Wardrobe() {
                     const parts = imagePath.split('aiwork/');
                     if (parts.length > 1) {
                       const relativePath = parts[1].replace(/^\//, '');
-                      imageUrl = `${apiUrl}/static/${relativePath}`;
+                      imageUrl = `${url}/static/${relativePath}`;
                     }
                   } else {
                     // Fallback: try to use as-is after removing drive letter
                     const cleanPath = imagePath.replace(/^[A-Z]:\/?/, '').replace(/^\//, '');
-                    imageUrl = `${apiUrl}/static/${cleanPath}`;
+                    imageUrl = `${url}/static/${cleanPath}`;
                   }
                 } else {
                   // Relative path
-                  imageUrl = `${apiUrl}/static/${imagePath}`;
+                  imageUrl = `${url}/static/${imagePath}`;
                 }
               }
               
@@ -144,9 +145,14 @@ export default function Wardrobe() {
     }
   };
 
+  const fetchWardrobe = async () => {
+    const userId = user?.id || user?.emailAddresses?.[0]?.emailAddress || 'default_user';
+    await fetchWardrobeWithUrl(apiUrl, userId);
+  };
+
   const renderItem = ({ item, index }: { item: any; index: number }) => {
     return (
-      <View style={styles.itemContainer}>
+      <View style={[styles.itemContainer, index % 2 === 0 ? styles.itemLeft : styles.itemRight]}>
         <View style={styles.itemImageContainer}>
           {item.imageUrl ? (
             <Image 
@@ -185,7 +191,7 @@ export default function Wardrobe() {
           >
             <Text style={styles.backButtonText}>{'<'}</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Digital Wardrobe</Text>
+          <Text style={styles.headerTitle}>Your <Text style={styles.headerTitleAccent}>Closet</Text></Text>
           <TouchableOpacity 
             style={styles.refreshButton}
             onPress={fetchWardrobe}
@@ -270,6 +276,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
   },
+  headerTitleAccent: {
+    color: '#FF8C00',
+  },
   refreshButton: {
     width: 44,
     height: 44,
@@ -344,7 +353,6 @@ const styles = StyleSheet.create({
   },
   itemContainer: {
     width: ITEM_SIZE,
-    marginRight: 20,
     marginBottom: 20,
     backgroundColor: '#2a2a2a',
     borderRadius: 16,
@@ -352,10 +360,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#3a3a3a',
   },
+  itemLeft: {
+    marginRight: 10,
+  },
+  itemRight: {
+    marginLeft: 10,
+  },
   itemImageContainer: {
     width: '100%',
     height: ITEM_SIZE,
-    backgroundColor: '#3a3a3a', // Grey background as requested
+    backgroundColor: '#3a3a3a',
     alignItems: 'center',
     justifyContent: 'center',
   },
