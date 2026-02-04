@@ -31,10 +31,12 @@ yarn-error.*
 *.pem
 
 # Python / ML
-aiwork/*.pth
-aiwork/*.pt
-aiwork/*.onnx
-aiwork/*.h5
+aiwork/
+runs/
+*.pt
+*.pth
+*.onnx
+
 
 # local env files
 .env*.local
