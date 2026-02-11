@@ -1,5 +1,6 @@
 // app/wardrobe.tsx
 import React, { useState, useEffect } from 'react';
+import { generateWardrobeBatch } from '../../src/services/imagen_client';
 import {
   View,
   Text,
