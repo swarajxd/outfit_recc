@@ -1,246 +1,269 @@
-// src/components/PostCard.tsx
-import { AntDesign, Feather } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    ImageSourcePropType,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Animated,
 } from "react-native";
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 
-type Post = {
-  id: string;
-  image: string | ImageSourcePropType; // remote url or require(...) asset
-  author?: string;
-  avatar?: string | null;
-  likes?: number;
-  liked?: boolean;
-  saves?: number;
-  saved?: boolean;
-  caption?: string;
-};
+export default function PostCard({ post, onPress }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const shadowOpacity = useRef(new Animated.Value(0.2)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  
+  const likeScale = useRef(new Animated.Value(1)).current;
+  const saveScale = useRef(new Animated.Value(1)).current;
+  const likeButtonBg = useRef(new Animated.Value(0)).current;
+  const saveButtonBg = useRef(new Animated.Value(0)).current;
 
-type Props = {
-  post: Post;
-  columnWidth: number; // provided by parent
-  onLike?: (postId: string, newLiked: boolean) => Promise<void> | void;
-  onSave?: (postId: string, newSaved: boolean) => Promise<void> | void;
-  onPress?: (post: Post) => void;
-};
+  const [isLiked, setIsLiked] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
-export default function PostCard({
-  post,
-  columnWidth,
-  onLike,
-  onSave,
-  onPress,
-}: Props) {
-  const [height, setHeight] = useState<number | null>(null);
-  const [loadingImage, setLoadingImage] = useState(true);
+  const animateIn = () => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: 1.05,
+        useNativeDriver: true,
+        friction: 6,
+        tension: 70,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shadowOpacity, {
+        toValue: 0.4,
+        duration: 280,
+        useNativeDriver: false,
+      }),
+      Animated.spring(translateY, {
+        toValue: -10,
+        useNativeDriver: true,
+        friction: 6,
+      }),
+    ]).start();
+  };
 
-  const [liked, setLiked] = useState(Boolean(post.liked));
-  const [likesCount, setLikesCount] = useState(
-    typeof post.likes === "number" ? post.likes : 0,
-  );
+  const animateOut = () => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 6,
+        tension: 70,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shadowOpacity, {
+        toValue: 0.2,
+        duration: 220,
+        useNativeDriver: false,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        friction: 6,
+      }),
+    ]).start();
+  };
 
-  const [saved, setSaved] = useState(Boolean(post.saved));
-  const [savesCount, setSavesCount] = useState(
-    typeof post.saves === "number" ? post.saves : 0,
-  );
+  const animateLike = () => {
+    setIsLiked(!isLiked);
+    Animated.sequence([
+      Animated.spring(likeScale, {
+        toValue: 1.3,
+        useNativeDriver: true,
+        friction: 4,
+        tension: 80,
+      }),
+      Animated.spring(likeScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 5,
+      }),
+    ]).start();
 
-  useEffect(() => {
-    setLiked(Boolean(post.liked));
-    setLikesCount(typeof post.likes === "number" ? post.likes : likesCount);
-  }, [post.liked, post.likes]);
-  useEffect(() => {
-    setSaved(Boolean(post.saved));
-    setSavesCount(typeof post.saves === "number" ? post.saves : savesCount);
-  }, [post.saved, post.saves]);
+    Animated.timing(likeButtonBg, {
+      toValue: !isLiked ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  };
 
-  useEffect(() => {
-    let active = true;
-    const img = post.image as any;
+  const animateSave = () => {
+    setIsSaved(!isSaved);
+    Animated.sequence([
+      Animated.spring(saveScale, {
+        toValue: 1.3,
+        useNativeDriver: true,
+        friction: 4,
+        tension: 80,
+      }),
+      Animated.spring(saveScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 5,
+      }),
+    ]).start();
 
-    // If it's a remote URL string, use Image.getSize
-    if (typeof img === "string") {
-      Image.getSize(
-        img,
-        (w, h) => {
-          if (!active) return;
-          const ratio = h / w;
-          const targetH = Math.max(120, Math.round(columnWidth * ratio));
-          setHeight(targetH);
-          setLoadingImage(false);
-        },
-        () => {
-          if (!active) return;
-          setHeight(Math.round(columnWidth * 1.2));
-          setLoadingImage(false);
-        },
-      );
-    } else {
-      // local require(...) asset -> resolveAssetSource
-      try {
-        const resolved = Image.resolveAssetSource(img);
-        if (resolved && resolved.width && resolved.height) {
-          const ratio = resolved.height / resolved.width;
-          const targetH = Math.max(120, Math.round(columnWidth * ratio));
-          setHeight(targetH);
-        } else {
-          setHeight(Math.round(columnWidth * 1.2));
-        }
-      } catch (e) {
-        setHeight(Math.round(columnWidth * 1.2));
-      } finally {
-        setLoadingImage(false);
-      }
-    }
+    Animated.timing(saveButtonBg, {
+      toValue: !isSaved ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  };
 
-    return () => {
-      active = false;
-    };
-  }, [post.image, columnWidth]);
-
-  async function handleLike() {
-    const newLiked = !liked;
-    setLiked(newLiked);
-    setLikesCount((c) => (newLiked ? c + 1 : Math.max(0, c - 1)));
-    try {
-      if (onLike) await onLike(post.id, newLiked);
-    } catch (err) {
-      setLiked((s) => !s);
-      setLikesCount((c) => (newLiked ? Math.max(0, c - 1) : c + 1));
-    }
-  }
-
-  async function handleSave() {
-    const newSaved = !saved;
-    setSaved(newSaved);
-    setSavesCount((c) => (newSaved ? c + 1 : Math.max(0, c - 1)));
-    try {
-      if (onSave) await onSave(post.id, newSaved);
-    } catch (err) {
-      setSaved((s) => !s);
-      setSavesCount((c) => (newSaved ? Math.max(0, c - 1) : c + 1));
-    }
-  }
+  const ratios = [0.75, 1, 0.85, 1.2, 0.9, 1.1];
+  const ratio =
+    ratios[parseInt(post.id.replace("local-", "")) % ratios.length];
 
   return (
-    <View style={[styles.card, { width: columnWidth }]}>
-      <TouchableOpacity activeOpacity={0.9} onPress={() => onPress?.(post)}>
-        <View
-          style={{
-            backgroundColor: "#000",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
+    <Pressable
+      onPress={() => onPress(post)}
+      onHoverIn={animateIn}
+      onHoverOut={animateOut}
+    >
+      <Animated.View
+        style={[
+          styles.card,
+          {
+            transform: [{ scale }, { translateY }],
+            shadowOpacity,
+          },
+        ]}
+      >
+        <Image
+          source={post.image}
+          style={[styles.image, { aspectRatio: ratio }]}
+          contentFit="cover"
+        />
+
+        <Animated.View
+          style={[
+            styles.overlay,
+            { opacity: overlayOpacity },
+          ]}
         >
-          {height ? (
-            <>
-              <Image
-                source={
-                  typeof post.image === "string"
-                    ? { uri: post.image }
-                    : (post.image as ImageSourcePropType)
-                }
-                style={{ width: columnWidth, height, backgroundColor: "#111" }}
-                resizeMode="cover"
-                onLoadStart={() => setLoadingImage(true)}
-                onLoadEnd={() => setLoadingImage(false)}
-              />
-              {loadingImage && (
-                <View
-                  style={[styles.imageLoader, { width: columnWidth, height }]}
-                >
-                  <ActivityIndicator />
-                </View>
-              )}
-            </>
-          ) : (
-            <View
-              style={{
-                width: columnWidth,
-                height: 180,
-                backgroundColor: "#111",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <ActivityIndicator />
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
+          <View style={styles.actions}>
+            <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+              <Animated.View
+                style={[
+                  styles.actionButton,
+                  {
+                    backgroundColor: likeButtonBg.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ["rgba(255, 105, 135, 0.15)", "rgba(255, 45, 85, 0.85)"],
+                    }),
+                  },
+                ]}
+              >
+                <Pressable onPress={animateLike} style={styles.buttonInner}>
+                  <Ionicons
+                    name={isLiked ? "heart" : "heart-outline"}
+                    size={24}
+                    color={isLiked ? "#fff" : "#fff"}
+                  />
+                </Pressable>
+              </Animated.View>
+            </Animated.View>
 
-      <View style={styles.footer}>
-        <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={styles.authorText}>
-            {post.author ?? "Unknown"}
-          </Text>
-          {post.caption ? (
-            <Text numberOfLines={2} style={styles.captionText}>
-              {post.caption}
-            </Text>
-          ) : null}
-        </View>
+            <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+              <Animated.View
+                style={[
+                  styles.actionButton,
+                  {
+                    backgroundColor: saveButtonBg.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ["rgba(255, 195, 0, 0.15)", "rgba(255, 180, 0, 0.85)"],
+                    }),
+                  },
+                ]}
+              >
+                <Pressable onPress={animateSave} style={styles.buttonInner}>
+                  <Ionicons
+                    name={isSaved ? "bookmark" : "bookmark-outline"}
+                    size={24}
+                    color={isSaved ? "#fff" : "#fff"}
+                  />
+                </Pressable>
+              </Animated.View>
+            </Animated.View>
+          </View>
 
-        <View style={styles.actionColumn}>
-          <TouchableOpacity
-            onPress={handleLike}
-            style={styles.iconBtn}
-            accessibilityRole="button"
-          >
-            <AntDesign
-              name={liked ? "heart" : "hearto"}
-              size={20}
-              color={liked ? "#ff2d55" : "#fff"}
-            />
-            <Text style={styles.countText}>{likesCount}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleSave}
-            style={[styles.iconBtn, { marginTop: 8 }]}
-            accessibilityRole="button"
-          >
-            <Feather
-              name="bookmark"
-              size={18}
-              color={saved ? "#f08a2e" : "#fff"}
-            />
-            <Text style={styles.countText}>{savesCount}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.username}>{post.author}</Text>
+            <Text style={styles.caption} numberOfLines={2}>{post.caption}</Text>
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { margin: 8 },
-  footer: {
-    marginTop: 8,
+  card: {
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#1a1a1a",
+    marginBottom: 0,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 14,
+  },
+  image: {
+    width: "100%",
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    padding: 12,
+    justifyContent: "space-between",
+  },
+  actions: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
+    justifyContent: "flex-end",
+    gap: 12,
   },
-  authorText: { color: "#fff", fontWeight: "700", fontSize: 13 },
-  captionText: { color: "#cfcfcf", fontSize: 12, marginTop: 2 },
-  actionColumn: {
-    marginLeft: 8,
-    justifyContent: "flex-start",
-    alignItems: "center",
-  },
-  iconBtn: { alignItems: "center" },
-  countText: { color: "#ddd", fontSize: 11, marginTop: 2 },
-  imageLoader: {
-    position: "absolute",
-    left: 0,
-    top: 0,
+  actionButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 50,
     justifyContent: "center",
     alignItems: "center",
+    backdropFilter: "blur(12px)",
+    borderWidth: 0.5,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  buttonInner: {
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    height: "100%",
+  },
+  textContainer: {
+    marginTop: "auto",
+  },
+  username: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+    letterSpacing: 0.4,
+  },
+  caption: {
+    color: "#d0d0d0",
+    fontSize: 13,
+    marginTop: 6,
+    fontWeight: "500",
+    lineHeight: 17,
   },
 });
