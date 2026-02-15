@@ -1,0 +1,98 @@
+{
+  "image": "/tmp/tmpctp6_l0l.jpg",
+  "detection_viz": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_detections.jpg",
+  "segmented_dir": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented",
+  "wearing": [
+    "pants",
+    "tshirt",
+    "shoes",
+    "glasses",
+    "watch",
+    "belt"
+  ],
+  "counts": {
+    "pants": 1,
+    "tshirt": 1,
+    "shoes": 2,
+    "glasses": 1,
+    "watch": 1,
+    "belt": 1
+  },
+  "detections": {
+    "pants": [
+      [
+        254,
+        662,
+        510,
+        1246
+      ]
+    ],
+    "tshirt": [
+      [
+        220,
+        375,
+        504,
+        678
+      ]
+    ],
+    "shoes": [
+      [
+        269,
+        1085,
+        328,
+        1268
+      ],
+      [
+        316,
+        1245,
+        386,
+        1308
+      ]
+    ],
+    "glasses": [
+      [
+        303,
+        305,
+        392,
+        339
+      ]
+    ],
+    "watch": [
+      [
+        309,
+        551,
+        336,
+        587
+      ]
+    ],
+    "belt": [
+      [
+        276,
+        662,
+        453,
+        697
+      ]
+    ]
+  },
+  "segmented_items": {
+    "pants": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/pants_0.png"
+    ],
+    "tshirt": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/tshirt_0.png"
+    ],
+    "shoes": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/shoes_0.png",
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/shoes_1.png"
+    ],
+    "glasses": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/glasses_0.png"
+    ],
+    "watch": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/watch_0.png"
+    ],
+    "belt": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/belt_0.png"
+    ]
+  }
+}
