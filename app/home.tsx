@@ -576,32 +576,9 @@ export default function Home() {
               </View>
             </View>
 
-            {/* Result Message */}
-            {resultMessage && (
-              <Animated.View style={[styles.resultBanner, { opacity: fadeAnim }]}>
-                <Text style={styles.resultText}>{resultMessage}</Text>
-              </Animated.View>
-            )}
+            
 
-            {/* Results */}
-            {results && results.items && results.items.length > 0 && (
-              <Animated.View style={[styles.resultsContainer, { opacity: fadeAnim }]}>
-                <Text style={styles.resultsTitle}>🎯 Detected Items</Text>
-                {results.items.slice(0, 5).map((item: any, index: number) => (
-                  <View key={index} style={styles.resultItem}>
-                    <View style={styles.resultDot} />
-                    <Text style={styles.resultItemText}>
-                      {item.category} • {item.attributes?.color?.color || 'N/A'} • {item.attributes?.pattern?.pattern || 'solid'}
-                    </Text>
-                  </View>
-                ))}
-                {results.items.length > 5 && (
-                  <Text style={styles.moreItemsText}>
-                    +{results.items.length - 5} more items detected
-                  </Text>
-                )}
-              </Animated.View>
-            )}
+            
           </Animated.View>
         </ScrollView>
       </View>
@@ -626,6 +603,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
+    marginTop:-20,
     backgroundColor: '#2a2a2a',
     alignItems: 'center',
     justifyContent: 'center',
@@ -684,6 +662,7 @@ const styles = StyleSheet.create({
   },
   testButton: {
     flex: 1,
+    
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: '#FF8C00',
@@ -720,7 +699,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     alignItems: 'center',
-    marginTop: -20,
+    marginTop: -50,
   },
   title: {
     color: '#ffffff',
@@ -737,7 +716,7 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontSize: 14,
     textAlign: 'center',
-    marginBottom: 40,
+    marginBottom: 20,
     lineHeight: 20,
     paddingHorizontal: 20,
   },
@@ -846,7 +825,8 @@ const styles = StyleSheet.create({
   },
   wardrobeButton: {
     width: '100%',
-    marginTop: 20,
+    marginTop:-20,
+    marginBottom: 20,
     paddingVertical: 16,
     borderRadius: 12,
     backgroundColor: '#2a2a2a',
