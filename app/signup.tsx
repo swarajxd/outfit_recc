@@ -1,10 +1,10 @@
 // app/signup.tsx
-import { useOAuth, useSignUp } from '@clerk/clerk-expo';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Link, useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import React, { useEffect, useRef, useState } from 'react';
+import { useAuth, useOAuth, useSignUp } from "@clerk/clerk-expo";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { Link, useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -19,13 +19,13 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+} from "react-native";
+import Svg, { Path } from "react-native-svg";
 
 // Required for OAuth to work properly
 WebBrowser.maybeCompleteAuthSession();
 
-const { width, height } = Dimensions.get('window');
+const { width, height } = Dimensions.get("window");
 
 // Google Icon Component
 const GoogleIcon = ({ size = 20 }: { size?: number }) => (
@@ -50,7 +50,13 @@ const GoogleIcon = ({ size = 20 }: { size?: number }) => (
 );
 
 // Apple Icon Component
-const AppleIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+const AppleIcon = ({
+  size = 20,
+  color = "#FFFFFF",
+}: {
+  size?: number;
+  color?: string;
+}) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
     <Path
       d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4.08zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"
@@ -69,29 +75,40 @@ function safeText(obj: any) {
 
 function validatePassword(password: string, username: string, email: string) {
   const issues: string[] = [];
-  if (!password || password.length < 8) issues.push('Use at least 8 characters.');
-  if (password.toLowerCase().includes('password') || password === '12345678')
+  if (!password || password.length < 8)
+    issues.push("Use at least 8 characters.");
+  if (password.toLowerCase().includes("password") || password === "12345678")
     issues.push('Avoid common passwords (e.g. "password", "12345678").');
   if (username && password.toLowerCase().includes(username.toLowerCase()))
-    issues.push('Password should not include your username.');
-  if (email && password.includes(email.split('@')[0]))
-    issues.push('Password should not include part of your email.');
+    issues.push("Password should not include your username.");
+  if (email && password.includes(email.split("@")[0]))
+    issues.push("Password should not include part of your email.");
   return issues;
 }
 
 export default function SignUp() {
   const { isLoaded, signUp, setActive } = useSignUp();
+  const { isSignedIn, signOut } = useAuth();
   const router = useRouter();
 
   // OAuth hooks
-  const { startOAuthFlow: startGoogleOAuth } = useOAuth({ strategy: 'oauth_google' });
-  const { startOAuthFlow: startAppleOAuth } = useOAuth({ strategy: 'oauth_apple' });
+  const { startOAuthFlow: startGoogleOAuth } = useOAuth({
+    strategy: "oauth_google",
+  });
+  const { startOAuthFlow: startAppleOAuth } = useOAuth({
+    strategy: "oauth_apple",
+  });
 
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [step, setStep] = useState<'form' | 'verify'>('form');
-  const [code, setCode] = useState('');
+  // Sign out any existing Clerk session when signup page loads
+  useEffect(() => {
+    signOut();
+  }, []);
+
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [step, setStep] = useState<"form" | "verify">("form");
+  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Animation values
@@ -103,6 +120,13 @@ export default function SignUp() {
 
   // Focus states
   const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Redirect if already signed in
+  useEffect(() => {
+    if (isSignedIn) {
+      router.replace("/home");
+    }
+  }, [isSignedIn]);
 
   useEffect(() => {
     // Entrance animation
@@ -142,7 +166,7 @@ export default function SignUp() {
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     ).start();
 
     // Rotation animation
@@ -152,50 +176,60 @@ export default function SignUp() {
         duration: 20000,
         easing: Easing.linear,
         useNativeDriver: true,
-      })
+      }),
     ).start();
   }, []);
 
   const spin = orbRotation.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: ["0deg", "360deg"],
   });
 
-  const handleOAuthSignIn = async (strategy: 'oauth_google' | 'oauth_apple') => {
+  const handleOAuthSignIn = async (
+    strategy: "oauth_google" | "oauth_apple",
+  ) => {
     try {
       setLoading(true);
-      const oAuthFlow = strategy === 'oauth_google' ? startGoogleOAuth : startAppleOAuth;
+      const oAuthFlow =
+        strategy === "oauth_google" ? startGoogleOAuth : startAppleOAuth;
 
       const { createdSessionId, setActive: oAuthSetActive } = await oAuthFlow();
 
       if (createdSessionId) {
         await oAuthSetActive!({ session: createdSessionId });
-        router.replace('/home');
+        router.replace("/home");
       }
     } catch (err: any) {
-      console.error('OAuth error:', err);
-      const errorMessage = err?.errors?.[0]?.message || err?.message || 'OAuth sign-in failed';
-      Alert.alert('Sign-in Error', errorMessage);
+      console.error("OAuth error:", err);
+      const errorMessage =
+        err?.errors?.[0]?.message || err?.message || "OAuth sign-in failed";
+      Alert.alert("Sign-in Error", errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignUp = async () => {
-    if (!isLoaded) return Alert.alert('Please wait', 'Auth not loaded yet');
+    if (!isLoaded) return Alert.alert("Please wait", "Auth not loaded yet");
     if (!username || !email || !password)
-      return Alert.alert('Missing Fields', 'Please fill in all fields to continue');
+      return Alert.alert(
+        "Missing Fields",
+        "Please fill in all fields to continue",
+      );
 
     const pwIssues = validatePassword(password, username, email);
     if (pwIssues.length) {
-      return Alert.alert('Weak Password', pwIssues.join('\n'));
+      return Alert.alert("Weak Password", pwIssues.join("\n"));
     }
 
     setLoading(true);
     try {
       if (!signUp) {
         setLoading(false);
-        return Alert.alert('Auth not ready', 'Please wait a moment and try again.');
+        return Alert.alert(
+          "Auth not ready",
+          "Please wait a moment and try again.",
+        );
       }
 
       const res = await signUp.create({
@@ -204,37 +238,54 @@ export default function SignUp() {
         password,
       });
 
-      console.log('signUp.create result:', safeText({ status: res?.status, id: res?.id }));
+      console.log(
+        "signUp.create result:",
+        safeText({ status: res?.status, id: res?.id }),
+      );
 
-      if (res?.status === 'complete' && res?.createdSessionId) {
+      if (res?.status === "complete" && res?.createdSessionId) {
         await setActive({ session: res.createdSessionId });
-        router.replace('/home');
+        router.replace("/home");
         return;
       }
 
       const unverified = (res as any)?.unverifiedFields ?? [];
-      if (Array.isArray(unverified) && unverified.includes('email_address')) {
-        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-        setStep('verify');
-        Alert.alert('Code Sent', 'A verification code has been sent to your email.');
+      if (Array.isArray(unverified) && unverified.includes("email_address")) {
+        await signUp.prepareEmailAddressVerification({
+          strategy: "email_code",
+        });
+        setStep("verify");
+        Alert.alert(
+          "Code Sent",
+          "A verification code has been sent to your email.",
+        );
         return;
       }
 
-      if (res?.status === 'missing_requirements' && (res as any)?.missingFields?.length) {
-        const missing = (res as any).missingFields.join(', ');
-        Alert.alert('Missing fields', `Clerk requires: ${missing}`);
+      if (
+        res?.status === "missing_requirements" &&
+        (res as any)?.missingFields?.length
+      ) {
+        const missing = (res as any).missingFields.join(", ");
+        Alert.alert("Missing fields", `Clerk requires: ${missing}`);
         return;
       }
 
-      Alert.alert('Sign-up status', `Unexpected signUp response: ${safeText(res)}`);
+      Alert.alert(
+        "Sign-up status",
+        `Unexpected signUp response: ${safeText(res)}`,
+      );
     } catch (err: any) {
-      console.error('signUp error full:', err);
+      console.error("signUp error full:", err);
       const msg = err?.message || safeText(err);
 
-      if (typeof msg === 'string' && msg.toLowerCase().includes('found in an online data breach')) {
+      if (
+        typeof msg === "string" &&
+        msg.toLowerCase().includes("found in an online data breach")
+      ) {
         Alert.alert(
-          'Unsafe Password',
-          'That password has been found in an online data breach. Choose a new, stronger password.'
+          "Unsafe Password",
+          "That password has been found in an online data breach. Choose a new, stronger password.",
         );
         setLoading(false);
         return;
@@ -242,12 +293,15 @@ export default function SignUp() {
 
       if (err?.errors && Array.isArray(err.errors)) {
         const first = err.errors[0];
-        Alert.alert('Sign up failed', first?.message || JSON.stringify(first));
+        Alert.alert("Sign up failed", first?.message || JSON.stringify(first));
         setLoading(false);
         return;
       }
 
-      Alert.alert('Sign up failed', typeof msg === 'string' ? msg : 'Unknown error (see console).');
+      Alert.alert(
+        "Sign up failed",
+        typeof msg === "string" ? msg : "Unknown error (see console).",
+      );
     } finally {
       setLoading(false);
     }
@@ -255,51 +309,80 @@ export default function SignUp() {
 
   const handleResend = async () => {
     try {
-      if (!signUp) return Alert.alert('Auth not ready', 'Please wait a moment and try again.');
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-      Alert.alert('Sent', 'Verification code resent. Check your email.');
+      if (!signUp)
+        return Alert.alert(
+          "Auth not ready",
+          "Please wait a moment and try again.",
+        );
+      await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+      Alert.alert("Sent", "Verification code resent. Check your email.");
     } catch (e: any) {
-      console.error('resend error', e);
-      Alert.alert('Resend failed', e?.message || safeText(e));
+      console.error("resend error", e);
+      Alert.alert("Resend failed", e?.message || safeText(e));
     }
   };
 
   const handleVerify = async () => {
-    if (!isLoaded) return Alert.alert('Please wait', 'Auth not loaded yet');
-    if (!code) return Alert.alert('Missing Code', 'Enter the code you received via email');
+    if (!isLoaded) return Alert.alert("Please wait", "Auth not loaded yet");
+    if (!code)
+      return Alert.alert(
+        "Missing Code",
+        "Enter the code you received via email",
+      );
 
     setLoading(true);
     try {
       if (!signUp) {
         setLoading(false);
-        return Alert.alert('Auth not ready', 'Please wait a moment and try again.');
+        return Alert.alert(
+          "Auth not ready",
+          "Please wait a moment and try again.",
+        );
       }
 
       const attempt = await signUp.attemptEmailAddressVerification({ code });
-      console.log('attemptEmailAddressVerification result:', safeText(attempt));
+      console.log("attemptEmailAddressVerification result:", safeText(attempt));
 
-      if (attempt?.status === 'complete' && attempt?.createdSessionId) {
+      if (attempt?.status === "complete" && attempt?.createdSessionId) {
         await setActive({ session: attempt.createdSessionId });
-        router.replace('/home');
+        router.replace("/home");
         return;
       }
 
-      if (attempt?.status === 'missing_requirements' && (attempt as any)?.missingFields?.length) {
-        Alert.alert('Missing fields', `Clerk requires: ${(attempt as any).missingFields.join(', ')}`);
-        setStep('form');
+      if (
+        attempt?.status === "missing_requirements" &&
+        (attempt as any)?.missingFields?.length
+      ) {
+        Alert.alert(
+          "Missing fields",
+          `Clerk requires: ${(attempt as any).missingFields.join(", ")}`,
+        );
+        setStep("form");
         setLoading(false);
         return;
       }
 
-      Alert.alert('Verification not completed', 'Verification did not return a session.');
+      Alert.alert(
+        "Verification not completed",
+        "Verification did not return a session.",
+      );
     } catch (err: any) {
-      console.error('verification error:', err);
+      console.error("verification error:", err);
       const message = err?.message || safeText(err);
-      if (typeof message === 'string' && message.toLowerCase().includes('already been verified')) {
-        Alert.alert('Already verified', 'Your email is already verified. Please sign in.');
-        router.replace('/signin');
+      if (
+        typeof message === "string" &&
+        message.toLowerCase().includes("already been verified")
+      ) {
+        Alert.alert(
+          "Already verified",
+          "Your email is already verified. Please sign in.",
+        );
+        router.replace("/signin");
       } else {
-        Alert.alert('Verification failed', typeof message === 'string' ? message : 'Unknown error.');
+        Alert.alert(
+          "Verification failed",
+          typeof message === "string" ? message : "Unknown error.",
+        );
       }
     } finally {
       setLoading(false);
@@ -307,12 +390,12 @@ export default function SignUp() {
   };
 
   // Verify UI
-  if (step === 'verify') {
+  if (step === "verify") {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
         <LinearGradient
-          colors={['#000000', '#0d0705', '#000000']}
+          colors={["#000000", "#0d0705", "#000000"]}
           style={StyleSheet.absoluteFillObject}
         />
 
@@ -331,7 +414,7 @@ export default function SignUp() {
           ]}
         >
           <LinearGradient
-            colors={['#FF6B00', '#FF8C42', '#FFA500']}
+            colors={["#FF6B00", "#FF8C42", "#FFA500"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.orbGradient}
@@ -342,15 +425,12 @@ export default function SignUp() {
           style={[
             styles.secondaryOrb,
             {
-              transform: [
-                { scale: pulseAnim },
-                { rotate: spin },
-              ],
+              transform: [{ scale: pulseAnim }, { rotate: spin }],
             },
           ]}
         >
           <LinearGradient
-            colors={['rgba(255, 107, 0, 0.3)', 'rgba(255, 140, 66, 0.2)']}
+            colors={["rgba(255, 107, 0, 0.3)", "rgba(255, 140, 66, 0.2)"]}
             start={{ x: 1, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={styles.orbGradient}
@@ -358,7 +438,7 @@ export default function SignUp() {
         </Animated.View>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.keyboardView}
         >
           <ScrollView
@@ -370,17 +450,14 @@ export default function SignUp() {
                 styles.contentContainer,
                 {
                   opacity: fadeAnim,
-                  transform: [
-                    { translateY: slideAnim },
-                    { scale: scaleAnim },
-                  ],
+                  transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
                 },
               ]}
             >
               <View style={styles.header}>
                 <View style={styles.iconContainer}>
                   <LinearGradient
-                    colors={['#FF6B00', '#FF8C42']}
+                    colors={["#FF6B00", "#FF8C42"]}
                     style={styles.iconGradient}
                   >
                     <Text style={styles.iconText}>✉</Text>
@@ -388,7 +465,7 @@ export default function SignUp() {
                 </View>
                 <Text style={styles.title}>Check Your Email</Text>
                 <Text style={styles.subtitle}>
-                  We sent a verification code to{'\n'}
+                  We sent a verification code to{"\n"}
                   <Text style={styles.emailText}>{email}</Text>
                 </Text>
               </View>
@@ -403,40 +480,47 @@ export default function SignUp() {
                       placeholderTextColor="rgba(255, 255, 255, 0.35)"
                       style={[
                         styles.input,
-                        focusedField === 'code' && styles.inputFocused,
+                        focusedField === "code" && styles.inputFocused,
                       ]}
-                      onFocus={() => setFocusedField('code')}
+                      onFocus={() => setFocusedField("code")}
                       onBlur={() => setFocusedField(null)}
                       keyboardType="number-pad"
                       autoComplete="one-time-code"
                       maxLength={6}
                       textAlign="center"
-                      letterSpacing={8}
+                      // letterSpacing={8}
                     />
                   </BlurView>
-                  {focusedField === 'code' && <View style={styles.focusIndicator} />}
+                  {focusedField === "code" && (
+                    <View style={styles.focusIndicator} />
+                  )}
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.primaryButton, loading && styles.buttonDisabled]}
+                  style={[
+                    styles.primaryButton,
+                    loading && styles.buttonDisabled,
+                  ]}
                   onPress={handleVerify}
                   disabled={loading}
                   activeOpacity={0.85}
                 >
                   <LinearGradient
-                    colors={['#FF6B00', '#FF8C42']}
+                    colors={["#FF6B00", "#FF8C42"]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.buttonGradient}
                   >
                     <Text style={styles.primaryButtonText}>
-                      {loading ? 'Verifying...' : 'Verify Email'}
+                      {loading ? "Verifying..." : "Verify Email"}
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>
 
                 <View style={styles.resendContainer}>
-                  <Text style={styles.resendText}>Didn't receive the code? </Text>
+                  <Text style={styles.resendText}>
+                    Didn't receive the code?{" "}
+                  </Text>
                   <TouchableOpacity onPress={handleResend} activeOpacity={0.7}>
                     <Text style={styles.resendLink}>Resend</Text>
                   </TouchableOpacity>
@@ -444,7 +528,10 @@ export default function SignUp() {
               </View>
 
               <View style={styles.footer}>
-                <TouchableOpacity onPress={() => setStep('form')} activeOpacity={0.7}>
+                <TouchableOpacity
+                  onPress={() => setStep("form")}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.backButton}>← Back to Sign Up</Text>
                 </TouchableOpacity>
               </View>
@@ -460,7 +547,7 @@ export default function SignUp() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <LinearGradient
-        colors={['#000000', '#0d0705', '#000000']}
+        colors={["#000000", "#0d0705", "#000000"]}
         style={StyleSheet.absoluteFillObject}
       />
 
@@ -479,7 +566,7 @@ export default function SignUp() {
         ]}
       >
         <LinearGradient
-          colors={['#FF6B00', '#FF8C42', '#FFA500']}
+          colors={["#FF6B00", "#FF8C42", "#FFA500"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.orbGradient}
@@ -490,15 +577,12 @@ export default function SignUp() {
         style={[
           styles.secondaryOrb,
           {
-            transform: [
-              { scale: pulseAnim },
-              { rotate: spin },
-            ],
+            transform: [{ scale: pulseAnim }, { rotate: spin }],
           },
         ]}
       >
         <LinearGradient
-          colors={['rgba(255, 107, 0, 0.3)', 'rgba(255, 140, 66, 0.2)']}
+          colors={["rgba(255, 107, 0, 0.3)", "rgba(255, 140, 66, 0.2)"]}
           start={{ x: 1, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={styles.orbGradient}
@@ -506,7 +590,7 @@ export default function SignUp() {
       </Animated.View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.keyboardView}
       >
         <ScrollView
@@ -519,18 +603,13 @@ export default function SignUp() {
               styles.contentContainer,
               {
                 opacity: fadeAnim,
-                transform: [
-                  { translateY: slideAnim },
-                  { scale: scaleAnim },
-                ],
+                transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
               },
             ]}
           >
             <View style={styles.header}>
               <Text style={styles.title}>Create Account</Text>
-              <Text style={styles.subtitle}>
-                Join the future of fashion
-              </Text>
+              <Text style={styles.subtitle}>Join the future of fashion</Text>
             </View>
 
             <View style={styles.formContainer}>
@@ -548,14 +627,16 @@ export default function SignUp() {
                         autoCapitalize="none"
                         style={[
                           styles.input,
-                          focusedField === 'username' && styles.inputFocused,
+                          focusedField === "username" && styles.inputFocused,
                         ]}
-                        onFocus={() => setFocusedField('username')}
+                        onFocus={() => setFocusedField("username")}
                         onBlur={() => setFocusedField(null)}
                       />
                     </View>
                   </BlurView>
-                  {focusedField === 'username' && <View style={styles.focusIndicator} />}
+                  {focusedField === "username" && (
+                    <View style={styles.focusIndicator} />
+                  )}
                 </View>
 
                 <View style={styles.inputWrapper}>
@@ -571,14 +652,16 @@ export default function SignUp() {
                         keyboardType="email-address"
                         style={[
                           styles.input,
-                          focusedField === 'email' && styles.inputFocused,
+                          focusedField === "email" && styles.inputFocused,
                         ]}
-                        onFocus={() => setFocusedField('email')}
+                        onFocus={() => setFocusedField("email")}
                         onBlur={() => setFocusedField(null)}
                       />
                     </View>
                   </BlurView>
-                  {focusedField === 'email' && <View style={styles.focusIndicator} />}
+                  {focusedField === "email" && (
+                    <View style={styles.focusIndicator} />
+                  )}
                 </View>
 
                 <View style={styles.inputWrapper}>
@@ -593,14 +676,16 @@ export default function SignUp() {
                         secureTextEntry
                         style={[
                           styles.input,
-                          focusedField === 'password' && styles.inputFocused,
+                          focusedField === "password" && styles.inputFocused,
                         ]}
-                        onFocus={() => setFocusedField('password')}
+                        onFocus={() => setFocusedField("password")}
                         onBlur={() => setFocusedField(null)}
                       />
                     </View>
                   </BlurView>
-                  {focusedField === 'password' && <View style={styles.focusIndicator} />}
+                  {focusedField === "password" && (
+                    <View style={styles.focusIndicator} />
+                  )}
                 </View>
 
                 <Text style={styles.hintText}>
@@ -615,13 +700,13 @@ export default function SignUp() {
                 activeOpacity={0.85}
               >
                 <LinearGradient
-                  colors={['#FF6B00', '#FF8C42']}
+                  colors={["#FF6B00", "#FF8C42"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.buttonGradient}
                 >
                   <Text style={styles.primaryButtonText}>
-                    {loading ? 'Creating Account...' : 'Create Account'}
+                    {loading ? "Creating Account..." : "Create Account"}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -637,7 +722,7 @@ export default function SignUp() {
               <View style={styles.oauthSection}>
                 <TouchableOpacity
                   style={styles.oauthButtonCompact}
-                  onPress={() => handleOAuthSignIn('oauth_google')}
+                  onPress={() => handleOAuthSignIn("oauth_google")}
                   disabled={loading}
                   activeOpacity={0.85}
                 >
@@ -649,14 +734,18 @@ export default function SignUp() {
                   </BlurView>
                 </TouchableOpacity>
 
-                {Platform.OS === 'ios' && (
+                {Platform.OS === "ios" && (
                   <TouchableOpacity
                     style={styles.oauthButtonCompact}
-                    onPress={() => handleOAuthSignIn('oauth_apple')}
+                    onPress={() => handleOAuthSignIn("oauth_apple")}
                     disabled={loading}
                     activeOpacity={0.85}
                   >
-                    <BlurView intensity={12} tint="dark" style={styles.oauthBlur}>
+                    <BlurView
+                      intensity={12}
+                      tint="dark"
+                      style={styles.oauthBlur}
+                    >
                       <View style={styles.oauthContentCompact}>
                         <AppleIcon size={20} color="#FFFFFF" />
                         <Text style={styles.oauthTextCompact}>Apple</Text>
@@ -677,9 +766,9 @@ export default function SignUp() {
             </View>
 
             <Text style={styles.termsText}>
-              By creating an account, you agree to our{'\n'}
+              By creating an account, you agree to our{"\n"}
               <Text style={styles.termsLink}>Terms of Service</Text>
-              {' & '}
+              {" & "}
               <Text style={styles.termsLink}>Privacy Policy</Text>
             </Text>
           </Animated.View>
@@ -692,10 +781,10 @@ export default function SignUp() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: "#000000",
   },
   floatingOrb: {
-    position: 'absolute',
+    position: "absolute",
     width: width * 1.8,
     height: width * 1.8,
     borderRadius: width * 0.9,
@@ -704,7 +793,7 @@ const styles = StyleSheet.create({
     opacity: 0.12,
   },
   secondaryOrb: {
-    position: 'absolute',
+    position: "absolute",
     width: width * 1.2,
     height: width * 1.2,
     borderRadius: width * 0.6,
@@ -721,26 +810,26 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 24,
     paddingVertical: 48,
   },
   contentContainer: {
-    width: '100%',
+    width: "100%",
     maxWidth: 440,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   header: {
     marginBottom: 40,
-    alignItems: 'center',
+    alignItems: "center",
   },
   iconContainer: {
     width: 72,
     height: 72,
     borderRadius: 20,
     marginBottom: 24,
-    overflow: 'hidden',
-    shadowColor: '#FF6B00',
+    overflow: "hidden",
+    shadowColor: "#FF6B00",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
@@ -748,114 +837,114 @@ const styles = StyleSheet.create({
   },
   iconGradient: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   iconText: {
     fontSize: 36,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   title: {
     fontSize: 36,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: "700",
+    color: "#FFFFFF",
     marginBottom: 12,
     letterSpacing: -0.5,
-    textAlign: 'center',
+    textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.55)',
+    color: "rgba(255, 255, 255, 0.55)",
     lineHeight: 24,
-    fontWeight: '400',
-    textAlign: 'center',
+    fontWeight: "400",
+    textAlign: "center",
   },
   emailText: {
-    color: '#FF8C42',
-    fontWeight: '600',
+    color: "#FF8C42",
+    fontWeight: "600",
   },
   formContainer: {
     marginBottom: 28,
   },
   oauthSection: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
   },
   oauthButton: {
     height: 54,
     borderRadius: 14,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 10,
   },
   oauthButtonCompact: {
     flex: 1,
     height: 54,
     borderRadius: 14,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   oauthBlur: {
     flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   oauthContent: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 12,
   },
   oauthContentCompact: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
   },
   oauthText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
     letterSpacing: 0.2,
   },
   oauthTextCompact: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
     letterSpacing: 0.2,
   },
   divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginVertical: 20,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
   dividerText: {
-    color: 'rgba(255, 255, 255, 0.35)',
+    color: "rgba(255, 255, 255, 0.35)",
     paddingHorizontal: 16,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   inputsSection: {
     marginBottom: 24,
   },
   inputWrapper: {
     marginBottom: 12,
-    position: 'relative',
+    position: "relative",
   },
   inputBlur: {
     borderRadius: 14,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
   },
   inputIcon: {
@@ -867,26 +956,26 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 54,
     fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '500',
+    color: "#FFFFFF",
+    fontWeight: "500",
   },
   inputFocused: {
-    borderColor: 'transparent',
+    borderColor: "transparent",
   },
   focusIndicator: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: '#FF6B00',
-    pointerEvents: 'none',
+    borderColor: "#FF6B00",
+    pointerEvents: "none",
   },
   hintText: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.35)',
+    color: "rgba(255, 255, 255, 0.35)",
     marginTop: 8,
     lineHeight: 16,
     paddingHorizontal: 4,
@@ -894,8 +983,8 @@ const styles = StyleSheet.create({
   primaryButton: {
     height: 54,
     borderRadius: 14,
-    overflow: 'hidden',
-    shadowColor: '#FF6B00',
+    overflow: "hidden",
+    shadowColor: "#FF6B00",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -903,62 +992,62 @@ const styles = StyleSheet.create({
   },
   buttonGradient: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   primaryButtonText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: "700",
+    color: "#FFFFFF",
     letterSpacing: 0.3,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   resendContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 20,
   },
   resendText: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: "rgba(255, 255, 255, 0.5)",
   },
   resendLink: {
     fontSize: 14,
-    color: '#FF6B00',
-    fontWeight: '600',
+    color: "#FF6B00",
+    fontWeight: "600",
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 20,
   },
   footerText: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: "rgba(255, 255, 255, 0.5)",
   },
   linkText: {
     fontSize: 14,
-    color: '#FF6B00',
-    fontWeight: '600',
+    color: "#FF6B00",
+    fontWeight: "600",
   },
   backButton: {
     fontSize: 14,
-    color: '#FF6B00',
-    fontWeight: '600',
+    color: "#FF6B00",
+    fontWeight: "600",
   },
   termsText: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.35)',
-    textAlign: 'center',
+    color: "rgba(255, 255, 255, 0.35)",
+    textAlign: "center",
     lineHeight: 18,
     paddingHorizontal: 20,
   },
   termsLink: {
-    color: '#FF8C42',
-    fontWeight: '500',
+    color: "#FF8C42",
+    fontWeight: "500",
   },
 });
