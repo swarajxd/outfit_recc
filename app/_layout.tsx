@@ -1,24 +1,22 @@
 // app/_layout.tsx
-import 'react-native-url-polyfill/auto';
-import React from 'react';
+import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo';
 import { Slot } from 'expo-router';
-import Constants from 'expo-constants';
-import { ClerkProvider } from '@clerk/clerk-expo';
-import { tokenCache } from '@clerk/clerk-expo/token-cache';
+import { tokenCache } from './utils/cache';
 
-export default function Layout() {
-  const publishableKey =
-    Constants?.expoConfig?.extra?.CLERK_PUBLISHABLE_KEY ||
-    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
-  if (!publishableKey) {
-    // show nothing if key missing (avoid logging the key).
-    return null;
-  }
+if (!publishableKey) {
+  throw new Error(
+    'Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env'
+  );
+}
 
+export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <Slot />
+      <ClerkLoaded>
+        <Slot />
+      </ClerkLoaded>
     </ClerkProvider>
   );
 }
