@@ -1,78 +1,90 @@
-import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import React from "react";
+import { View, TouchableOpacity, StyleSheet } from "react-native";
+import { Feather, Ionicons } from "@expo/vector-icons";
 
 interface Props {
-  active?: 'home' | 'profile';
+  active?: "home" | "profile";
 }
 
-export default function BottomNav({ active = 'profile' }: Props) {
+export default function BottomNav({ active = "profile" }: Props) {
   return (
-    <View style={styles.container}>
-      {/* Home */}
-      <TouchableOpacity style={styles.iconWrapper}>
-        <Feather
-          name="home"
-          size={24}
-          color={active === 'home' ? '#fff' : '#777'}
-        />
-      </TouchableOpacity>
+    <View style={styles.wrapper}>
+      <View style={styles.container}>
+        {/* Left Icon */}
+        <TouchableOpacity style={styles.iconWrapper}>
+          <Feather
+            name="home"
+            size={24}
+            color={active === "home" ? "#fff" : "#666"}
+          />
+        </TouchableOpacity>
 
-      {/* Center Add Button */}
-      <View style={styles.fabWrapper}>
-        <TouchableOpacity style={styles.fab}>
-          <Feather name="plus" size={28} color="#000" />
+        {/* Spacer */}
+        <View style={{ width: 70 }} />
+
+        {/* Right Icon */}
+        <TouchableOpacity style={styles.iconWrapper}>
+          <Ionicons
+            name={active === "profile" ? "person" : "person-outline"}
+            size={24}
+            color={active === "profile" ? "#fff" : "#666"}
+          />
         </TouchableOpacity>
       </View>
 
-      {/* Profile */}
-      <TouchableOpacity style={styles.iconWrapper}>
-        <Ionicons
-          name={active === 'profile' ? 'person' : 'person-outline'}
-          size={24}
-          color={active === 'profile' ? '#fff' : '#777'}
-        />
+      {/* Center Floating Button */}
+      <TouchableOpacity style={styles.fab}>
+        <Feather name="plus" size={28} color="#000" />
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    backgroundColor: "#000",
+    paddingBottom: 20,
+    paddingTop: 10,
+    alignItems: "center",
+  },
+
   container: {
-    backgroundColor: '#000',
-    borderTopWidth: 1,
-    borderTopColor: '#1a1a1a',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: 14,
+    width: "85%",
+    backgroundColor: "#111",
+    borderRadius: 30,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 18,
+    paddingHorizontal: 40,
+
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
 
   iconWrapper: {
-    flex: 1,
-    alignItems: 'center',
-  },
-
-  fabWrapper: {
-    position: 'relative',
-    top: -24,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   fab: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: "absolute",
+    bottom: 35,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
 
-    // Shadow (iOS)
-    shadowColor: '#fff',
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: "#fff",
     shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: 6 },
 
-    // Elevation (Android)
-    elevation: 8,
+    elevation: 12,
   },
 });
