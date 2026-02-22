@@ -1,24 +1,25 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
-  ScrollView,
   StyleSheet,
   Animated,
   Dimensions,
-} from 'react-native';
+} from "react-native";
 
 interface ProfileTabsProps {
-  activeTab: 'posts' | 'wardrobe' | 'outfits' | 'saved';
-  setActiveTab: (tab: 'posts' | 'wardrobe' | 'outfits' | 'saved') => void;
+  activeTab: "posts" | "wardrobe" | "outfits" | "saved";
+  setActiveTab: (
+    tab: "posts" | "wardrobe" | "outfits" | "saved"
+  ) => void;
 }
 
 const TABS = [
-  { id: 'posts', label: 'Posts' },
-  { id: 'wardrobe', label: 'Wardrobe' },
-  { id: 'outfits', label: 'Outfits' },
-  { id: 'saved', label: 'Saved' },
+  { id: "posts", label: "Posts" },
+  { id: "wardrobe", label: "Wardrobe" },
+  { id: "outfits", label: "Outfits" },
+  { id: "saved", label: "Saved" },
 ];
 
 export default function ProfileTabs({
@@ -26,7 +27,7 @@ export default function ProfileTabs({
   setActiveTab,
 }: ProfileTabsProps) {
   const underlineX = useRef(new Animated.Value(0)).current;
-  const tabWidth = Dimensions.get('window').width / TABS.length;
+  const tabWidth = Dimensions.get("window").width / TABS.length;
 
   useEffect(() => {
     const index = TABS.findIndex((t) => t.id === activeTab);
@@ -61,7 +62,6 @@ export default function ProfileTabs({
         ))}
       </View>
 
-      {/* Animated Underline */}
       <Animated.View
         style={[
           styles.underline,
@@ -78,32 +78,32 @@ export default function ProfileTabs({
 const styles = StyleSheet.create({
   container: {
     borderBottomWidth: 1,
-    borderBottomColor: '#111',
+    borderBottomColor: "#111",
   },
 
   tabRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
   },
 
   tabButton: {
     flex: 1,
     paddingVertical: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   tabText: {
-    color: '#666',
+    color: "#666",
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
 
   activeText: {
-    color: '#fff',
-    fontWeight: '700',
+    color: "#fff",
+    fontWeight: "700",
   },
 
   underline: {
     height: 3,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
 });
