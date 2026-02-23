@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sense AI Stylist Chat</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f27f0d",
+                        "background-light": "#f8f7f5",
+                        "background-dark": "#0a0908",
+                        "charcoal": "#1a1a1a",
+                        "accent-dark": "#1f1812",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem",
+                        "lg": "1.5rem",
+                        "xl": "2.5rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .user-glow {
+            box-shadow: 0 0 15px rgba(242, 127, 13, 0.15);
+        }
+        .ai-status-pulse {
+            box-shadow: 0 0 8px #f27f0d;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .custom-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen flex flex-col">
+<!-- Top Navigation Bar -->
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10 px-4 py-3">
+<div class="max-w-md mx-auto flex items-center justify-between">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-primary/10 transition-colors">
+<span class="material-symbols-outlined text-slate-900 dark:text-slate-100">arrow_back_ios_new</span>
+</button>
+<div class="flex flex-col items-center">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary ai-status-pulse animate-pulse"></span>
+<h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">Sense AI</h1>
+</div>
+<span class="text-[10px] uppercase tracking-widest text-primary font-semibold">Online Stylist</span>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-primary/10 transition-colors">
+<span class="material-symbols-outlined text-slate-900 dark:text-slate-100">more_vert</span>
+</button>
+</div>
+</header>
+<!-- Chat Area -->
+<main class="flex-1 overflow-y-auto px-4 py-6 space-y-6 max-w-md mx-auto w-full">
+<!-- AI Message -->
+<div class="flex flex-col items-start gap-2 max-w-[85%]">
+<div class="flex items-center gap-2 mb-1">
+<div class="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-background-dark font-bold">auto_awesome</span>
+</div>
+<span class="text-xs font-medium text-slate-500 dark:text-slate-400">Sense AI • 09:41 AM</span>
+</div>
+<div class="bg-charcoal text-slate-100 rounded-2xl rounded-tl-none p-4 leading-relaxed shadow-xl border border-white/5">
+                Good morning, Alex! It's a crisp 62°F in New York today. Based on your calendar invite for the "Design Sync," I've curated a look that blends professional with effortless urban style. How does this feel for today?
+            </div>
+</div>
+<!-- AI Outfit Suggestion Card -->
+<div class="w-full @container">
+<div class="bg-charcoal rounded-xl overflow-hidden border border-white/5 shadow-2xl">
+<div class="relative aspect-[4/5] bg-cover bg-center" data-alt="High-end leather jacket and tailored trousers flatlay" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDBGywYSOcqOQHdhAGzvMTeidIET8aiS57B1TVFbMUK0b10YiBh7CKLbTgamWAEdctXtqxjDA4UUt7crkwugSERWIkMR9Qu--aAwBMokvfuUomGDEg5yXOQJnDf0q0vPwvuN9faY1FfYGWvy_GlnZhkhxICSChdzF-rAtRbmoCCQjbFueqVUWH56B0RiJSDxmLXo4KvD1P274_QYhlzJTBL-ImSmN8TlC3iPgJe_TXmnIBc9DzHYzuuL_mcmFys81SOVP9YkXKUgyrd')">
+<div class="absolute inset-0 bg-gradient-to-t from-charcoal via-transparent to-transparent"></div>
+<div class="absolute bottom-4 left-4 right-4">
+<div class="flex justify-between items-end">
+<div>
+<h3 class="text-white font-bold text-xl">Modern Urbanite</h3>
+<p class="text-slate-300 text-sm">3 items from your wardrobe</p>
+</div>
+<span class="bg-primary/20 text-primary text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-tighter border border-primary/30">Match Found</span>
+</div>
+</div>
+</div>
+<div class="p-4 space-y-4">
+<div class="grid grid-cols-3 gap-2">
+<div class="aspect-square rounded-lg bg-background-dark border border-white/5 bg-cover bg-center" data-alt="Black luxury leather jacket detail" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA_3lnJC2m297QsYPr_I8BfodPzUkAtDC9hbmjMDejTh4yHr5-1A5hS9BZOiJip9pQsYhKMquG08bbQ4m2UlFKRxTrlPqMF5PKZ9rxGmEbSvbKK3wMkdFf4UagYQN0hElFguoWUrLhbpxSY5Gk9cPNN-X2aWhqlJp8kDFGnTeRWkxtokxAahi9Ich_Ph_488UE7FAOR3hDDiZ6vgWjb90Ishzkkyc7My7FdywuSv4uuiFkNo2e-PL3Q5-C5NGtl510IN9nPDhGrbQrk')"></div>
+<div class="aspect-square rounded-lg bg-background-dark border border-white/5 bg-cover bg-center" data-alt="White premium cotton t-shirt" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBEXDsTQWRQ_Bssw4jE-Q4OnMQf-ywgYbvEXLffyo4y9sVQFeqBhAgRnctmKa96dMAYjEEU91AqofZ3W1TGJAOTVUiKQm4VQnNsUfAbjo7lunHTlyDobR-590Us0IsXuQhkhCnKAf9A60O2MUcmc0Mn76WTemQrbKx16wZl8DaF3IQrZ9u2tAMNANdr2wh-tv-qpyNVBbsI0zKIdFoQZTEe5rYwXLwIQOZ7HN5Z-5NTk0Ww2oKJHWEcAV_90TlIxg43Xpr_tVr1viPU')"></div>
+<div class="aspect-square rounded-lg bg-background-dark border border-white/5 bg-cover bg-center" data-alt="Sleek black designer sneakers" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAjuOdby8zWM-Y4KWWYevpZ7POFHVO_kwpfDqxL6T0n4RDWcM5vACBSNATlt1lEWNMaiXVLVzIUYszJdiSxEo7s5v4p_HLLZuBcEEYWJv1eEQrHiX0YD183z4fpjCTXi5vgXMcqH6lFH_14jepfoXdNMQPfCYl80wJG3gyt_wrBsPQdGU9bqg6T_Q6BYXlyWrK27mL2iquob5ZaGHD_c_oUlKWF5qpA9s2r3cIOQILjM2WHMUNkU39wOmNA7wHcX-5kb79_TdnHcWaM')"></div>
+</div>
+<button class="w-full bg-primary hover:bg-primary/90 text-background-dark font-bold py-3 rounded-full transition-all flex items-center justify-center gap-2 group">
+<span>Wear This</span>
+<span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">check_circle</span>
+</button>
+</div>
+</div>
+</div>
+<!-- User Message -->
+<div class="flex flex-col items-end gap-2 ml-auto max-w-[85%]">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-xs font-medium text-slate-500 dark:text-slate-400">You • 09:43 AM</span>
+<div class="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center overflow-hidden border border-primary/30">
+<img class="w-full h-full object-cover" data-alt="User profile avatar close up" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZeZj8hBEsq1fMZTUmY41YuofZrsHW6xEG-7dHkCkbCw3q3Ei_znl6N2KsuQ6qeJczzkLxX-Q4M8edPXAZZdsTqpgMA1XPbKXY4FUy2nBa5_91a6eaVLmOhFPiVyI2vovaLTbU3lBTWivXYqY98t21seYlA-gFLjBwka7UaDmrZdEAz-S20oG0Wv8oN_Jpa_93ps4NSEj1gy7ToudK4hszRydj3u8a-31Rv7HJ1cCYvQbL3uYn0AQnUqbW3NgNJKM0wT2FR506amGz"/>
+</div>
+</div>
+<div class="bg-background-dark text-slate-100 rounded-2xl rounded-tr-none p-4 leading-relaxed border border-primary/40 user-glow">
+                I love the jacket, but can we try different boots? Maybe something more rugged?
+            </div>
+</div>
+</main>
+<!-- Bottom Actions and Input -->
+<footer class="bg-background-light dark:bg-background-dark pb-8 pt-2 px-4 space-y-4">
+<!-- Quick Action Chips -->
+<div class="flex gap-2 overflow-x-auto custom-scrollbar pb-1 max-w-md mx-auto">
+<button class="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-charcoal border border-white/10 rounded-full hover:border-primary/50 transition-all">
+<span class="material-symbols-outlined text-primary text-sm">magic_button</span>
+<span class="text-xs font-medium text-slate-200">Style these boots</span>
+</button>
+<button class="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-charcoal border border-white/10 rounded-full hover:border-primary/50 transition-all">
+<span class="material-symbols-outlined text-primary text-sm">wb_sunny</span>
+<span class="text-xs font-medium text-slate-200">Today's forecast</span>
+</button>
+<button class="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-charcoal border border-white/10 rounded-full hover:border-primary/50 transition-all">
+<span class="material-symbols-outlined text-primary text-sm">inventory_2</span>
+<span class="text-xs font-medium text-slate-200">New arrivals</span>
+</button>
+</div>
+<!-- Input Field -->
+<div class="max-w-md mx-auto relative flex items-center gap-2">
+<div class="flex-1 bg-charcoal rounded-full border border-white/10 focus-within:border-primary/50 transition-all flex items-center px-4 py-1">
+<button class="p-2 text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">add_circle</span>
+</button>
+<input class="flex-1 bg-transparent border-none focus:ring-0 text-slate-100 placeholder:text-slate-500 py-3 text-sm" placeholder="Message Sense AI..." type="text"/>
+<button class="p-2 text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">mic</span>
+</button>
+</div>
+<button class="w-12 h-12 bg-primary text-background-dark rounded-full flex items-center justify-center shadow-lg shadow-primary/20 active:scale-95 transition-transform">
+<span class="material-symbols-outlined font-bold">arrow_upward</span>
+</button>
+</div>
+<!-- iOS Home Indicator Spacing -->
+<div class="h-2"></div>
+</footer>
+</body></html>
