@@ -120,7 +120,9 @@ async function verifyClerkToken(req) {
 app.post("/api/cloudinary-sign", async (req, res) => {
   try {
     const timestamp = Math.floor(Date.now() / 1000);
-    const paramsToSign = { timestamp, folder: "posts" };
+    // Accept folder from request body, default to "posts"
+    const folder = req.body?.folder || "posts";
+    const paramsToSign = { timestamp, folder };
     const signature = cloudinary.utils.api_sign_request(
       paramsToSign,
       process.env.CLOUDINARY_API_SECRET,
@@ -130,6 +132,7 @@ app.post("/api/cloudinary-sign", async (req, res) => {
       timestamp,
       api_key: process.env.CLOUDINARY_API_KEY,
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      folder,
     });
   } catch (err) {
     console.error("cloudinary-sign error", err);
