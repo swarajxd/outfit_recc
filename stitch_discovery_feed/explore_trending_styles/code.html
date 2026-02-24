@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Explore Trending Styles | FITSENSE</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f27f0d",
+                        "background-light": "#f8f7f5",
+                        "background-dark": "#0a0806",
+                        "card-dark": "#1a140e",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .masonry-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-auto-rows: 200px;
+            gap: 12px;
+        }
+        .grid-item-tall {
+            grid-row: span 2;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen font-display">
+<!-- Header Section -->
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-xl px-4 pt-6 pb-2">
+<div class="flex items-center justify-between mb-6">
+<h1 class="text-3xl font-bold tracking-tight">Explore</h1>
+<div class="flex gap-3">
+<button class="flex items-center justify-center size-10 rounded-full bg-slate-200 dark:bg-card-dark text-slate-900 dark:text-slate-100">
+<span class="material-symbols-outlined text-[22px]">notifications</span>
+</button>
+<div class="size-10 rounded-full border-2 border-primary overflow-hidden">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="Close up portrait of a stylish person" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAU7y12E0-Ya4NlMsGC6PMtZjX5ZDC6CJmBNxt8eaYvYTYthBBUMkQKFpeeyodpQzRLXkjX0MwL3k6fqvCNJpH0EyM67OQZaWxC6RIKYt_IPGXcF6oxodZxOCVWLXO5x1I8Vjmg6zKefvnPQr_IPiQLRdJEUv6y50fj-ye9saLqc34ac_x4NPHbtDokaEHnn_fOYK1wExfkMZzO6sV_H9BlCzIzjJliEgk061Bp6J7tTg953UQ_6SGMMr6D3BfiSsgFOJ6lp_4znXqU"/>
+</div>
+</div>
+</div>
+<!-- Search Bar -->
+<div class="relative mb-4 group">
+<div class="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+<span class="material-symbols-outlined">search</span>
+</div>
+<input class="w-full bg-slate-100 dark:bg-card-dark border-2 border-transparent focus:border-primary focus:ring-0 rounded-full py-3 pl-12 pr-4 text-sm transition-all placeholder:text-slate-500" placeholder="Search styles, brands, or trends" type="text"/>
+</div>
+<!-- Category Chips -->
+<div class="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
+<button class="flex-none px-5 py-2 rounded-full bg-primary text-white text-sm font-semibold whitespace-nowrap">
+                For You
+            </button>
+<button class="flex-none px-5 py-2 rounded-full bg-slate-100 dark:bg-card-dark text-slate-600 dark:text-slate-400 text-sm font-medium whitespace-nowrap hover:text-primary transition-colors">
+                Streetwear
+            </button>
+<button class="flex-none px-5 py-2 rounded-full bg-slate-100 dark:bg-card-dark text-slate-600 dark:text-slate-400 text-sm font-medium whitespace-nowrap hover:text-primary transition-colors">
+                Minimalist
+            </button>
+<button class="flex-none px-5 py-2 rounded-full bg-slate-100 dark:bg-card-dark text-slate-600 dark:text-slate-400 text-sm font-medium whitespace-nowrap hover:text-primary transition-colors">
+                Vintage
+            </button>
+<button class="flex-none px-5 py-2 rounded-full bg-slate-100 dark:bg-card-dark text-slate-600 dark:text-slate-400 text-sm font-medium whitespace-nowrap hover:text-primary transition-colors">
+                Y2K
+            </button>
+<button class="flex-none px-5 py-2 rounded-full bg-slate-100 dark:bg-card-dark text-slate-600 dark:text-slate-400 text-sm font-medium whitespace-nowrap hover:text-primary transition-colors">
+                Formal
+            </button>
+</div>
+</header>
+<!-- Main Content: Masonry Grid -->
+<main class="px-4 py-4 mb-24">
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-xl font-bold">Trending Now</h2>
+<button class="text-primary text-sm font-semibold">See all</button>
+</div>
+<div class="masonry-grid">
+<!-- Item 1: Featured Large -->
+<div class="grid-item-tall relative rounded-2xl overflow-hidden group">
+<img alt="Trending outfit" class="w-full h-full object-cover" data-alt="Model in vibrant yellow street wear outfit" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCmevWDVRYp4xDx5AO4uIAOkPdNOcrnaJraBO2U6MO_Z9gDNlUk69YgZxJKHT49ISxrBQsJ6JvCsnUSDMG0UvyaHJQYLW_dOYLinYtLU0Cuuvl7uhNoWgxR8CP2jAdA_7yyVy3i1RtYgLrGhLTRW7wPvx6BGyfVY5Cb2vnmgyQnFpFgzCjElInpHfGOJ4PIMIJ2T5LVJWyQyCZctJkXvdQaXUkek5PwtCeiqnUblx74Xnj4NaVW6umbyyfDAP_L9LI4gydiRFSCORVj"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+<div class="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-primary/40">
+<span class="text-primary text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px] fill-1">bolt</span> 98% Match
+                    </span>
+</div>
+<div class="absolute bottom-3 left-3 flex items-center gap-2">
+<img class="size-6 rounded-full border border-white/20" data-alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOraRZooM-6dQUlOds5pQDqrbQwM-ERTDlD5tOhlDlXCh1e7f5MNFn17nQpw6Yq3-hP6pcZiRAh8EfqKKZ6TwIRwLbp7a1eQLkvaONinTOKq2wZ1r0jd-eikhWsS1Gy0caYI1wL7dnk8IzSpuW8zqvmyZirvW_6N7FpxRsF2M4YyvKxH-bgcX3CG6YZvId2VcymrNL671NQI99kRhPnXDFjZr2aFLWpkHnhmCUnE_cLo7z8KbyEOwhtBmusUVLzgtsQ9rlIPZMUPJi"/>
+<span class="text-xs font-medium text-white">@alex_fits</span>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="relative rounded-2xl overflow-hidden group">
+<img alt="Street style" class="w-full h-full object-cover" data-alt="Woman in high fashion dark aesthetic pose" src="https://lh3.googleusercontent.com/aida-public/AB6AXuClJn1XPn1q3HPnI6SEvTqmqtO2NkvaE3h3uNQkMToEf4QMVvhFtO6h-Rjywq6FD12nDa3lafaAGPOCVaVLKk-rCA7QlHwiZuygkPOD8KUC8rP0BlGTSI44cxVRo7iBkfqa_vDiXAdSTYEhMhwQQjb1BVllM2YSYq_qhqIXG7V13sT-GSueXxmNvlX72r5ObwHzUMDMBLNOrc24wAI4R5oNa1t9kMGE-WXWjsCiIFukE_Jw0XzFNXVA-M2BQEL_V0VC0h7KUmA7UTCY"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+<div class="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full">
+<span class="text-primary text-[10px] font-bold">92% Match</span>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="relative rounded-2xl overflow-hidden group">
+<img alt="Minimalist Look" class="w-full h-full object-cover" data-alt="Clean aesthetic minimalist men fashion" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBOa7vrHmZaRAaBK9VhvhA4KMPzX6PcRmKukRAFHwRHT7Ip-Ituq2_0Kz7lnGZ_lT7htLmzFfR7YA756ROChqlNQptqSp-og9qpVPy7Y2yq9comc1YHNgUIjlxBFhmKA2-aGn8_BOqmmtBmd0OQge6fwYDawgZmt6NVgayoYrn74MEWhRVpLLZHiU8yHN9Tu_IRn-0gYKHzf_YnHWVlnM8T6knHWAB-8oXWog7GxqdJzrN7Gu764a-KXvMqrW1Qmicm3T9Uo3CYbPm"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+<div class="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full">
+<span class="text-primary text-[10px] font-bold">85% Match</span>
+</div>
+</div>
+<!-- Item 4: Tall -->
+<div class="grid-item-tall relative rounded-2xl overflow-hidden group">
+<img alt="Cyberpunk style" class="w-full h-full object-cover" data-alt="Editorial fashion photography in urban setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0O4A9QbHwS92H8FiTzHuZmGPuYJf2C2qXU53kN7M3H_5LS0HJdt1aLYzRkWiub4ek2NOs45PDlPUsas43Ur8MMxmNWJ2ymq9_p0QLI4EkVrcUEwqOxJrE1dQzwDXjafu1_pDEbKoms6DlEbxIaEWXoK3Og9tFVz6K-knChZZvvx77ic4Ue2HXkZQxfQ0WJujXWSnWMPEhlmRT5JMojZ6hRdbQzeqdJuT6477XAxS-HYRFSlcxNRA9XQA0nYohF5JZ6DVp_TbJYARb"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+<div class="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-primary/40">
+<span class="text-primary text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px] fill-1">bolt</span> 95% Match
+                    </span>
+</div>
+<div class="absolute bottom-3 left-3 flex items-center gap-2">
+<img class="size-6 rounded-full border border-white/20" data-alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQCAgyo9Zc3QRusDbI68iEf2nBWQP8CjMKRd3xzdgyc-70cLNoYEH77DBV6i_XE47_immX_rj4issbR1geSl0w8T585WlWK9dTcWPpfjJDZPrO5Z2yHVWVHppvxxfkKPb5SV50tmBHJEAifVCstOLl7l7exl3rMqbnyHFiITgTzvTmhWnKSnwFnjap0eiaSerDgxdmu6D6ti1ugTf-x1AZ55MJSNAcAWNxvy_vm65ysPIAcvwrr-CuK2c84HeoyrVlRul5PiX2YhIk"/>
+<span class="text-xs font-medium text-white">@jordan_vibe</span>
+</div>
+</div>
+<!-- Item 5 -->
+<div class="relative rounded-2xl overflow-hidden group">
+<img alt="Vintage look" class="w-full h-full object-cover" data-alt="Retro 90s vintage fashion aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDFKY-SL8wpb-rsjG_nHH9BIdryhd_JloTXFRFNVWMnIXTSl-YGIN-qMgHx2yexrZsIZGWmHhxPiL5wDVaHFO_305BXB5YiZUn1OSH29DDmnWz_WEDH5WKlRNH3Sp0HzU08DbOJCASSERHeY_VhP9MjhTu4SD7Fo9sbzGeAQHsYZsmqKpTA2k5grzB0Hk8gw-Bsqnxm9u7wSVTpSomySBeIcB7Y4KuBpvllyscdQjI6xZSfJM-l2Fs-u1hjRy9GakJ6x651ncykjnvi"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+<div class="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full">
+<span class="text-primary text-[10px] font-bold">88% Match</span>
+</div>
+</div>
+<!-- Item 6 -->
+<div class="relative rounded-2xl overflow-hidden group">
+<img alt="High fashion" class="w-full h-full object-cover" data-alt="Luxury fashion shopping aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8ug1gET-w4uwH5YCsENxP6QuwMuSCdVwYN4autEq0L4sz8jKpJk-k6IBZ6RtfEZ8y093hSBHLefHMiYZ_N8TwR2GUv5iOlqLcHApgsZd8XbRYsQ_B_Irrs7ArgvOWeR15KEp0n26GScz-qMMLiUqZQe_tpk1JuqkL4LIku3Y9lGlKERBV4sg1jzkUYU7AbalQXgb6PhNoXSwZp-nuap-B2nbtLvYzCNAuj-ym96Rj3cDX1iX0XFsxS5JuNuyXa6GXzzNPJSFrwdVD"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+<div class="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full">
+<span class="text-primary text-[10px] font-bold">91% Match</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 right-0 z-50 bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-2xl border-t border-slate-200 dark:border-white/5 pb-8 pt-3 px-6">
+<div class="flex items-center justify-between max-w-md mx-auto">
+<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">home</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined fill-1">explore</span>
+<div class="size-1 bg-primary rounded-full"></div>
+</a>
+<a class="relative flex items-center justify-center -top-6" href="#">
+<div class="size-14 rounded-full bg-primary flex items-center justify-center shadow-lg shadow-primary/40 ring-4 ring-background-light dark:ring-background-dark">
+<span class="material-symbols-outlined text-white text-3xl">add</span>
+</div>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">favorite</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">person</span>
+</a>
+</div>
+</nav>
+</body></html>
