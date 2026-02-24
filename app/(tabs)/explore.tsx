@@ -1,63 +1,81 @@
-import React, { useState } from 'react';
+import { useUser } from "@clerk/clerk-expo";
+import React, { useState } from "react";
 import {
-  Dimensions,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+    Dimensions,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const PRIMARY = '#FF6B00';
-const BG = '#0a0806';
-const CARD_DARK = '#1a140e';
-const WIDTH = Dimensions.get('window').width;
+const PRIMARY = "#FF6B00";
+const BG = "#0a0806";
+const CARD_DARK = "#1a140e";
+const WIDTH = Dimensions.get("window").width;
 const GAP = 10;
 const COL_WIDTH = (WIDTH - 32 - GAP) / 2;
+const DEFAULT_AVATAR =
+  "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&q=80";
 
-const CATEGORIES = ['For You', 'Streetwear', 'Minimalist', 'Vintage', 'Y2K', 'Formal'];
+const CATEGORIES = [
+  "For You",
+  "Streetwear",
+  "Minimalist",
+  "Vintage",
+  "Y2K",
+  "Formal",
+];
 
 const GRID_ITEMS = [
   {
-    id: '1',
-    image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=400&q=80',
+    id: "1",
+    image:
+      "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=400&q=80",
     match: 98,
-    user: '@alex_fits',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=60&q=80',
+    user: "@alex_fits",
+    avatar:
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=60&q=80",
     tall: true,
   },
   {
-    id: '2',
-    image: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&q=80',
+    id: "2",
+    image:
+      "https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&q=80",
     match: 92,
     tall: false,
   },
   {
-    id: '3',
-    image: 'https://images.unsplash.com/photo-1550614000-4895a10e1bfd?w=400&q=80',
+    id: "3",
+    image:
+      "https://images.unsplash.com/photo-1550614000-4895a10e1bfd?w=400&q=80",
     match: 85,
     tall: false,
   },
   {
-    id: '4',
-    image: 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=400&q=80',
+    id: "4",
+    image:
+      "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=400&q=80",
     match: 95,
-    user: '@jordan_vibe',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=60&q=80',
+    user: "@jordan_vibe",
+    avatar:
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=60&q=80",
     tall: true,
   },
   {
-    id: '5',
-    image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&q=80',
+    id: "5",
+    image:
+      "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&q=80",
     match: 88,
     tall: false,
   },
   {
-    id: '6',
-    image: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=400&q=80',
+    id: "6",
+    image:
+      "https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=400&q=80",
     match: 91,
     tall: false,
   },
@@ -65,7 +83,14 @@ const GRID_ITEMS = [
 
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
   const [activeCategory, setActiveCategory] = useState(0);
+
+  // Get user avatar - prefer Cloudinary URL from metadata, fallback to Clerk imageUrl
+  const userAvatar =
+    (user?.unsafeMetadata as { profileImageUrl?: string })?.profileImageUrl ||
+    user?.imageUrl ||
+    DEFAULT_AVATAR;
 
   // Split items into two columns (staggered)
   const leftCol = GRID_ITEMS.filter((_, i) => i % 2 === 0);
@@ -79,11 +104,11 @@ export default function ExploreScreen() {
           <Text style={styles.title}>Explore</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.iconBtn}>
-              <Text style={{ color: '#fff', fontSize: 18 }}>🔔</Text>
+              <Text style={{ color: "#fff", fontSize: 18 }}>🔔</Text>
             </TouchableOpacity>
             <Image
               source={{
-                uri: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&q=80',
+                uri: userAvatar,
               }}
               style={styles.avatar}
             />
@@ -113,7 +138,10 @@ export default function ExploreScreen() {
               onPress={() => setActiveCategory(i)}
             >
               <Text
-                style={[styles.chipText, activeCategory === i && styles.chipTextActive]}
+                style={[
+                  styles.chipText,
+                  activeCategory === i && styles.chipTextActive,
+                ]}
               >
                 {cat}
               </Text>
@@ -179,31 +207,31 @@ function GridCard({ item }: { item: (typeof GRID_ITEMS)[0] }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
   header: {
-    backgroundColor: 'rgba(10,8,6,0.9)',
+    backgroundColor: "rgba(10,8,6,0.9)",
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 4,
   },
   headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
   title: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.5,
   },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   iconBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: CARD_DARK,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatar: {
     width: 40,
@@ -213,16 +241,16 @@ const styles = StyleSheet.create({
     borderColor: PRIMARY,
   },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: CARD_DARK,
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginBottom: 12,
   },
-  searchIcon: { color: 'rgba(255,255,255,0.4)', fontSize: 18, marginRight: 8 },
-  searchInput: { flex: 1, color: '#fff', fontSize: 14, padding: 0 },
+  searchIcon: { color: "rgba(255,255,255,0.4)", fontSize: 18, marginRight: 8 },
+  searchInput: { flex: 1, color: "#fff", fontSize: 14, padding: 0 },
   chipsRow: { paddingBottom: 10, gap: 8 },
   chip: {
     paddingHorizontal: 18,
@@ -231,48 +259,54 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_DARK,
   },
   chipActive: { backgroundColor: PRIMARY },
-  chipText: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '600' },
-  chipTextActive: { color: '#fff' },
+  chipText: { color: "rgba(255,255,255,0.5)", fontSize: 13, fontWeight: "600" },
+  chipTextActive: { color: "#fff" },
   gridContainer: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120 },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
-  sectionTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
-  seeAll: { color: PRIMARY, fontSize: 13, fontWeight: '700' },
-  grid: { flexDirection: 'row' },
+  sectionTitle: { color: "#fff", fontSize: 20, fontWeight: "800" },
+  seeAll: { color: PRIMARY, fontSize: 13, fontWeight: "700" },
+  grid: { flexDirection: "row" },
   column: { flex: 1 },
   gridCard: {
     borderRadius: 16,
-    overflow: 'hidden',
+    overflow: "hidden",
     backgroundColor: CARD_DARK,
-    position: 'relative',
+    position: "relative",
   },
-  gridImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  gridImage: { width: "100%", height: "100%", resizeMode: "cover" },
   gridOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   gridBadge: {
-    position: 'absolute',
+    position: "absolute",
     top: 10,
     right: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: "rgba(0,0,0,0.5)",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
   },
-  gridBadgeText: { color: PRIMARY, fontSize: 10, fontWeight: '700' },
+  gridBadgeText: { color: PRIMARY, fontSize: 10, fontWeight: "700" },
   gridUser: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 10,
     left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
-  gridAvatar: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  gridUserText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  gridAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  gridUserText: { color: "#fff", fontSize: 11, fontWeight: "600" },
 });

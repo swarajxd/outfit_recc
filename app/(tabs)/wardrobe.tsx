@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useUser } from "@clerk/clerk-expo";
+import React, { useState } from "react";
 import {
   Image,
   ScrollView,
@@ -6,64 +7,79 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const PRIMARY = '#FF6B00';
-const BG = '#000000';
-const CHARCOAL = '#1A1A1A';
-const SOFT_GREY = '#262626';
+const PRIMARY = "#FF6B00";
+const BG = "#000000";
+const CHARCOAL = "#1A1A1A";
+const SOFT_GREY = "#262626";
+const DEFAULT_AVATAR =
+  "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&q=80";
 
-const CATEGORIES = ['All', 'Tops', 'Bottoms', 'Outerwear', 'Shoes'];
+const CATEGORIES = ["All", "Tops", "Bottoms", "Outerwear", "Shoes"];
 
 const WARDROBE_ITEMS = [
   {
-    id: '1',
-    image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&q=80',
-    name: 'Oxford Shirt',
-    category: 'Essential',
-    tag: 'Linen',
+    id: "1",
+    image:
+      "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&q=80",
+    name: "Oxford Shirt",
+    category: "Essential",
+    tag: "Linen",
   },
   {
-    id: '2',
-    image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80',
-    name: 'Studio Blazer',
-    category: 'Outerwear',
-    tag: 'Oversized',
+    id: "2",
+    image:
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80",
+    name: "Studio Blazer",
+    category: "Outerwear",
+    tag: "Oversized",
   },
   {
-    id: '3',
-    image: 'https://images.unsplash.com/photo-1594938298603-c8148c4b4057?w=400&q=80',
-    name: 'City Chinos',
-    category: 'Bottoms',
-    tag: 'Neutral',
+    id: "3",
+    image:
+      "https://images.unsplash.com/photo-1594938298603-c8148c4b4057?w=400&q=80",
+    name: "City Chinos",
+    category: "Bottoms",
+    tag: "Neutral",
   },
   {
-    id: '4',
-    image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80',
-    name: 'Chelsea Boots',
-    category: 'Footwear',
-    tag: 'Leather',
+    id: "4",
+    image:
+      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80",
+    name: "Chelsea Boots",
+    category: "Footwear",
+    tag: "Leather",
   },
   {
-    id: '5',
-    image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&q=80',
-    name: 'Knit Pullover',
-    category: 'Tops',
-    tag: 'Cashmere',
+    id: "5",
+    image:
+      "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&q=80",
+    name: "Knit Pullover",
+    category: "Tops",
+    tag: "Cashmere",
   },
   {
-    id: '6',
-    image: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=400&q=80',
-    name: 'Heritage Jeans',
-    category: 'Bottoms',
-    tag: 'Denim',
+    id: "6",
+    image:
+      "https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=400&q=80",
+    name: "Heritage Jeans",
+    category: "Bottoms",
+    tag: "Denim",
   },
 ];
 
 export default function WardrobeScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
   const [activeCategory, setActiveCategory] = useState(0);
+
+  // Get user avatar - prefer Cloudinary URL from metadata, fallback to Clerk imageUrl
+  const userAvatar =
+    (user?.unsafeMetadata as { profileImageUrl?: string })?.profileImageUrl ||
+    user?.imageUrl ||
+    DEFAULT_AVATAR;
 
   const filtered =
     activeCategory === 0
@@ -71,7 +87,7 @@ export default function WardrobeScreen() {
       : WARDROBE_ITEMS.filter(
           (item) =>
             item.category.toLowerCase() ===
-            CATEGORIES[activeCategory].toLowerCase()
+            CATEGORIES[activeCategory].toLowerCase(),
         );
 
   const leftCol = filtered.filter((_, i) => i % 2 === 0);
@@ -85,7 +101,7 @@ export default function WardrobeScreen() {
           <View style={styles.headerLeft}>
             <Image
               source={{
-                uri: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&q=80',
+                uri: userAvatar,
               }}
               style={styles.avatar}
             />
@@ -95,7 +111,7 @@ export default function WardrobeScreen() {
             </View>
           </View>
           <TouchableOpacity style={styles.searchBtn}>
-            <Text style={{ color: '#fff', fontSize: 18 }}>⌕</Text>
+            <Text style={{ color: "#fff", fontSize: 18 }}>⌕</Text>
           </TouchableOpacity>
         </View>
 
@@ -112,7 +128,10 @@ export default function WardrobeScreen() {
               onPress={() => setActiveCategory(i)}
             >
               <Text
-                style={[styles.chipText, activeCategory === i && styles.chipTextActive]}
+                style={[
+                  styles.chipText,
+                  activeCategory === i && styles.chipTextActive,
+                ]}
               >
                 {cat}
               </Text>
@@ -170,87 +189,122 @@ function WardrobeCard({ item }: { item: (typeof WARDROBE_ITEMS)[0] }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
   header: {
-    backgroundColor: 'rgba(0,0,0,0.88)',
+    backgroundColor: "rgba(0,0,0,0.88)",
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: "rgba(255,255,255,0.05)",
   },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: "rgba(255,255,255,0.1)",
   },
-  headerTitle: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  headerTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
   headerSub: {
     color: PRIMARY,
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 3,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     marginTop: 2,
   },
   searchBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center', justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   chipsRow: { gap: 8, paddingBottom: 8 },
   chip: {
-    paddingHorizontal: 20, paddingVertical: 8,
-    borderRadius: 999, backgroundColor: SOFT_GREY,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: SOFT_GREY,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
   },
   chipActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
   chipText: {
-    color: 'rgba(255,255,255,0.55)', fontSize: 11,
-    fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1,
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
-  chipTextActive: { color: '#fff' },
+  chipTextActive: { color: "#fff" },
   scrollContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 140 },
-  grid: { flexDirection: 'row', gap: 14 },
+  grid: { flexDirection: "row", gap: 14 },
   column: { flex: 1, gap: 16 },
-  card: { backgroundColor: CHARCOAL, borderRadius: 20, overflow: 'hidden' },
+  card: { backgroundColor: CHARCOAL, borderRadius: 20, overflow: "hidden" },
   cardImageWrapper: {
     aspectRatio: 3 / 4,
     backgroundColor: SOFT_GREY,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 16,
   },
   cardImage: {
-    width: '100%', height: '100%', resizeMode: 'cover', borderRadius: 12,
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+    borderRadius: 12,
   },
   cardInfo: { padding: 12, gap: 4 },
-  tagRow: { flexDirection: 'row' },
+  tagRow: { flexDirection: "row" },
   tag: {
-    backgroundColor: PRIMARY, paddingHorizontal: 8, paddingVertical: 3,
+    backgroundColor: PRIMARY,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 999,
   },
-  tagText: { color: '#fff', fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-  itemName: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 },
-  itemCategory: { color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '600' },
+  tagText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  itemName: { color: "#fff", fontSize: 13, fontWeight: "700", marginTop: 2 },
+  itemCategory: {
+    color: "rgba(255,255,255,0.35)",
+    fontSize: 11,
+    fontWeight: "600",
+  },
   fab: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 96,
     right: 20,
-    width: 54, height: 54, borderRadius: 27,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: PRIMARY,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: PRIMARY, shadowRadius: 18, shadowOpacity: 0.55,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: PRIMARY,
+    shadowRadius: 18,
+    shadowOpacity: 0.55,
     shadowOffset: { width: 0, height: 4 },
     elevation: 14,
   },
-  fabIcon: { color: '#fff', fontSize: 28, fontWeight: '300', lineHeight: 32 },
+  fabIcon: { color: "#fff", fontSize: 28, fontWeight: "300", lineHeight: 32 },
 });
