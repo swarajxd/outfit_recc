@@ -1,24 +1,23 @@
 // app/home.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import { useClerk, useUser } from '@clerk/clerk-expo';
+import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Image,
   ActivityIndicator,
-  SafeAreaView,
-  Platform,
-  TextInput,
   Alert,
   Animated,
-  ScrollView,
   Dimensions,
+  Image,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { useUser, useClerk } from '@clerk/clerk-expo';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const { width, height } = Dimensions.get('window');
 

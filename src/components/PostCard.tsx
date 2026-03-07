@@ -1,246 +1,140 @@
-// src/components/PostCard.tsx
-import { AntDesign, Feather } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import React, { useRef } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    ImageSourcePropType,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Animated,
 } from "react-native";
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 
-type Post = {
-  id: string;
-  image: string | ImageSourcePropType; // remote url or require(...) asset
-  author?: string;
-  avatar?: string | null;
-  likes?: number;
-  liked?: boolean;
-  saves?: number;
-  saved?: boolean;
-  caption?: string;
-};
+export default function PostCard({ post, onPress }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
 
-type Props = {
-  post: Post;
-  columnWidth: number; // provided by parent
-  onLike?: (postId: string, newLiked: boolean) => Promise<void> | void;
-  onSave?: (postId: string, newSaved: boolean) => Promise<void> | void;
-  onPress?: (post: Post) => void;
-};
+  const animateIn = () => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: 1.04,
+        useNativeDriver: true,
+        friction: 6,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: -6,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
-export default function PostCard({
-  post,
-  columnWidth,
-  onLike,
-  onSave,
-  onPress,
-}: Props) {
-  const [height, setHeight] = useState<number | null>(null);
-  const [loadingImage, setLoadingImage] = useState(true);
+  const animateOut = () => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 6,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
-  const [liked, setLiked] = useState(Boolean(post.liked));
-  const [likesCount, setLikesCount] = useState(
-    typeof post.likes === "number" ? post.likes : 0,
-  );
-
-  const [saved, setSaved] = useState(Boolean(post.saved));
-  const [savesCount, setSavesCount] = useState(
-    typeof post.saves === "number" ? post.saves : 0,
-  );
-
-  useEffect(() => {
-    setLiked(Boolean(post.liked));
-    setLikesCount(typeof post.likes === "number" ? post.likes : likesCount);
-  }, [post.liked, post.likes]);
-  useEffect(() => {
-    setSaved(Boolean(post.saved));
-    setSavesCount(typeof post.saves === "number" ? post.saves : savesCount);
-  }, [post.saved, post.saves]);
-
-  useEffect(() => {
-    let active = true;
-    const img = post.image as any;
-
-    // If it's a remote URL string, use Image.getSize
-    if (typeof img === "string") {
-      Image.getSize(
-        img,
-        (w, h) => {
-          if (!active) return;
-          const ratio = h / w;
-          const targetH = Math.max(120, Math.round(columnWidth * ratio));
-          setHeight(targetH);
-          setLoadingImage(false);
-        },
-        () => {
-          if (!active) return;
-          setHeight(Math.round(columnWidth * 1.2));
-          setLoadingImage(false);
-        },
-      );
-    } else {
-      // local require(...) asset -> resolveAssetSource
-      try {
-        const resolved = Image.resolveAssetSource(img);
-        if (resolved && resolved.width && resolved.height) {
-          const ratio = resolved.height / resolved.width;
-          const targetH = Math.max(120, Math.round(columnWidth * ratio));
-          setHeight(targetH);
-        } else {
-          setHeight(Math.round(columnWidth * 1.2));
-        }
-      } catch (e) {
-        setHeight(Math.round(columnWidth * 1.2));
-      } finally {
-        setLoadingImage(false);
-      }
-    }
-
-    return () => {
-      active = false;
-    };
-  }, [post.image, columnWidth]);
-
-  async function handleLike() {
-    const newLiked = !liked;
-    setLiked(newLiked);
-    setLikesCount((c) => (newLiked ? c + 1 : Math.max(0, c - 1)));
-    try {
-      if (onLike) await onLike(post.id, newLiked);
-    } catch (err) {
-      setLiked((s) => !s);
-      setLikesCount((c) => (newLiked ? Math.max(0, c - 1) : c + 1));
-    }
-  }
-
-  async function handleSave() {
-    const newSaved = !saved;
-    setSaved(newSaved);
-    setSavesCount((c) => (newSaved ? c + 1 : Math.max(0, c - 1)));
-    try {
-      if (onSave) await onSave(post.id, newSaved);
-    } catch (err) {
-      setSaved((s) => !s);
-      setSavesCount((c) => (newSaved ? Math.max(0, c - 1) : c + 1));
-    }
-  }
+  const ratios = [0.75, 1, 0.85, 1.2];
+  const ratio =
+    ratios[parseInt(post.id.replace("local-", "")) % ratios.length];
 
   return (
-    <View style={[styles.card, { width: columnWidth }]}>
-      <TouchableOpacity activeOpacity={0.9} onPress={() => onPress?.(post)}>
-        <View
-          style={{
-            backgroundColor: "#000",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
+    <Pressable
+      onPress={() => onPress(post)}
+      onHoverIn={animateIn}
+      onHoverOut={animateOut}
+    >
+      <Animated.View
+        style={[
+          styles.card,
+          {
+            transform: [{ scale }, { translateY }],
+          },
+        ]}
+      >
+        <Image
+          source={post.image}
+          style={[styles.image, { aspectRatio: ratio }]}
+          contentFit="cover"
+        />
+
+        <Animated.View
+          style={[
+            styles.overlay,
+            { opacity: overlayOpacity },
+          ]}
         >
-          {height ? (
-            <>
-              <Image
-                source={
-                  typeof post.image === "string"
-                    ? { uri: post.image }
-                    : (post.image as ImageSourcePropType)
-                }
-                style={{ width: columnWidth, height, backgroundColor: "#111" }}
-                resizeMode="cover"
-                onLoadStart={() => setLoadingImage(true)}
-                onLoadEnd={() => setLoadingImage(false)}
-              />
-              {loadingImage && (
-                <View
-                  style={[styles.imageLoader, { width: columnWidth, height }]}
-                >
-                  <ActivityIndicator />
-                </View>
-              )}
-            </>
-          ) : (
-            <View
-              style={{
-                width: columnWidth,
-                height: 180,
-                backgroundColor: "#111",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <ActivityIndicator />
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
+          <View style={styles.actions}>
+            <Ionicons name="heart-outline" size={20} color="#fff" />
+            <Ionicons name="bookmark-outline" size={20} color="#fff" />
+          </View>
 
-      <View style={styles.footer}>
-        <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={styles.authorText}>
-            {post.author ?? "Unknown"}
-          </Text>
-          {post.caption ? (
-            <Text numberOfLines={2} style={styles.captionText}>
-              {post.caption}
-            </Text>
-          ) : null}
-        </View>
-
-        <View style={styles.actionColumn}>
-          <TouchableOpacity
-            onPress={handleLike}
-            style={styles.iconBtn}
-            accessibilityRole="button"
-          >
-            <AntDesign
-              name={liked ? "heart" : "hearto"}
-              size={20}
-              color={liked ? "#ff2d55" : "#fff"}
-            />
-            <Text style={styles.countText}>{likesCount}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleSave}
-            style={[styles.iconBtn, { marginTop: 8 }]}
-            accessibilityRole="button"
-          >
-            <Feather
-              name="bookmark"
-              size={18}
-              color={saved ? "#f08a2e" : "#fff"}
-            />
-            <Text style={styles.countText}>{savesCount}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.username}>{post.author}</Text>
+            <Text style={styles.caption}>{post.caption}</Text>
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { margin: 8 },
-  footer: {
-    marginTop: 8,
+  card: {
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: "#141418",
+    marginBottom: 24,
+
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  image: {
+    width: "100%",
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    padding: 16,
+    justifyContent: "space-between",
+  },
+  actions: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
+    justifyContent: "flex-end",
+    gap: 14,
   },
-  authorText: { color: "#fff", fontWeight: "700", fontSize: 13 },
-  captionText: { color: "#cfcfcf", fontSize: 12, marginTop: 2 },
-  actionColumn: {
-    marginLeft: 8,
-    justifyContent: "flex-start",
-    alignItems: "center",
+  textContainer: {
+    marginTop: "auto",
   },
-  iconBtn: { alignItems: "center" },
-  countText: { color: "#ddd", fontSize: 11, marginTop: 2 },
-  imageLoader: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    justifyContent: "center",
-    alignItems: "center",
+  username: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  caption: {
+    color: "#ccc",
+    fontSize: 12,
+    marginTop: 4,
   },
 });

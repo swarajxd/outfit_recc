@@ -1,6 +1,10 @@
-// src/components/SearchBar.tsx
 import React, { useEffect, useState } from "react";
-import { View, TextInput, StyleSheet, Platform } from "react-native";
+import {
+  View,
+  TextInput,
+  StyleSheet,
+  Animated,
+} from "react-native";
 import { Feather } from "@expo/vector-icons";
 
 type Props = {
@@ -9,49 +13,65 @@ type Props = {
   placeholder?: string;
 };
 
-export default function SearchBar({ value = "", onChange, placeholder = "Search looks, tags..." }: Props) {
+export default function SearchBar({
+  value = "",
+  onChange,
+  placeholder = "Search looks...",
+}: Props) {
   const [text, setText] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const animated = useState(new Animated.Value(0))[0];
 
-  // debounce local changes to avoid querying on every keystroke
   useEffect(() => {
     const t = setTimeout(() => onChange(text.trim()), 300);
     return () => clearTimeout(t);
   }, [text]);
 
-  useEffect(() => setText(value), [value]);
+  useEffect(() => {
+    Animated.timing(animated, {
+      toValue: focused ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [focused]);
+
+  const borderColor = animated.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["#1c1c22", "#7c5cff"],
+  });
 
   return (
-    <View style={styles.container}>
-      <Feather name="search" size={18} color="#999" style={{ marginRight: 8 }} />
+    <Animated.View style={[styles.container, { borderColor }]}>
+      <Feather name="search" size={18} color="#aaa" />
       <TextInput
         value={text}
         onChangeText={setText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder={placeholder}
-        placeholderTextColor="#888"
+        placeholderTextColor="#666"
         style={styles.input}
-        returnKeyType="search"
-        autoCapitalize="none"
-        keyboardAppearance="dark"
       />
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    backgroundColor: "#111",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === "ios" ? 10 : 8,
+    backgroundColor: "#141418",
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     alignItems: "center",
-    marginHorizontal: 12,
-    marginTop: 12,
+    marginHorizontal: 40,
+    marginTop: 20,
+    borderWidth: 1,
   },
   input: {
     flex: 1,
     color: "#fff",
-    fontSize: 16,
-    minHeight: 20,
+    fontSize: 15,
+    marginLeft: 10,
   },
 });
