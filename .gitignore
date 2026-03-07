@@ -50,3 +50,4 @@ app-example
 # generated native folders
 /ios
 /android
+server/outfit_model

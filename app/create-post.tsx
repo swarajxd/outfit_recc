@@ -12,7 +12,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { v4 as uuidv4 } from "uuid";
 
@@ -24,6 +25,7 @@ export default function CreatePostScreen() {
   const { getToken } = useAuth();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [caption, setCaption] = useState("");
   const [tagsText, setTagsText] = useState("");
 
@@ -33,6 +35,24 @@ export default function CreatePostScreen() {
       quality: 0.8,
     });
     if (!res.canceled) setImageUri(res.assets?.[0]?.uri || null);
+  }
+
+  async function runOutfitAnalysis(localUri: string): Promise<Record<string, unknown> | null> {
+    // Fetch as blob so server receives actual file data (works on web + native)
+    const fileResp = await fetch(localUri);
+    const blob = await fileResp.blob();
+    const formData = new FormData();
+    formData.append("image", blob as any, "image.jpg");
+    const resp = await fetch(`${SERVER_BASE}/api/outfit-analysis`, {
+      method: "POST",
+      body: formData,
+      // Do not set Content-Type; let browser set multipart/form-data with boundary
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error || "Outfit analysis failed");
+    }
+    return resp.json();
   }
 
   async function uploadToCloudinary(localUri: string) {
@@ -75,16 +95,34 @@ export default function CreatePostScreen() {
 
     setUploading(true);
     try {
-      // 1) upload to Cloudinary
+      // 1) Run outfit model on image (server writes result.json)
+      setAnalyzing(true);
+      let tagsFromAnalysis: string[] = [];
+      try {
+        const result = await runOutfitAnalysis(imageUri);
+        if (result) {
+          const wearing = (result.wearing as string[]) || [];
+          const colors = (result.colors as Record<string, string[]>) || {};
+          const colorList = Object.values(colors).flat();
+          tagsFromAnalysis = [...wearing, ...colorList].map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+        }
+      } catch (e) {
+        console.warn("Outfit analysis failed, continuing without:", e);
+      } finally {
+        setAnalyzing(false);
+      }
+
+      // 2) Upload to Cloudinary
       const cloudResp = await uploadToCloudinary(imageUri);
       const imageUrl = cloudResp.secure_url || cloudResp.url;
       const publicId = cloudResp.public_id;
 
-      // 2) Prepare tags array
-      const tags = tagsText
+      // 3) Tags: user input + auto from analysis
+      const userTags = tagsText
         .split(",")
         .map((s) => s.trim().toLowerCase())
         .filter(Boolean);
+      const tags = [...new Set([...userTags, ...tagsFromAnalysis])];
 
       // 3) Get Clerk token to authenticate request to server
       // In development we support dev token format: "dev:<clerkUserId>"
@@ -99,7 +137,7 @@ export default function CreatePostScreen() {
         authHeader = `Bearer dev:${user.id}`;
       }
 
-      // 4) Call server to create post record in Supabase
+      // 4) Create post record in Supabase
       const createResp = await fetch(`${SERVER_BASE}/api/create-post`, {
         method: "POST",
         headers: {
@@ -173,7 +211,12 @@ export default function CreatePostScreen() {
           disabled={uploading}
         >
           {uploading ? (
-            <ActivityIndicator color="#fff" />
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <ActivityIndicator color="#fff" />
+              <Text style={[styles.btnText, { marginLeft: 8 }]}>
+                {analyzing ? "Analyzing outfit…" : "Uploading…"}
+              </Text>
+            </View>
           ) : (
             <Text style={styles.btnText}>Upload</Text>
           )}
