@@ -9,6 +9,7 @@ const fs = require("fs");
 const { spawn } = require("child_process");
 const cloudinary = require("cloudinary").v2;
 const { createClient } = require("@supabase/supabase-js");
+const profileRouter = require("./profile");
 
 const app = express();
 
@@ -28,6 +29,12 @@ app.use(
 );
 
 app.use(bodyParser.json({ limit: "10mb" }));
+
+// Serve outfit_model files as static assets (wardrobe images, uploads, etc.)
+app.use("/static", express.static(path.join(REPO_OUTFIT)));
+
+// Mount profile routes
+app.use("/api/profile", profileRouter);
 
 // Multer for outfit-analysis (store in memory to forward to Python)
 const upload = multer({

@@ -1,7 +1,7 @@
 import { useUser } from "@clerk/clerk-expo";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -77,6 +77,136 @@ export default function ProfileScreen() {
   const [editLastName, setEditLastName] = useState("");
   const [editUsername, setEditUsername] = useState("");
   const [editRole, setEditRole] = useState("");
+
+  // ── Wardrobe state ─────────────────────────────────────────────────────
+  interface WardrobeItem {
+    id: string;
+    image: string;
+    color?: string;
+    pattern?: string;
+    category?: string;
+  }
+  const [wardrobeItems, setWardrobeItems] = useState<WardrobeItem[]>([]);
+  const [isWardrobeLoading, setIsWardrobeLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
+
+  // Derive user_id from Clerk
+  const userId = user?.id || "default_user";
+
+  // ── Fetch wardrobe items (segmented images from uploads dir) ───────────
+  const fetchWardrobe = useCallback(async () => {
+    setIsWardrobeLoading(true);
+    try {
+      const resp = await fetch(
+        `${SERVER_BASE}/api/profile/segmented/${encodeURIComponent(userId)}`,
+      );
+      if (!resp.ok) throw new Error("Failed to fetch wardrobe");
+      const json = await resp.json();
+      const items: WardrobeItem[] = (json.items || []).map((item: any) => ({
+        id: item.id || uuidv4(),
+        image: item.image,
+        category: item.category || "",
+      }));
+      setWardrobeItems(items);
+    } catch (err) {
+      console.warn("wardrobe fetch error:", err);
+    } finally {
+      setIsWardrobeLoading(false);
+    }
+  }, [userId]);
+
+  // Load wardrobe when tab switches to "Wardrobe"
+  useEffect(() => {
+    if (activeTab === 2) {
+      fetchWardrobe();
+    }
+  }, [activeTab, fetchWardrobe]);
+
+  // ── Upload image to wardrobe pipeline ──────────────────────────────────
+  const uploadToWardrobe = async () => {
+    const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permResult.granted) {
+      Alert.alert(
+        "Permission Required",
+        "Allow access to your photo library to add wardrobe items.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 0.9,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    setIsUploading(true);
+    setUploadProgress("Uploading image…");
+
+    try {
+      // 1) Upload to server → Python pipeline
+      const formData = new FormData();
+      if (Platform.OS === "web") {
+        const blob = await (await fetch(asset.uri)).blob();
+        formData.append("image", blob, "wardrobe.jpg");
+      } else {
+        formData.append("image", {
+          uri: asset.uri,
+          type: "image/jpeg",
+          name: "wardrobe.jpg",
+        } as any);
+      }
+      formData.append("user_id", userId);
+
+      const uploadResp = await fetch(
+        `${SERVER_BASE}/api/profile/upload-wardrobe`,
+        { method: "POST", body: formData },
+      );
+      if (!uploadResp.ok) throw new Error("Upload failed");
+      const uploadJson = await uploadResp.json();
+      const jobId = uploadJson.job_id;
+      if (!jobId) throw new Error("No job_id returned");
+
+      // 2) Poll job status
+      setUploadProgress("Processing outfit…");
+      let attempts = 0;
+      const maxAttempts = 120; // ~2 min with 1s interval
+      const poll = async (): Promise<void> => {
+        attempts++;
+        const statusResp = await fetch(
+          `${SERVER_BASE}/api/profile/job/${encodeURIComponent(jobId)}`,
+        );
+        const statusJson = await statusResp.json();
+
+        if (statusJson.status === "completed") {
+          setUploadProgress("");
+          setIsUploading(false);
+          Alert.alert(
+            "Success",
+            `${statusJson.results?.items_total || 0} item(s) added to your wardrobe!`,
+          );
+          fetchWardrobe();
+          return;
+        }
+        if (statusJson.status === "error") {
+          throw new Error(statusJson.error || "Processing failed");
+        }
+        if (attempts >= maxAttempts) {
+          throw new Error("Processing timed out");
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        return poll();
+      };
+      await poll();
+    } catch (err: any) {
+      console.error("wardrobe upload error:", err);
+      Alert.alert("Error", err.message || "Failed to process image");
+      setIsUploading(false);
+      setUploadProgress("");
+    }
+  };
   const [editBio, setEditBio] = useState("");
   const [editAvatarUri, setEditAvatarUri] = useState<string | null>(null);
 
@@ -338,14 +468,82 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* Posts Grid */}
-        <View style={styles.postsGrid}>
-          {POST_IMAGES.map((uri, i) => (
-            <TouchableOpacity key={i} style={styles.postItem}>
-              <Image source={{ uri }} style={styles.postImage} />
+        {/* Tab Content */}
+        {activeTab === 2 ? (
+          /* ── Wardrobe Tab ─────────────────────────────────────────── */
+          <View style={styles.wardrobeSection}>
+            {/* Upload button */}
+            <TouchableOpacity
+              style={styles.addItemBtn}
+              onPress={uploadToWardrobe}
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <View style={styles.addItemInner}>
+                  <ActivityIndicator size="small" color={PRIMARY} />
+                  <Text style={styles.addItemProgressText}>
+                    {uploadProgress}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.addItemInner}>
+                  <Text style={styles.addItemPlus}>+</Text>
+                  <Text style={styles.addItemLabel}>Add Item</Text>
+                </View>
+              )}
             </TouchableOpacity>
-          ))}
-        </View>
+
+            {/* Wardrobe grid */}
+            {isWardrobeLoading ? (
+              <View style={styles.wardrobeLoader}>
+                <ActivityIndicator size="large" color={PRIMARY} />
+                <Text style={styles.wardrobeLoaderText}>Loading wardrobe…</Text>
+              </View>
+            ) : wardrobeItems.length === 0 ? (
+              <View style={styles.wardrobeEmpty}>
+                <Text style={styles.wardrobeEmptyIcon}>👕</Text>
+                <Text style={styles.wardrobeEmptyText}>
+                  Your wardrobe is empty
+                </Text>
+                <Text style={styles.wardrobeEmptySubtext}>
+                  Tap + to upload an outfit photo and our AI will segment
+                  individual items into your digital wardrobe.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.wardrobeGrid}>
+                {wardrobeItems.map((item) => (
+                  <View key={item.id} style={styles.wardrobeItem}>
+                    <Image
+                      source={{ uri: item.image }}
+                      style={styles.wardrobeImage}
+                      resizeMode="contain"
+                    />
+                    <View style={styles.wardrobeItemInfo}>
+                      {item.category ? (
+                        <Text style={styles.wardrobeCategory}>
+                          {item.category}
+                        </Text>
+                      ) : null}
+                      {item.color ? (
+                        <Text style={styles.wardrobeAttr}>{item.color}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : (
+          /* ── Posts / Saved Grid ───────────────────────────────────── */
+          <View style={styles.postsGrid}>
+            {POST_IMAGES.map((uri, i) => (
+              <TouchableOpacity key={i} style={styles.postItem}>
+                <Image source={{ uri }} style={styles.postImage} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -725,5 +923,102 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     paddingTop: 14,
+  },
+  // ── Wardrobe styles ────────────────────────────────────────────────────
+  wardrobeSection: {
+    paddingHorizontal: 12,
+    paddingTop: 16,
+  },
+  addItemBtn: {
+    borderWidth: 2,
+    borderColor: PRIMARY,
+    borderStyle: "dashed",
+    borderRadius: 16,
+    paddingVertical: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  addItemInner: {
+    alignItems: "center",
+    gap: 4,
+  },
+  addItemPlus: {
+    color: PRIMARY,
+    fontSize: 36,
+    fontWeight: "300",
+    lineHeight: 40,
+  },
+  addItemLabel: {
+    color: PRIMARY,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  addItemProgressText: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 12,
+    marginTop: 4,
+  },
+  wardrobeLoader: {
+    alignItems: "center",
+    paddingVertical: 60,
+    gap: 12,
+  },
+  wardrobeLoaderText: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 13,
+  },
+  wardrobeEmpty: {
+    alignItems: "center",
+    paddingVertical: 48,
+    gap: 8,
+  },
+  wardrobeEmptyIcon: {
+    fontSize: 48,
+    marginBottom: 8,
+  },
+  wardrobeEmptyText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  wardrobeEmptySubtext: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 13,
+    textAlign: "center",
+    maxWidth: 260,
+    lineHeight: 20,
+  },
+  wardrobeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  wardrobeItem: {
+    width: (WIDTH - 32 - 8) / 2,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  wardrobeImage: {
+    width: "100%",
+    height: (WIDTH - 32 - 8) / 2,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  wardrobeItemInfo: {
+    padding: 10,
+    gap: 2,
+  },
+  wardrobeCategory: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "capitalize",
+  },
+  wardrobeAttr: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 11,
+    textTransform: "capitalize",
   },
 });
