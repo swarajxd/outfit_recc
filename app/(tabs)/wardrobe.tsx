@@ -1,7 +1,12 @@
 import { useUser } from "@clerk/clerk-expo";
-import React, { useState } from "react";
+import Constants from "expo-constants";
+import * as ImagePicker from "expo-image-picker";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +15,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+const SERVER_BASE =
+  (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
+
 const PRIMARY = "#FF6B00";
 const BG = "#000000";
 const CHARCOAL = "#1A1A1A";
@@ -17,77 +25,155 @@ const SOFT_GREY = "#262626";
 const DEFAULT_AVATAR =
   "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&q=80";
 
-const CATEGORIES = ["All", "Tops", "Bottoms", "Outerwear", "Shoes"];
+interface WardrobeItem {
+  id: string;
+  image: string;
+  category: string;
+}
 
-const WARDROBE_ITEMS = [
-  {
-    id: "1",
-    image:
-      "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&q=80",
-    name: "Oxford Shirt",
-    category: "Essential",
-    tag: "Linen",
-  },
-  {
-    id: "2",
-    image:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80",
-    name: "Studio Blazer",
-    category: "Outerwear",
-    tag: "Oversized",
-  },
-  {
-    id: "3",
-    image:
-      "https://images.unsplash.com/photo-1594938298603-c8148c4b4057?w=400&q=80",
-    name: "City Chinos",
-    category: "Bottoms",
-    tag: "Neutral",
-  },
-  {
-    id: "4",
-    image:
-      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80",
-    name: "Chelsea Boots",
-    category: "Footwear",
-    tag: "Leather",
-  },
-  {
-    id: "5",
-    image:
-      "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&q=80",
-    name: "Knit Pullover",
-    category: "Tops",
-    tag: "Cashmere",
-  },
-  {
-    id: "6",
-    image:
-      "https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=400&q=80",
-    name: "Heritage Jeans",
-    category: "Bottoms",
-    tag: "Denim",
-  },
-];
+/** Capitalise first letter of each word, e.g. "tshirt" → "Tshirt" */
+function displayCategory(cat: string) {
+  return cat.charAt(0).toUpperCase() + cat.slice(1);
+}
 
 export default function WardrobeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
   const [activeCategory, setActiveCategory] = useState(0);
+  const [items, setItems] = useState<WardrobeItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
 
-  // Get user avatar - prefer Cloudinary URL from metadata, fallback to Clerk imageUrl
+  const userId = user?.id || "default_user";
+
   const userAvatar =
     (user?.unsafeMetadata as { profileImageUrl?: string })?.profileImageUrl ||
     user?.imageUrl ||
     DEFAULT_AVATAR;
 
+  // Fetch wardrobe items from the same endpoint the profile page uses
+  const fetchWardrobe = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const resp = await fetch(
+        `${SERVER_BASE}/api/profile/segmented/${encodeURIComponent(userId)}`,
+      );
+      if (!resp.ok) throw new Error("Failed to fetch wardrobe");
+      const json = await resp.json();
+      const fetched: WardrobeItem[] = (json.items || []).map((item: any) => ({
+        id: item.id || item.filename || String(Math.random()),
+        image: item.image,
+        category: item.category || "other",
+      }));
+      setItems(fetched);
+    } catch (err) {
+      console.warn("wardrobe fetch error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    fetchWardrobe();
+  }, [fetchWardrobe]);
+
+  // ── Upload image to wardrobe pipeline ──────────────────────────────────
+  const uploadToWardrobe = async () => {
+    const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permResult.granted) {
+      Alert.alert(
+        "Permission Required",
+        "Allow access to your photo library to add wardrobe items.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 0.9,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    setIsUploading(true);
+    setUploadProgress("Uploading image…");
+
+    try {
+      const formData = new FormData();
+      if (Platform.OS === "web") {
+        const blob = await (await fetch(asset.uri)).blob();
+        formData.append("image", blob, "wardrobe.jpg");
+      } else {
+        formData.append("image", {
+          uri: asset.uri,
+          type: "image/jpeg",
+          name: "wardrobe.jpg",
+        } as any);
+      }
+      formData.append("user_id", userId);
+
+      const uploadResp = await fetch(
+        `${SERVER_BASE}/api/profile/upload-wardrobe`,
+        { method: "POST", body: formData },
+      );
+      if (!uploadResp.ok) throw new Error("Upload failed");
+      const uploadJson = await uploadResp.json();
+      const jobId = uploadJson.job_id;
+      if (!jobId) throw new Error("No job_id returned");
+
+      setUploadProgress("Processing outfit…");
+      let attempts = 0;
+      const maxAttempts = 120;
+      const poll = async (): Promise<void> => {
+        attempts++;
+        const statusResp = await fetch(
+          `${SERVER_BASE}/api/profile/job/${encodeURIComponent(jobId)}`,
+        );
+        const statusJson = await statusResp.json();
+
+        if (statusJson.status === "completed") {
+          setUploadProgress("");
+          setIsUploading(false);
+          Alert.alert(
+            "Success",
+            `${statusJson.results?.items_total || 0} item(s) added to your wardrobe!`,
+          );
+          fetchWardrobe();
+          return;
+        }
+        if (statusJson.status === "error") {
+          throw new Error(statusJson.error || "Processing failed");
+        }
+        if (attempts >= maxAttempts) {
+          throw new Error("Processing timed out");
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        return poll();
+      };
+      await poll();
+    } catch (err: any) {
+      console.error("wardrobe upload error:", err);
+      Alert.alert("Error", err.message || "Failed to process image");
+      setIsUploading(false);
+      setUploadProgress("");
+    }
+  };
+
+  // Build dynamic category list from fetched items
+  const categories = useMemo(() => {
+    const unique = Array.from(new Set(items.map((i) => i.category)));
+    unique.sort();
+    return ["All", ...unique.map(displayCategory)];
+  }, [items]);
+
   const filtered =
     activeCategory === 0
-      ? WARDROBE_ITEMS
-      : WARDROBE_ITEMS.filter(
+      ? items
+      : items.filter(
           (item) =>
-            item.category.toLowerCase() ===
-            CATEGORIES[activeCategory].toLowerCase(),
+            displayCategory(item.category) === categories[activeCategory],
         );
 
   const leftCol = filtered.filter((_, i) => i % 2 === 0);
@@ -121,7 +207,7 @@ export default function WardrobeScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipsRow}
         >
-          {CATEGORIES.map((cat, i) => (
+          {categories.map((cat, i) => (
             <TouchableOpacity
               key={cat}
               style={[styles.chip, activeCategory === i && styles.chipActive]}
@@ -145,29 +231,51 @@ export default function WardrobeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={styles.grid}>
-          <View style={styles.column}>
-            {leftCol.map((item) => (
-              <WardrobeCard key={item.id} item={item} />
-            ))}
+        {isLoading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={PRIMARY} />
+            <Text style={styles.loadingText}>Loading wardrobe…</Text>
           </View>
-          <View style={styles.column}>
-            {rightCol.map((item) => (
-              <WardrobeCard key={item.id} item={item} />
-            ))}
+        ) : items.length === 0 ? (
+          <View style={styles.centered}>
+            <Text style={styles.emptyIcon}>👕</Text>
+            <Text style={styles.emptyText}>Your wardrobe is empty</Text>
+            <Text style={styles.emptySubtext}>
+              Upload outfit photos from your profile to build your digital
+              wardrobe.
+            </Text>
           </View>
-        </View>
+        ) : (
+          <View style={styles.grid}>
+            <View style={styles.column}>
+              {leftCol.map((item) => (
+                <WardrobeCard key={item.id} item={item} />
+              ))}
+            </View>
+            <View style={styles.column}>
+              {rightCol.map((item) => (
+                <WardrobeCard key={item.id} item={item} />
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* FAB */}
-      <TouchableOpacity style={styles.fab}>
-        <Text style={styles.fabIcon}>+</Text>
-      </TouchableOpacity>
+      {isUploading ? (
+        <View style={styles.fab}>
+          <ActivityIndicator size="small" color="#fff" />
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.fab} onPress={uploadToWardrobe}>
+          <Text style={styles.fabIcon}>+</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
-function WardrobeCard({ item }: { item: (typeof WARDROBE_ITEMS)[0] }) {
+function WardrobeCard({ item }: { item: WardrobeItem }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardImageWrapper}>
@@ -176,11 +284,9 @@ function WardrobeCard({ item }: { item: (typeof WARDROBE_ITEMS)[0] }) {
       <View style={styles.cardInfo}>
         <View style={styles.tagRow}>
           <View style={styles.tag}>
-            <Text style={styles.tagText}>{item.tag}</Text>
+            <Text style={styles.tagText}>{displayCategory(item.category)}</Text>
           </View>
         </View>
-        <Text style={styles.itemName}>{item.name}</Text>
-        <Text style={styles.itemCategory}>{item.category}</Text>
       </View>
     </View>
   );
@@ -284,11 +390,29 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  itemName: { color: "#fff", fontSize: 13, fontWeight: "700", marginTop: 2 },
-  itemCategory: {
-    color: "rgba(255,255,255,0.35)",
-    fontSize: 11,
+  centered: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 80,
+    gap: 12,
+  },
+  loadingText: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 13,
     fontWeight: "600",
+    marginTop: 8,
+  },
+  emptyIcon: { fontSize: 48 },
+  emptyText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  emptySubtext: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 13,
+    textAlign: "center",
+    paddingHorizontal: 40,
   },
   fab: {
     position: "absolute",

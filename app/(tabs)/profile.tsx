@@ -472,27 +472,6 @@ export default function ProfileScreen() {
         {activeTab === 2 ? (
           /* ── Wardrobe Tab ─────────────────────────────────────────── */
           <View style={styles.wardrobeSection}>
-            {/* Upload button */}
-            <TouchableOpacity
-              style={styles.addItemBtn}
-              onPress={uploadToWardrobe}
-              disabled={isUploading}
-            >
-              {isUploading ? (
-                <View style={styles.addItemInner}>
-                  <ActivityIndicator size="small" color={PRIMARY} />
-                  <Text style={styles.addItemProgressText}>
-                    {uploadProgress}
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.addItemInner}>
-                  <Text style={styles.addItemPlus}>+</Text>
-                  <Text style={styles.addItemLabel}>Add Item</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
             {/* Wardrobe grid */}
             {isWardrobeLoading ? (
               <View style={styles.wardrobeLoader}>
