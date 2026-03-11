@@ -1,3 +1,4 @@
+
 import { useUser } from "@clerk/clerk-expo";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
@@ -14,6 +15,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+    FALLBACK_WARDROBE,
+    GeneratedOutfit,
+    getOrCreateDailyOutfit,
+} from '../utils/outfitEngine';
 
 const SERVER_BASE =
   (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
@@ -167,6 +175,13 @@ export default function WardrobeScreen() {
     unique.sort();
     return ["All", ...unique.map(displayCategory)];
   }, [items]);
+  const [todayOutfit, setTodayOutfit] = useState<GeneratedOutfit | null>(null);
+
+  useEffect(() => {
+    getOrCreateDailyOutfit(FALLBACK_WARDROBE)
+      .then((o) => setTodayOutfit(o))
+      .catch(() => {});
+  }, []);
 
   const filtered =
     activeCategory === 0
@@ -225,6 +240,32 @@ export default function WardrobeScreen() {
           ))}
         </ScrollView>
       </View>
+
+      {/* Today's Outfit Banner */}
+      {todayOutfit && (
+        <View style={styles.outfitBanner}>
+          <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={['rgba(255,107,0,0.12)', 'rgba(255,107,0,0.0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.outfitBannerBorder} />
+          <View style={styles.outfitBannerLeft}>
+            <Text style={styles.outfitBannerLabel}>✦ Today's Outfit</Text>
+            <View style={styles.outfitBannerItems}>
+              {[todayOutfit.top, todayOutfit.bottom, todayOutfit.footwear].map((item, i) => (
+                <View key={i} style={styles.outfitBannerItem}>
+                  <Text style={styles.outfitBannerEmoji}>{item.emoji}</Text>
+                  <Text style={styles.outfitBannerName} numberOfLines={1}>{item.name}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+          <Text style={styles.outfitBannerChevron}>›</Text>
+        </View>
+      )}
 
       {/* Grid */}
       <ScrollView
@@ -430,5 +471,40 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 14,
   },
-  fabIcon: { color: "#fff", fontSize: 28, fontWeight: "300", lineHeight: 32 },
+  fabIcon: { color: '#fff', fontSize: 28, fontWeight: '300', lineHeight: 32 },
+
+  // Today's Outfit Banner
+  outfitBanner: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 18,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    position: 'relative',
+  },
+  outfitBannerBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,0,0.25)',
+  },
+  outfitBannerLeft: { flex: 1 },
+  outfitBannerLabel: {
+    color: PRIMARY, fontSize: 11, fontWeight: '800',
+    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10,
+  },
+  outfitBannerItems: { flexDirection: 'row', gap: 12 },
+  outfitBannerItem: { alignItems: 'center', gap: 4 },
+  outfitBannerEmoji: { fontSize: 24 },
+  outfitBannerName: {
+    color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '600',
+    maxWidth: 72, textAlign: 'center',
+  },
+  outfitBannerChevron: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 22, fontWeight: '300',
+  },
 });

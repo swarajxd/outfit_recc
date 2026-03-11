@@ -15,23 +15,9 @@ export default function Discover() {
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState("");
 
-  // Responsive column calculation for Pinterest-style masonry
-  let numColumns: number;
-  let columnWidth: number;
 
-  if (width > 1400) {
-    numColumns = 5;
-    columnWidth = (width - 80) / 5 - 12;
-  } else if (width > 1000) {
-    numColumns = 4;
-    columnWidth = (width - 80) / 4 - 12;
-  } else if (width > 600) {
-    numColumns = 3;
-    columnWidth = (width - 64) / 3 - 12;
-  } else {
-    numColumns = 2;
-    columnWidth = (width - 32) / 2 - 10;
-  }
+  const columnWidth = width > 1400 ? 260 : width > 900 ? 220 : 180;
+
 
   const posts = useMemo(() => {
     const images = [
@@ -59,6 +45,7 @@ export default function Discover() {
     post.caption.toLowerCase().includes(query.toLowerCase())
   );
 
+
   // Create columns for masonry layout
   const columns = Array.from({ length: numColumns }, () => []);
   
@@ -66,36 +53,23 @@ export default function Discover() {
     columns[index % numColumns].push(post);
   });
 
+
   return (
     <View style={styles.page}>
       <SearchBar value={query} onChange={setQuery} />
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.header}>
-          <View>
-            <View style={styles.titleWrapper}>
-              <View style={styles.titleDot}></View>
-              <View>
-                <View style={styles.titleLine1}></View>
-                <View style={styles.titleLine2}></View>
-              </View>
-            </View>
-          </View>
-        </View>
 
-        <View style={styles.masonryContainer}>
-          {columns.map((column, columnIndex) => (
-            <View key={columnIndex} style={{ flex: 1 }}>
-              {column.map((item) => (
-                <View key={item.id} style={{ marginBottom: 14 }}>
-                  <PostCard
-                    post={item}
-                    onPress={(p) =>
-                      router.push(`/post/${encodeURIComponent(p.id)}`)
-                    }
-                  />
-                </View>
-              ))}
+        <View style={styles.grid}>
+          {filteredPosts.map((item) => (
+            <View key={item.id} style={{ width: columnWidth }}>
+              <PostCard
+                post={item}
+                onPress={(p) =>
+                  router.push(`/post/${encodeURIComponent(p.id)}`)
+                }
+              />
+
             </View>
           ))}
         </View>
@@ -107,41 +81,19 @@ export default function Discover() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: "#0a0a0a",
+
+    backgroundColor: "#0b0b0f",
   },
   scroll: {
+    paddingTop: 30,
+    paddingHorizontal: 32,
     paddingBottom: 120,
   },
-  header: {
-    paddingHorizontal: 32,
-    paddingTop: 32,
-    paddingBottom: 20,
-  },
-  titleWrapper: {
+  grid: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-  },
-  titleDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "#fff",
-  },
-  titleLine1: {
-    width: 140,
-    height: 2.5,
-    backgroundColor: "#fff",
-    marginBottom: 8,
-  },
-  titleLine2: {
-    width: 90,
-    height: 2,
-    backgroundColor: "#444",
-  },
-  masonryContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    gap: 14,
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 22,
+
   },
 });

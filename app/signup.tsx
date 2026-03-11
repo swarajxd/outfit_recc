@@ -75,14 +75,15 @@ function safeText(obj: any) {
 
 function validatePassword(password: string, username: string, email: string) {
   const issues: string[] = [];
-  if (!password || password.length < 8)
-    issues.push("Use at least 8 characters.");
-  if (password.toLowerCase().includes("password") || password === "12345678")
+
+  if (!password || password.length < 8) issues.push('Use at least 8 characters.');
+  if (password.toLowerCase().includes('password') || password === '12345678')
     issues.push('Avoid common passwords (e.g. "password", "12345678").');
   if (username && password.toLowerCase().includes(username.toLowerCase()))
-    issues.push("Password should not include your username.");
-  if (email && password.includes(email.split("@")[0]))
-    issues.push("Password should not include part of your email.");
+    issues.push('Password should not include your username.');
+  if (email && password.includes(email.split('@')[0]))
+    issues.push('Password should not include part of your email.');
+
   return issues;
 }
 
@@ -219,7 +220,9 @@ export default function SignUp() {
 
     const pwIssues = validatePassword(password, username, email);
     if (pwIssues.length) {
-      return Alert.alert("Weak Password", pwIssues.join("\n"));
+
+      return Alert.alert('Weak Password', pwIssues.join('\n'));
+
     }
 
     setLoading(true);
@@ -238,54 +241,41 @@ export default function SignUp() {
         password,
       });
 
-      console.log(
-        "signUp.create result:",
-        safeText({ status: res?.status, id: res?.id }),
-      );
 
-      if (res?.status === "complete" && res?.createdSessionId) {
+      console.log('signUp.create result:', safeText({ status: res?.status, id: res?.id }));
+
+      if (res?.status === 'complete' && res?.createdSessionId) {
+
         await setActive({ session: res.createdSessionId });
         router.replace("/home");
         return;
       }
 
       const unverified = (res as any)?.unverifiedFields ?? [];
-      if (Array.isArray(unverified) && unverified.includes("email_address")) {
-        await signUp.prepareEmailAddressVerification({
-          strategy: "email_code",
-        });
-        setStep("verify");
-        Alert.alert(
-          "Code Sent",
-          "A verification code has been sent to your email.",
-        );
+
+      if (Array.isArray(unverified) && unverified.includes('email_address')) {
+        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+        setStep('verify');
+        Alert.alert('Code Sent', 'A verification code has been sent to your email.');
         return;
       }
 
-      if (
-        res?.status === "missing_requirements" &&
-        (res as any)?.missingFields?.length
-      ) {
-        const missing = (res as any).missingFields.join(", ");
-        Alert.alert("Missing fields", `Clerk requires: ${missing}`);
+      if (res?.status === 'missing_requirements' && (res as any)?.missingFields?.length) {
+        const missing = (res as any).missingFields.join(', ');
+        Alert.alert('Missing fields', `Clerk requires: ${missing}`);
         return;
       }
 
-      Alert.alert(
-        "Sign-up status",
-        `Unexpected signUp response: ${safeText(res)}`,
-      );
+      Alert.alert('Sign-up status', `Unexpected signUp response: ${safeText(res)}`);
     } catch (err: any) {
-      console.error("signUp error full:", err);
+      console.error('signUp error full:', err);
       const msg = err?.message || safeText(err);
 
-      if (
-        typeof msg === "string" &&
-        msg.toLowerCase().includes("found in an online data breach")
-      ) {
+      if (typeof msg === 'string' && msg.toLowerCase().includes('found in an online data breach')) {
         Alert.alert(
-          "Unsafe Password",
-          "That password has been found in an online data breach. Choose a new, stronger password.",
+          'Unsafe Password',
+          'That password has been found in an online data breach. Choose a new, stronger password.'
+
         );
         setLoading(false);
         return;
@@ -298,10 +288,9 @@ export default function SignUp() {
         return;
       }
 
-      Alert.alert(
-        "Sign up failed",
-        typeof msg === "string" ? msg : "Unknown error (see console).",
-      );
+
+      Alert.alert('Sign up failed', typeof msg === 'string' ? msg : 'Unknown error (see console).');
+
     } finally {
       setLoading(false);
     }
@@ -362,10 +351,9 @@ export default function SignUp() {
         return;
       }
 
-      Alert.alert(
-        "Verification not completed",
-        "Verification did not return a session.",
-      );
+
+      Alert.alert('Verification not completed', 'Verification did not return a session.');
+
     } catch (err: any) {
       console.error("verification error:", err);
       const message = err?.message || safeText(err);
@@ -379,10 +367,9 @@ export default function SignUp() {
         );
         router.replace("/signin");
       } else {
-        Alert.alert(
-          "Verification failed",
-          typeof message === "string" ? message : "Unknown error.",
-        );
+
+        Alert.alert('Verification failed', typeof message === 'string' ? message : 'Unknown error.');
+
       }
     } finally {
       setLoading(false);
