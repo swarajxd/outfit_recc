@@ -1,10 +1,10 @@
 // app/signin.tsx
-import { useOAuth, useSignIn } from '@clerk/clerk-expo';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Link, useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import React, { useEffect, useRef, useState } from 'react';
+import { useAuth, useOAuth, useSignIn } from "@clerk/clerk-expo";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { Link, useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -19,13 +19,13 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+} from "react-native";
+import Svg, { Path } from "react-native-svg";
 
 // Required for OAuth to work properly
 WebBrowser.maybeCompleteAuthSession();
 
-const { width, height } = Dimensions.get('window');
+const { width, height } = Dimensions.get("window");
 
 // Google Icon Component
 const GoogleIcon = ({ size = 20 }: { size?: number }) => (
@@ -50,7 +50,13 @@ const GoogleIcon = ({ size = 20 }: { size?: number }) => (
 );
 
 // Apple Icon Component
-const AppleIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+const AppleIcon = ({
+  size = 20,
+  color = "#FFFFFF",
+}: {
+  size?: number;
+  color?: string;
+}) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
     <Path
       d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4.08zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"
@@ -61,14 +67,19 @@ const AppleIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: st
 
 export default function SignIn() {
   const { isLoaded, signIn, setActive } = useSignIn();
+  const { isSignedIn, signOut } = useAuth();
   const router = useRouter();
 
   // OAuth hooks
-  const { startOAuthFlow: startGoogleOAuth } = useOAuth({ strategy: 'oauth_google' });
-  const { startOAuthFlow: startAppleOAuth } = useOAuth({ strategy: 'oauth_apple' });
+  const { startOAuthFlow: startGoogleOAuth } = useOAuth({
+    strategy: "oauth_google",
+  });
+  const { startOAuthFlow: startAppleOAuth } = useOAuth({
+    strategy: "oauth_apple",
+  });
 
-  const [identifier, setIdentifier] = useState(''); // email or username
-  const [password, setPassword] = useState('');
+  const [identifier, setIdentifier] = useState(""); // email or username
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Animation values
@@ -80,6 +91,18 @@ export default function SignIn() {
 
   // Focus states
   const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Redirect if already signed in
+  useEffect(() => {
+    if (isSignedIn) {
+      router.replace("/home");
+    }
+  }, [isSignedIn]);
+
+  // Sign out any existing Clerk session when signin page loads
+  useEffect(() => {
+    signOut();
+  }, []);
 
   useEffect(() => {
     // Entrance animation
@@ -119,7 +142,7 @@ export default function SignIn() {
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     ).start();
 
     // Rotation animation
@@ -129,45 +152,55 @@ export default function SignIn() {
         duration: 20000,
         easing: Easing.linear,
         useNativeDriver: true,
-      })
+      }),
     ).start();
   }, []);
 
   const spin = orbRotation.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: ["0deg", "360deg"],
   });
 
-  const handleOAuthSignIn = async (strategy: 'oauth_google' | 'oauth_apple') => {
+  const handleOAuthSignIn = async (
+    strategy: "oauth_google" | "oauth_apple",
+  ) => {
     try {
       setLoading(true);
-      const oAuthFlow = strategy === 'oauth_google' ? startGoogleOAuth : startAppleOAuth;
+      const oAuthFlow =
+        strategy === "oauth_google" ? startGoogleOAuth : startAppleOAuth;
 
       const { createdSessionId, setActive: oAuthSetActive } = await oAuthFlow();
 
       if (createdSessionId) {
         await oAuthSetActive!({ session: createdSessionId });
-        router.replace('/home');
+        router.replace("/home");
       }
     } catch (err: any) {
-      console.error('OAuth error:', err);
-      const errorMessage = err?.errors?.[0]?.message || err?.message || 'OAuth sign-in failed';
-      Alert.alert('Sign-in Error', errorMessage);
+      console.error("OAuth error:", err);
+      const errorMessage =
+        err?.errors?.[0]?.message || err?.message || "OAuth sign-in failed";
+      Alert.alert("Sign-in Error", errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignIn = async () => {
-    if (!isLoaded) return Alert.alert('Please wait', 'Auth not loaded yet');
+    if (!isLoaded) return Alert.alert("Please wait", "Auth not loaded yet");
     if (!identifier || !password)
-      return Alert.alert('Missing Fields', 'Please enter your email and password');
+      return Alert.alert(
+        "Missing Fields",
+        "Please enter your email and password",
+      );
 
     setLoading(true);
     try {
       if (!signIn) {
         setLoading(false);
-        return Alert.alert('Auth not ready', 'Please wait a moment and try again.');
+        return Alert.alert(
+          "Auth not ready",
+          "Please wait a moment and try again.",
+        );
       }
 
       const result = await signIn.create({
@@ -175,18 +208,19 @@ export default function SignIn() {
         password,
       });
 
-      if (result.status === 'complete') {
+      if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        router.replace('/home');
+        router.replace("/home");
       } else {
         // Handle other statuses if needed
-        console.log('Sign in result:', result);
-        Alert.alert('Sign In', 'Sign in requires additional steps.');
+        console.log("Sign in result:", result);
+        Alert.alert("Sign In", "Sign in requires additional steps.");
       }
     } catch (err: any) {
-      console.error('Sign in error:', err);
-      const message = err?.errors?.[0]?.message || err?.message || 'Sign in failed';
-      Alert.alert('Sign In Failed', message);
+      console.error("Sign in error:", err);
+      const message =
+        err?.errors?.[0]?.message || err?.message || "Sign in failed";
+      Alert.alert("Sign In Failed", message);
     } finally {
       setLoading(false);
     }
@@ -196,7 +230,7 @@ export default function SignIn() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <LinearGradient
-        colors={['#0a0a0a', '#1a0f00', '#0a0a0a']}
+        colors={["#0a0a0a", "#1a0f00", "#0a0a0a"]}
         style={StyleSheet.absoluteFillObject}
       />
 
@@ -215,7 +249,7 @@ export default function SignIn() {
         ]}
       >
         <LinearGradient
-          colors={['#FF8C42', '#FFA500', '#FF6B00']}
+          colors={["#FF8C42", "#FFA500", "#FF6B00"]}
           start={{ x: 1, y: 1 }}
           end={{ x: 0, y: 0 }}
           style={styles.orbGradient}
@@ -226,15 +260,12 @@ export default function SignIn() {
         style={[
           styles.secondaryOrb,
           {
-            transform: [
-              { scale: pulseAnim },
-              { rotate: spin },
-            ],
+            transform: [{ scale: pulseAnim }, { rotate: spin }],
           },
         ]}
       >
         <LinearGradient
-          colors={['rgba(255, 165, 0, 0.2)', 'rgba(255, 107, 0, 0.3)']}
+          colors={["rgba(255, 165, 0, 0.2)", "rgba(255, 107, 0, 0.3)"]}
           start={{ x: 0, y: 1 }}
           end={{ x: 1, y: 0 }}
           style={styles.orbGradient}
@@ -242,7 +273,7 @@ export default function SignIn() {
       </Animated.View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.keyboardView}
       >
         <ScrollView
@@ -255,10 +286,7 @@ export default function SignIn() {
               styles.contentContainer,
               {
                 opacity: fadeAnim,
-                transform: [
-                  { translateY: slideAnim },
-                  { scale: scaleAnim },
-                ],
+                transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
               },
             ]}
           >
@@ -267,9 +295,7 @@ export default function SignIn() {
                 <Text style={styles.welcomeText}>Welcome Back</Text>
               </View>
               <Text style={styles.title}>FITSENSE</Text>
-              <Text style={styles.subtitle}>
-                Continue your fashion journey
-              </Text>
+              <Text style={styles.subtitle}>Continue your fashion journey</Text>
             </View>
 
             <View style={styles.formContainer}>
@@ -277,7 +303,7 @@ export default function SignIn() {
               <View style={styles.oauthSection}>
                 <TouchableOpacity
                   style={styles.oauthButtonCompact}
-                  onPress={() => handleOAuthSignIn('oauth_google')}
+                  onPress={() => handleOAuthSignIn("oauth_google")}
                   disabled={loading}
                   activeOpacity={0.85}
                 >
@@ -289,14 +315,18 @@ export default function SignIn() {
                   </BlurView>
                 </TouchableOpacity>
 
-                {Platform.OS === 'ios' && (
+                {Platform.OS === "ios" && (
                   <TouchableOpacity
                     style={styles.oauthButtonCompact}
-                    onPress={() => handleOAuthSignIn('oauth_apple')}
+                    onPress={() => handleOAuthSignIn("oauth_apple")}
                     disabled={loading}
                     activeOpacity={0.85}
                   >
-                    <BlurView intensity={12} tint="dark" style={styles.oauthBlur}>
+                    <BlurView
+                      intensity={12}
+                      tint="dark"
+                      style={styles.oauthBlur}
+                    >
                       <View style={styles.oauthContentCompact}>
                         <AppleIcon size={20} color="#FFFFFF" />
                         <Text style={styles.oauthTextCompact}>Apple</Text>
@@ -328,14 +358,16 @@ export default function SignIn() {
                         keyboardType="email-address"
                         style={[
                           styles.input,
-                          focusedField === 'identifier' && styles.inputFocused,
+                          focusedField === "identifier" && styles.inputFocused,
                         ]}
-                        onFocus={() => setFocusedField('identifier')}
+                        onFocus={() => setFocusedField("identifier")}
                         onBlur={() => setFocusedField(null)}
                       />
                     </View>
                   </BlurView>
-                  {focusedField === 'identifier' && <View style={styles.focusIndicator} />}
+                  {focusedField === "identifier" && (
+                    <View style={styles.focusIndicator} />
+                  )}
                 </View>
 
                 <View style={styles.inputWrapper}>
@@ -350,21 +382,25 @@ export default function SignIn() {
                         secureTextEntry
                         style={[
                           styles.input,
-                          focusedField === 'password' && styles.inputFocused,
+                          focusedField === "password" && styles.inputFocused,
                         ]}
-                        onFocus={() => setFocusedField('password')}
+                        onFocus={() => setFocusedField("password")}
                         onBlur={() => setFocusedField(null)}
                       />
                     </View>
                   </BlurView>
-                  {focusedField === 'password' && <View style={styles.focusIndicator} />}
+                  {focusedField === "password" && (
+                    <View style={styles.focusIndicator} />
+                  )}
                 </View>
 
                 <TouchableOpacity
                   style={styles.forgotPassword}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                  <Text style={styles.forgotPasswordText}>
+                    Forgot Password?
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -375,13 +411,13 @@ export default function SignIn() {
                 activeOpacity={0.85}
               >
                 <LinearGradient
-                  colors={['#FFA500', '#FF8C42']}
+                  colors={["#FFA500", "#FF8C42"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.buttonGradient}
                 >
                   <Text style={styles.primaryButtonText}>
-                    {loading ? 'Signing In...' : 'Sign In'}
+                    {loading ? "Signing In..." : "Sign In"}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -397,9 +433,9 @@ export default function SignIn() {
             </View>
 
             <Text style={styles.termsText}>
-              By signing in, you agree to our{'\n'}
+              By signing in, you agree to our{"\n"}
               <Text style={styles.termsLink}>Terms of Service</Text>
-              {' & '}
+              {" & "}
               <Text style={styles.termsLink}>Privacy Policy</Text>
             </Text>
           </Animated.View>
@@ -412,10 +448,10 @@ export default function SignIn() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: "#0a0a0a",
   },
   floatingOrb: {
-    position: 'absolute',
+    position: "absolute",
     width: width * 1.5,
     height: width * 1.5,
     borderRadius: width * 0.75,
@@ -424,7 +460,7 @@ const styles = StyleSheet.create({
     opacity: 0.1,
   },
   secondaryOrb: {
-    position: 'absolute',
+    position: "absolute",
     width: width * 1.3,
     height: width * 1.3,
     borderRadius: width * 0.65,
@@ -441,49 +477,49 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 24,
     paddingVertical: 48,
   },
   contentContainer: {
-    width: '100%',
+    width: "100%",
     maxWidth: 440,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   header: {
     marginBottom: 40,
-    alignItems: 'center',
+    alignItems: "center",
   },
   welcomeContainer: {
     marginBottom: 8,
   },
   welcomeText: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#FFA500',
+    fontWeight: "500",
+    color: "#FFA500",
     letterSpacing: 2,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   title: {
     fontSize: 42,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: "700",
+    color: "#FFFFFF",
     marginBottom: 12,
     letterSpacing: -0.5,
-    textAlign: 'center',
+    textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.55)',
+    color: "rgba(255, 255, 255, 0.55)",
     lineHeight: 24,
-    fontWeight: '400',
-    textAlign: 'center',
+    fontWeight: "400",
+    textAlign: "center",
   },
   formContainer: {
     marginBottom: 28,
   },
   oauthSection: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     marginBottom: 20,
   },
@@ -491,58 +527,58 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 54,
     borderRadius: 14,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   oauthBlur: {
     flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   oauthContentCompact: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
   },
   oauthTextCompact: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
     letterSpacing: 0.2,
   },
   divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginVertical: 20,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
   dividerText: {
-    color: 'rgba(255, 255, 255, 0.35)',
+    color: "rgba(255, 255, 255, 0.35)",
     paddingHorizontal: 16,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   inputsSection: {
     marginBottom: 24,
   },
   inputWrapper: {
     marginBottom: 12,
-    position: 'relative',
+    position: "relative",
   },
   inputBlur: {
     borderRadius: 14,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
   },
   inputIcon: {
@@ -554,37 +590,37 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 54,
     fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '500',
+    color: "#FFFFFF",
+    fontWeight: "500",
   },
   inputFocused: {
-    borderColor: 'transparent',
+    borderColor: "transparent",
   },
   focusIndicator: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: '#FFA500',
-    pointerEvents: 'none',
+    borderColor: "#FFA500",
+    pointerEvents: "none",
   },
   forgotPassword: {
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
     marginTop: 4,
   },
   forgotPasswordText: {
     fontSize: 13,
-    color: '#FFA500',
-    fontWeight: '600',
+    color: "#FFA500",
+    fontWeight: "600",
   },
   primaryButton: {
     height: 54,
     borderRadius: 14,
-    overflow: 'hidden',
-    shadowColor: '#FFA500',
+    overflow: "hidden",
+    shadowColor: "#FFA500",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -592,42 +628,42 @@ const styles = StyleSheet.create({
   },
   buttonGradient: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   primaryButtonText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: "700",
+    color: "#FFFFFF",
     letterSpacing: 0.3,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 20,
   },
   footerText: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: "rgba(255, 255, 255, 0.5)",
   },
   linkText: {
     fontSize: 14,
-    color: '#FFA500',
-    fontWeight: '600',
+    color: "#FFA500",
+    fontWeight: "600",
   },
   termsText: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.35)',
-    textAlign: 'center',
+    color: "rgba(255, 255, 255, 0.35)",
+    textAlign: "center",
     lineHeight: 18,
     paddingHorizontal: 20,
   },
   termsLink: {
-    color: '#FF8C42',
-    fontWeight: '500',
+    color: "#FF8C42",
+    fontWeight: "500",
   },
 });

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FITSENSE | Virtual Wardrobe</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "brand-orange": "#FF6B00",
+                        "deep-black": "#000000",
+                        "charcoal": "#1A1A1A",
+                        "soft-grey": "#262626"
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style type="text/tailwindcss">
+        @layer base {
+            body {
+                @apply bg-deep-black text-white antialiased font-display;
+                -webkit-tap-highlight-color: transparent;
+            }
+        }
+        .glass-nav {
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="dark">
+<div class="relative flex min-h-screen w-full flex-col max-w-md mx-auto bg-deep-black shadow-2xl">
+<header class="sticky top-0 z-30 glass-nav border-b border-white/5 px-6 pt-14 pb-4">
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center gap-3">
+<div class="size-11 rounded-full border border-white/10 p-0.5 overflow-hidden">
+<img alt="Profile photo" class="w-full h-full object-cover rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxnDByCEiSzE0d3b1yFaTNUcb3qcipUpTHdlmCdThVl4pVVnttQArLLUTSAE4UFWccq8D59HrAvAiTLwwSp8c6KNrwtkdkMx7Idd9pS7UYPEyFdVyO2rnjVdEmK8e3FgirfiqUacHRHTDACHS28EYAHTcY0e3mBr1ts8N1f_zbdyPBbNYUI0wfkCeR22FbODChopx0DsCqi5Mrcvf396Q8yI5-UB9567QUn-lYWH8mnsA3WZSBnnOKu-LNRDbp6lpK7aJlHMQBRNQe"/>
+</div>
+<div>
+<h1 class="text-xl font-bold tracking-tight">Virtual Wardrobe</h1>
+<p class="text-[9px] uppercase tracking-[0.25em] font-bold text-brand-orange">Fitsense AI</p>
+</div>
+</div>
+<button class="size-10 rounded-full bg-white/5 flex items-center justify-center border border-white/10 active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-white text-[22px]">search</span>
+</button>
+</div>
+<div class="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+<button class="px-6 py-2 rounded-full bg-brand-orange text-white text-xs font-bold uppercase tracking-wide shadow-lg shadow-brand-orange/20 whitespace-nowrap">
+                All
+            </button>
+<button class="px-6 py-2 rounded-full bg-soft-grey text-white/60 text-xs font-bold uppercase tracking-wide border border-white/5 whitespace-nowrap active:bg-white/10 transition-colors">
+                Tops
+            </button>
+<button class="px-6 py-2 rounded-full bg-soft-grey text-white/60 text-xs font-bold uppercase tracking-wide border border-white/5 whitespace-nowrap active:bg-white/10 transition-colors">
+                Bottoms
+            </button>
+<button class="px-6 py-2 rounded-full bg-soft-grey text-white/60 text-xs font-bold uppercase tracking-wide border border-white/5 whitespace-nowrap active:bg-white/10 transition-colors">
+                Outerwear
+            </button>
+<button class="px-6 py-2 rounded-full bg-soft-grey text-white/60 text-xs font-bold uppercase tracking-wide border border-white/5 whitespace-nowrap active:bg-white/10 transition-colors">
+                Shoes
+            </button>
+</div>
+</header>
+<main class="flex-1 px-4 py-6 pb-32">
+<div class="grid grid-cols-2 gap-4">
+<div class="flex flex-col gap-3">
+<div class="aspect-[3/4] w-full bg-charcoal rounded-2xl p-5 border border-white/5 flex items-center justify-center relative shadow-xl">
+<img alt="Oxford Shirt" class="max-h-full w-auto object-contain brightness-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCupAD1_q72NFEoI7RpJ_-zqHNuHlR8_jrzNlkkqAj4e3zCsWyOGui2CqYVtU5E1_Bu2gFVE7eBsSgjMfs7YmVlgAp0m2VNpMNTw3OuBVs7B-Ag-NceFfnbv6vBz_j64MpmWnLlrRXSJKF7vrmxmRrbxcA-bJyH0a4lSQNowxyNIli-gdM9qQ3dohDigk22CjZBcm9Ep8uHqmrh0h3_dNt6DDs6mH_VrfpTjWGs_VUU_Rdz9U-6qkbBLx7myOIm7XyUWeZlyqBQR7pg"/>
+</div>
+<div class="px-1">
+<div class="flex items-center mb-1.5">
+<span class="px-2.5 py-1 rounded-full bg-brand-orange text-[9px] font-bold text-white uppercase tracking-wider">Linen</span>
+</div>
+<p class="text-sm font-semibold tracking-tight">Oxford Shirt</p>
+<p class="text-[11px] text-white/40 font-medium">Essential</p>
+</div>
+</div>
+<div class="flex flex-col gap-3">
+<div class="aspect-[3/4] w-full bg-charcoal rounded-2xl p-5 border border-white/5 flex items-center justify-center relative shadow-xl">
+<img alt="Studio Blazer" class="max-h-full w-auto object-contain brightness-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8w2G09cID0nkK376Dnwg_8J4mWIbccJYoJixTh3dZtInu8mt6nQ4UR3HeU5gmATZwkjRv1AewKUpdTdvvG6NK7duVr8ZonUz-ZhdtGZzzlg8uhBgtO1pg7zz4LisAFyr5VBVUczE_mbqHbxP-Pc_4vpMemDWZc0Uclf01fw1eg6tTAARA0rdVz6nEx0LXLFGHaakkxi6YZeve7msJTJCGzeKcIibKmfp6z1NE0gjuWL94NUqSjqM6mFCBbvP59WBKcHp7Z2Tv6ABy"/>
+</div>
+<div class="px-1">
+<div class="flex items-center mb-1.5">
+<span class="px-2.5 py-1 rounded-full bg-brand-orange text-[9px] font-bold text-white uppercase tracking-wider">Oversized</span>
+</div>
+<p class="text-sm font-semibold tracking-tight">Studio Blazer</p>
+<p class="text-[11px] text-white/40 font-medium">Outerwear</p>
+</div>
+</div>
+<div class="flex flex-col gap-3">
+<div class="aspect-[3/4] w-full bg-charcoal rounded-2xl p-5 border border-white/5 flex items-center justify-center relative shadow-xl">
+<img alt="City Chinos" class="max-h-full w-auto object-contain brightness-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNDsv9W4gAlqIwOVWfbPmaud56eVAXJ5Jx1EwGjxwFI9O4rlZVjfkRPb9eDVDAk9YRm8ZnXl9RuCYIMLlUxaLYlhb4r7EgAW8k2PTSzJ-aItuAqM1OoKRvC4hwNU-dR1SzA3BeHHBs7_Otq--v6kJIaGMfqXk1VC2jd9Mx8BDcDFi2jE0PWX-Iw5fPYuV0r-SznFnp2DYWXz6Q9aCTTZR7-wfvo6pIgd8Njd3ggqyiryUeLFLRSMin-CzFHaosh700yb5jnfM_p6wg"/>
+</div>
+<div class="px-1">
+<div class="flex items-center mb-1.5">
+<span class="px-2.5 py-1 rounded-full bg-brand-orange text-[9px] font-bold text-white uppercase tracking-wider">Neutral</span>
+</div>
+<p class="text-sm font-semibold tracking-tight">City Chinos</p>
+<p class="text-[11px] text-white/40 font-medium">Bottoms</p>
+</div>
+</div>
+<div class="flex flex-col gap-3">
+<div class="aspect-[3/4] w-full bg-charcoal rounded-2xl p-5 border border-white/5 flex items-center justify-center relative shadow-xl">
+<img alt="Chelsea Boots" class="max-h-full w-auto object-contain brightness-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAE3dh28B6kF0Iuwctl1GdnWx13paPDrCljU69dsfPKZ8HGquXoV2RedtkAWFvyD5R-0HQkZVeeOilTsKFaS_4ZIauNaxRlJlzF3dTZVQTpws1qb5ozRA1wSVs5EKd3Ps7uakuHX4G133DbBiuxaay2Yz2WV_SU2YDZ3JvDtNuWq4jDrSoUsM2VUlmO5GWJYcdJaiFGYgUTkv7p6Q8P7VjpbKX07kK4y9Jcb84khX-_cSq5VU2cttzEFQtsnP_aFAKBIks3pUho0umg"/>
+</div>
+<div class="px-1">
+<div class="flex items-center mb-1.5">
+<span class="px-2.5 py-1 rounded-full bg-brand-orange text-[9px] font-bold text-white uppercase tracking-wider">Leather</span>
+</div>
+<p class="text-sm font-semibold tracking-tight">Chelsea Boots</p>
+<p class="text-[11px] text-white/40 font-medium">Footwear</p>
+</div>
+</div>
+<div class="flex flex-col gap-3">
+<div class="aspect-[3/4] w-full bg-charcoal rounded-2xl p-5 border border-white/5 flex items-center justify-center relative shadow-xl">
+<img alt="Knit Pullover" class="max-h-full w-auto object-contain brightness-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCSZeaoYFhmPA9VU-GfR-5r4omsA1AZLwqZq_E_Bpcck5G4HW98iZwUs13hFR4MSCvdT4M6cLei4y9mwG-fv2bchO94gSjdy1M18C1Dq4PU9KmMoJMf7ZMz33PZZ59dDF2Zkmwhn66l17VfjMwOw3XVznpMC4Afi5koJUkHAYmL4lOgHxLZMtMwppqDeYxifjgJr1JTXF_NLqvZmWBhAyD9hYGatC683Rs-uHYT2HDycVNBR_jetKVxHA85EqAz_CML1nwRUB6vT-zU"/>
+</div>
+<div class="px-1">
+<div class="flex items-center mb-1.5">
+<span class="px-2.5 py-1 rounded-full bg-brand-orange text-[9px] font-bold text-white uppercase tracking-wider">Cashmere</span>
+</div>
+<p class="text-sm font-semibold tracking-tight">Knit Pullover</p>
+<p class="text-[11px] text-white/40 font-medium">Tops</p>
+</div>
+</div>
+<div class="flex flex-col gap-3">
+<div class="aspect-[3/4] w-full bg-charcoal rounded-2xl p-5 border border-white/5 flex items-center justify-center relative shadow-xl">
+<img alt="Heritage Jeans" class="max-h-full w-auto object-contain brightness-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAv0K-dvVbv0iFpbcEYTwtusK7O9AW3ibsXB8V3AM1DeJADvtOY0xlW7-PZYGlaNgST-7V1ZaBSZahmkmWdJNGlBonKl4zlVL1B4-KKKaof1hqZnmZ-xXEFLho7iyL5yMTqlnGRxE7dXlxTfP_grheOGR1nhGtSIeDDHoyOMwjUoTtEZr2M3cIJ77RfUH1fSE6-Cl12z2dnxGPs4IQJ-PVMzklHIcTmLGT6lE3y9X9gDXfrZxurUvGNxQJeBC_e4pKN2bqbB5a8nj7P"/>
+</div>
+<div class="px-1">
+<div class="flex items-center mb-1.5">
+<span class="px-2.5 py-1 rounded-full bg-brand-orange text-[9px] font-bold text-white uppercase tracking-wider">Denim</span>
+</div>
+<p class="text-sm font-semibold tracking-tight">Heritage Jeans</p>
+<p class="text-[11px] text-white/40 font-medium">Bottoms</p>
+</div>
+</div>
+</div>
+</main>
+<button class="fixed bottom-24 right-6 size-14 bg-brand-orange text-white rounded-full shadow-2xl shadow-brand-orange/40 flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-40">
+<span class="material-symbols-outlined text-3xl">add</span>
+</button>
+<nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto glass-nav border-t border-white/5 px-6 pt-3 pb-8 z-50">
+<div class="flex items-center justify-between">
+<a class="flex flex-col items-center gap-1 text-brand-orange" href="#">
+<span class="material-symbols-outlined fill-[1] text-[26px]">checkroom</span>
+<span class="text-[9px] font-bold uppercase tracking-wider">Closet</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-white/30 active:text-brand-orange transition-colors" href="#">
+<span class="material-symbols-outlined text-[26px]">auto_awesome</span>
+<span class="text-[9px] font-bold uppercase tracking-wider">Outfits</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-white/30 active:text-brand-orange transition-colors" href="#">
+<span class="material-symbols-outlined text-[26px]">explore</span>
+<span class="text-[9px] font-bold uppercase tracking-wider">Feed</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-white/30 active:text-brand-orange transition-colors" href="#">
+<span class="material-symbols-outlined text-[26px]">account_circle</span>
+<span class="text-[9px] font-bold uppercase tracking-wider">Profile</span>
+</a>
+</div>
+</nav>
+</div>
+
+</body></html>
