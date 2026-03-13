@@ -61,10 +61,19 @@ function startOutfitModel() {
   const depsPath = path.join(REPO_OUTFIT, "deps");
   const pyPath = [depsPath, REPO_OUTFIT].join(path.delimiter);
   const env = { ...process.env, PYTHONPATH: pyPath };
-  outfitProcess = spawn(
-    python,
-
-    ["-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", String(OUTFIT_PORT)],
+ outfitProcess = spawn(
+  "py",
+  [
+    "-3.11",
+    "-m",
+    "uvicorn",
+    "api:app",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(OUTFIT_PORT)
+  ],
+ 
     { cwd: REPO_OUTFIT, env, stdio: ["ignore", "pipe", "pipe"] }
   );
   outfitProcess.stdout.on("data", (d) => process.stdout.write("[outfit] " + d.toString()));
