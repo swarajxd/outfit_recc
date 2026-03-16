@@ -1,7 +1,12 @@
+import { useAuth, useUser } from '@clerk/clerk-expo';
 import { BlurView } from 'expo-blur';
+import Constants from 'expo-constants';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   Image,
@@ -20,6 +25,9 @@ import {
   forceRegenerateOutfit,
   getOrCreateDailyOutfit,
 } from '../utils/outfitEngine';
+
+const SERVER_BASE =
+  (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? 'http://localhost:4000';
 
 const PRIMARY = '#FF6B00';
 const BG = '#000000';
@@ -366,10 +374,13 @@ function FeedCard({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
+  const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
   const [likedItems, setLikedItems] = useState<Record<string, boolean>>({ '1': true });
   const [outfit, setOutfit] = useState<GeneratedOutfit | null>(null);
   const [outfitLoading, setOutfitLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
   const weekDates = getWeekDates();
 
   const toggleLike = (id: string) =>
@@ -391,6 +402,82 @@ export default function HomeScreen() {
       .then((o) => { setOutfit(o); setOutfitLoading(false); })
       .catch(() => setOutfitLoading(false));
   };
+
+  async function uploadToWardrobe() {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (res.canceled || !res.assets?.[0]?.uri) return;
+
+    const localUri = res.assets[0].uri;
+    if (!user?.id) return Alert.alert('Please sign in first');
+
+    setIsUploading(true);
+    try {
+      // 1) Get Cloudinary signature from server
+      const signResp = await fetch(`${SERVER_BASE}/api/cloudinary-sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: 'posts' }),
+      });
+      if (!signResp.ok) throw new Error('Failed to get upload signature');
+      const { signature, timestamp, api_key, cloud_name } = await signResp.json();
+
+      // 2) Upload image to Cloudinary
+      const fetched = await fetch(localUri);
+      const blob = await fetched.blob();
+      const data = new FormData();
+      data.append('file', blob as any);
+      data.append('api_key', api_key);
+      data.append('timestamp', String(timestamp));
+      data.append('signature', signature);
+      data.append('folder', 'posts');
+
+      const cloudUrl = `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`;
+      const uploadResp = await fetch(cloudUrl, { method: 'POST', body: data });
+      const uploadJson = await uploadResp.json();
+      if (!uploadResp.ok)
+        throw new Error(uploadJson.error?.message || 'Cloudinary upload failed');
+
+      const imageUrl = uploadJson.secure_url || uploadJson.url;
+      const publicId = uploadJson.public_id;
+
+      // 3) Auth header (Clerk token, fallback to dev token)
+      let authHeader = `Bearer dev:${user.id}`;
+      try {
+        if (getToken) {
+          const token = await getToken({ template: 'supabase' });
+          if (token) authHeader = `Bearer ${token}`;
+        }
+      } catch (_) { /* fallback to dev token */ }
+
+      // 4) Create post in Supabase via server
+      const createResp = await fetch(`${SERVER_BASE}/api/create-post`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader,
+        },
+        body: JSON.stringify({
+          image_url: imageUrl,
+          image_public_id: publicId,
+          caption: '',
+          tags: [],
+        }),
+      });
+      const createJson = await createResp.json();
+      if (!createResp.ok)
+        throw new Error(createJson.error || 'Failed to create post');
+
+      Alert.alert('Success', 'Post uploaded!');
+    } catch (err: any) {
+      console.error('Upload failed:', err);
+      Alert.alert('Upload failed', err.message || String(err));
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -513,6 +600,17 @@ export default function HomeScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {/* FAB */}
+      {isUploading ? (
+        <View style={styles.fab}>
+          <ActivityIndicator size="small" color="#fff" />
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.fab} onPress={uploadToWardrobe}>
+          <Text style={styles.fabIcon}>+</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -721,4 +819,28 @@ logoText: {
   actions: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   actionBtn: { padding: 2 },
   caption: { color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 20, fontWeight: '400' },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 28,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: PRIMARY,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+  },
+  fabIcon: {
+    fontSize: 28,
+    color: '#fff',
+    fontWeight: '700',
+    marginTop: -2,
+  },
 });

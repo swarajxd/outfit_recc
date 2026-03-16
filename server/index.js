@@ -38,8 +38,10 @@ app.use("/api/profile", profileRouter);
 
 // Multer for outfit-analysis (store in memory to forward to Python)
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
-
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
 
 // configure cloudinary
 cloudinary.config({
@@ -57,23 +59,37 @@ const supabaseAdmin = createClient(
 // ---- Start outfit model API (Python) from repo's outfit_model ----
 let outfitProcess = null;
 function startOutfitModel() {
-  const python = process.env.PYTHON_PATH || "python3";
+  const python = path.join(__dirname, "outfit_model/venv/bin/python");
   const depsPath = path.join(REPO_OUTFIT, "deps");
   const pyPath = [depsPath, REPO_OUTFIT].join(path.delimiter);
-  const env = { ...process.env, PYTHONPATH: pyPath };
+  const env = { ...process.env, PYTHONPATH: REPO_OUTFIT };
   outfitProcess = spawn(
     python,
 
-    ["-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", String(OUTFIT_PORT)],
-    { cwd: REPO_OUTFIT, env, stdio: ["ignore", "pipe", "pipe"] }
+    [
+      "-m",
+      "uvicorn",
+      "api:app",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(OUTFIT_PORT),
+    ],
+    { cwd: REPO_OUTFIT, env, stdio: ["ignore", "pipe", "pipe"] },
   );
-  outfitProcess.stdout.on("data", (d) => process.stdout.write("[outfit] " + d.toString()));
-  outfitProcess.stderr.on("data", (d) => process.stderr.write("[outfit] " + d.toString()));
-  outfitProcess.on("error", (err) => console.warn("[outfit] process error:", err.message));
+  outfitProcess.stdout.on("data", (d) =>
+    process.stdout.write("[outfit] " + d.toString()),
+  );
+  outfitProcess.stderr.on("data", (d) =>
+    process.stderr.write("[outfit] " + d.toString()),
+  );
+  outfitProcess.on("error", (err) =>
+    console.warn("[outfit] process error:", err.message),
+  );
   outfitProcess.on("exit", (code) => {
     outfitProcess = null;
-    if (code !== 0 && code !== null) console.warn("[outfit] exited with code", code);
-
+    if (code !== 0 && code !== null)
+      console.warn("[outfit] exited with code", code);
   });
   console.log("[outfit] Model API starting on port", OUTFIT_PORT);
 }
@@ -83,10 +99,14 @@ function waitForOutfit(timeoutMs = 60000) {
   return new Promise((resolve) => {
     const check = () => {
       fetch(`${OUTFIT_API_URL}/health`).then(
-
-        (r) => { if (r.ok) return resolve(true); setTimeout(check, 500); },
-        () => { if (Date.now() - start < timeoutMs) setTimeout(check, 500); else resolve(false); }
-
+        (r) => {
+          if (r.ok) return resolve(true);
+          setTimeout(check, 500);
+        },
+        () => {
+          if (Date.now() - start < timeoutMs) setTimeout(check, 500);
+          else resolve(false);
+        },
       );
     };
     check();
@@ -134,9 +154,9 @@ function formDataToBuffer(form) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     form.on("data", (chunk) => {
-
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "binary"));
-
+      chunks.push(
+        Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "binary"),
+      );
     });
     form.on("error", reject);
     form.on("end", () => resolve(Buffer.concat(chunks)));
@@ -157,15 +177,17 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
     const body = await formDataToBuffer(form);
     headers["Content-Length"] = String(body.length);
 
-    const response = await fetch(
-      `${OUTFIT_API_URL}/analyze?save_result=true`,
-      { method: "POST", body, headers }
-    );
+    const response = await fetch(`${OUTFIT_API_URL}/analyze?save_result=true`, {
+      method: "POST",
+      body,
+      headers,
+    });
     if (!response.ok) {
       const errText = await response.text();
       console.error("outfit-api error", response.status, errText);
-      return res.status(response.status).json({ error: errText || "outfit analysis failed" });
-
+      return res
+        .status(response.status)
+        .json({ error: errText || "outfit analysis failed" });
     }
     const result = await response.json();
     const resultsDir = path.join(SERVER_DIR, "results");
@@ -174,8 +196,7 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
       fs.writeFileSync(
         path.join(resultsDir, "result.json"),
 
-        JSON.stringify(result, null, 2)
-
+        JSON.stringify(result, null, 2),
       );
     } catch (e) {
       console.warn("Could not write result.json:", e.message);
@@ -229,9 +250,10 @@ const PORT = process.env.PORT;
 startOutfitModel();
 waitForOutfit().then((ready) => {
   if (ready) console.log("[outfit] Model API ready");
-
-  else console.warn("[outfit] Model API may not be ready yet (check Python/uvicorn)");
-
+  else
+    console.warn(
+      "[outfit] Model API may not be ready yet (check Python/uvicorn)",
+    );
 });
 app.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on http://0.0.0.0:${PORT}`),
