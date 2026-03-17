@@ -3,7 +3,11 @@ import { BlurView } from 'expo-blur';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState,useMemo } from 'react';
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+AsyncStorage.removeItem("fitsense_daily_outfit");
 import {
   ActivityIndicator,
   Alert,
@@ -24,6 +28,7 @@ import {
   GeneratedOutfit,
   forceRegenerateOutfit,
   getOrCreateDailyOutfit,
+  buildWardrobeFromItems
 } from '../utils/outfitEngine';
 
 const SERVER_BASE =
@@ -33,6 +38,8 @@ const PRIMARY = '#FF6B00';
 const BG = '#000000';
 const CHARCOAL = '#1A1A1A';
 const WIDTH = Dimensions.get('window').width;
+
+
 
 // ─── Daily Outfit – Week strip ────────────────────────────────────────────────
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -161,27 +168,64 @@ function AICard({
 
 // ─── Outfit Item Row ──────────────────────────────────────────────────────────
 function OutfitItemRow({
-  emoji, name, color, label, isLast,
+  emoji,
+  name,
+  color,
+  image,
+  label,
+  isLast,
 }: {
-  emoji: string; name: string; color: string; label: string; isLast?: boolean;
+  emoji: string
+  name: string
+  color: string
+  image?: string | null
+  label: string
+  isLast?: boolean
 }) {
-  const dotColor = COLOR_DISPLAY[color] || '#555';
+
+  const dotColor = COLOR_DISPLAY[color] || "#555"
+
   return (
     <View style={[styles.outfitRow, !isLast && styles.outfitRowBorder]}>
+      
       <View style={styles.outfitRowLeft}>
+        
         <View style={styles.outfitEmojiBox}>
-          <Text style={styles.outfitEmoji}>{emoji}</Text>
+          
+          {image ? (
+            <Image
+              source={{ uri: image }}
+              style={{ width: 32, height: 32, resizeMode: "contain" }}
+            />
+          ) : (
+            <Text style={styles.outfitEmoji}>{emoji}</Text>
+          )}
+
         </View>
+
         <View>
           <Text style={styles.outfitLabel}>{label}</Text>
           <Text style={styles.outfitName}>{name}</Text>
         </View>
+
       </View>
-      <View style={[styles.outfitColorDot, { backgroundColor: dotColor, borderColor: dotColor === '#F5F5F0' ? '#444' : dotColor }]}>
-        <Text style={styles.outfitColorText}>{color !== 'unknown' ? color : '–'}</Text>
+
+      <View
+        style={[
+          styles.outfitColorDot,
+          {
+            backgroundColor: dotColor,
+            borderColor: dotColor === "#F5F5F0" ? "#444" : dotColor,
+          },
+        ]}
+      >
+        <Text style={styles.outfitColorText}>
+          {color !== "unknown" ? color : "–"}
+        </Text>
       </View>
+
     </View>
-  );
+  )
 }
 
 // ─── Today's Outfit Card ──────────────────────────────────────────────────────
@@ -235,13 +279,29 @@ function TodayOutfitCard({
     );
   }
 
-  const items = [
-    { emoji: outfit.top.emoji, name: outfit.top.name, color: outfit.top.color, label: 'Top' },
-    { emoji: outfit.bottom.emoji, name: outfit.bottom.name, color: outfit.bottom.color, label: 'Bottom' },
-    { emoji: outfit.footwear.emoji, name: outfit.footwear.name, color: outfit.footwear.color, label: 'Footwear' },
-    ...(outfit.outerwear ? [{ emoji: outfit.outerwear.emoji, name: outfit.outerwear.name, color: outfit.outerwear.color, label: 'Layer' }] : []),
-    ...(outfit.accessory ? [{ emoji: outfit.accessory.emoji, name: outfit.accessory.name, color: outfit.accessory.color, label: 'Accessory' }] : []),
-  ];
+const items = [
+  {
+    emoji: outfit.top.emoji,
+    name: outfit.top.name,
+    color: outfit.top.color,
+    image: outfit.top.image,
+    label: "Top",
+  },
+  {
+    emoji: outfit.bottom.emoji,
+    name: outfit.bottom.name,
+    color: outfit.bottom.color,
+    image: outfit.bottom.image,
+    label: "Bottom",
+  },
+  {
+    emoji: outfit.footwear.emoji,
+    name: outfit.footwear.name,
+    color: outfit.footwear.color,
+    image: outfit.footwear.image,
+    label: "Footwear",
+  },
+]
 
   return (
     <GlassPanel style={styles.outfitCard} intensity={24}>
@@ -272,16 +332,17 @@ function TodayOutfitCard({
 
       {/* Outfit items */}
       <View style={styles.outfitItemsContainer}>
-        {items.map((item, idx) => (
-          <OutfitItemRow
-            key={`${item.label}-${idx}`}
-            emoji={item.emoji}
-            name={item.name}
-            color={item.color}
-            label={item.label}
-            isLast={idx === items.length - 1}
-          />
-        ))}
+       {items.map((item, idx) => (
+  <OutfitItemRow
+    key={`${item.label}-${idx}`}
+    emoji={item.emoji}
+    name={item.name}
+    color={item.color}
+    image={item.image ?? undefined}
+    label={item.label}
+    isLast={idx === items.length - 1}
+  />
+))}
       </View>
 
       {/* Footer badge */}
@@ -374,7 +435,6 @@ function FeedCard({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useUser();
   const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
   const [likedItems, setLikedItems] = useState<Record<string, boolean>>({ '1': true });
@@ -382,26 +442,65 @@ export default function HomeScreen() {
   const [outfitLoading, setOutfitLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const weekDates = getWeekDates();
+  const { user, isLoaded } = useUser();
 
+  if (!isLoaded) {
+    return null;
+  }
   const toggleLike = (id: string) =>
     setLikedItems((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  const [items, setItems] = useState<any[]>([]);
+ useEffect(() => {
+  if (!user?.id) return;
+
+  fetch(`${SERVER_BASE}/api/profile/segmented/${user.id}`)
+    .then(res => res.json())
+    .then(data => setItems(data.items || []))
+    .catch(() => {});
+}, [user]);
+const userWardrobe = useMemo(() => {
+  if (items && items.length > 0) {
+    return buildWardrobeFromItems(items);
+  }
+  return FALLBACK_WARDROBE;
+}, [items]);
+console.log("WARDROBE AFTER BUILD:", userWardrobe);
   // Load or generate today's outfit on mount
-  useEffect(() => {
-    let cancelled = false;
-    setOutfitLoading(true);
-    getOrCreateDailyOutfit(FALLBACK_WARDROBE)
-      .then((o) => { if (!cancelled) { setOutfit(o); setOutfitLoading(false); } })
-      .catch(() => { if (!cancelled) setOutfitLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+useEffect(() => {
+  if (!items || items.length === 0) return;
+
+  let cancelled = false;
+  setOutfitLoading(true);
+
+  const wardrobe = buildWardrobeFromItems(items);
+    console.log("ITEMS FROM API:", items);
+  console.log("BUILT WARDROBE:", wardrobe);
+
+  getOrCreateDailyOutfit(wardrobe)
+    .then((o) => {
+       console.log("GENERATED OUTFIT:", o);
+      if (!cancelled) {
+        setOutfit(o);
+        setOutfitLoading(false);
+      }
+    })
+    .catch(() => {
+      if (!cancelled) setOutfitLoading(false);
+    });
+
+  return () => {
+    cancelled = true;
+  };
+}, [items]);
 
   const handleRegenerate = () => {
     setOutfitLoading(true);
-    forceRegenerateOutfit(FALLBACK_WARDROBE)
+    forceRegenerateOutfit(userWardrobe)
       .then((o) => { setOutfit(o); setOutfitLoading(false); })
       .catch(() => setOutfitLoading(false));
   };
+  
 
   async function uploadToWardrobe() {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -479,6 +578,7 @@ export default function HomeScreen() {
     }
   }
 
+  console.log("WARDROBE ITEMS", items);
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
