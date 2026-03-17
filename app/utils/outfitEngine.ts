@@ -178,6 +178,19 @@ function getEmoji(category: string): string {
     }
 }
 
+
+
+function generateRandomOutfit(wardrobe: any) {
+  return {
+    top: randomItem(wardrobe.tops),
+    bottom: randomItem(wardrobe.bottoms),
+    footwear: randomItem(wardrobe.footwear),
+    outerwear: wardrobe.outerwear.length ? randomItem(wardrobe.outerwear) : null,
+    accessory: wardrobe.accessories.length ? randomItem(wardrobe.accessories) : null
+  };
+}
+
+
 // ─── Convert raw API wardrobe items into engine Wardrobe ─────────────────────
 
 export function buildWardrobeFromItems(items: any[]) {
@@ -208,7 +221,6 @@ export function buildWardrobeFromItems(items: any[]) {
           : undefined,
     };
 
-
     if (item.category === "shirt" || item.category === "tshirt") {
       wardrobe.tops.push(piece);
     }
@@ -220,8 +232,18 @@ export function buildWardrobeFromItems(items: any[]) {
     if (item.category === "shoes") {
       wardrobe.footwear.push(piece);
     }
-  });
 
+    // FIX ACCESSORIES
+    if (
+      item.category === "accessory" ||
+      item.category === "hat" ||
+      item.category === "watch" ||
+      item.category === "sock" ||
+      item.category === "bag"
+    ) {
+      wardrobe.accessories.push(piece);
+    }
+  });
   return wardrobe;
 }
 
@@ -245,9 +267,8 @@ export function generateDailyOutfit(wardrobe: Wardrobe): Omit<GeneratedOutfit, '
     const harmonyColors = COLOR_HARMONY[top.color] || COLOR_HARMONY.unknown;
 
     const matchedBottoms = bottoms.filter(
-        b => harmonyColors.includes(b.color)
+    b => harmonyColors.includes(b.color) && b.color !== top.color
     );
-
     const bottomPool = matchedBottoms.length > 0 ? matchedBottoms : bottoms;
 
     const bottom = randomItem(bottomPool);
@@ -259,7 +280,10 @@ export function generateDailyOutfit(wardrobe: Wardrobe): Omit<GeneratedOutfit, '
         BOTTOM_TO_FOOTWEAR[bottomType] || BOTTOM_TO_FOOTWEAR.jeans;
 
     const matchedFootwear = footwears.filter(
-        f => f.footwearType && compatibleFootwearTypes.includes(f.footwearType)
+    f =>
+        f.footwearType &&
+        compatibleFootwearTypes.includes(f.footwearType) &&
+        (harmonyColors.includes(f.color) || f.color === bottom.color)
     );
 
     const footwearPool = matchedFootwear.length > 0 ? matchedFootwear : footwears;
@@ -269,11 +293,13 @@ export function generateDailyOutfit(wardrobe: Wardrobe): Omit<GeneratedOutfit, '
     // ─── Step 4: Optional outerwear (only if wardrobe has it) ───
     let outerwear: WardrobeItem | null = null;
 
-    if (outerwears.length > 0 && Math.random() < 0.30) {
+    if (outerwears.length > 0 && Math.random() < 0.6) {
 
-        const matchedOuterwear = outerwears.filter(
-            o => harmonyColors.includes(o.color)
-        );
+    const matchedOuterwear = outerwears.filter(
+    o =>
+        harmonyColors.includes(o.color) &&
+        o.color !== top.color
+    );
 
         const outerwearPool =
             matchedOuterwear.length > 0 ? matchedOuterwear : outerwears;
@@ -284,7 +310,7 @@ export function generateDailyOutfit(wardrobe: Wardrobe): Omit<GeneratedOutfit, '
     // ─── Step 5: Optional accessory (only if wardrobe has it) ───
     let accessory: WardrobeItem | null = null;
 
-    if (accessories.length > 0 && Math.random() < 0.50) {
+    if (accessories.length > 0) {
 
         const matchedAccessories = accessories.filter(
             a => harmonyColors.includes(a.color) || a.color === 'unknown'
@@ -357,11 +383,119 @@ export async function getOrCreateDailyOutfit(wardrobe: Wardrobe): Promise<Genera
 export async function forceRegenerateOutfit(wardrobe: Wardrobe): Promise<GeneratedOutfit> {
     const todayStr = getTodayString();
     const outfit: GeneratedOutfit = {
-        ...generateDailyOutfit(wardrobe),
+       ...generateBestOutfit(wardrobe),
         generatedAt: todayStr,
     };
     try {
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(outfit));
     } catch (_) { }
     return outfit;
+}
+
+function generateBestOutfit(wardrobe: Wardrobe): Omit<GeneratedOutfit, 'generatedAt'> {
+
+  // ensure wardrobe never empty
+  const tops = wardrobe.tops.length ? wardrobe.tops : FALLBACK_WARDROBE.tops;
+  const bottoms = wardrobe.bottoms.length ? wardrobe.bottoms : FALLBACK_WARDROBE.bottoms;
+  const footwears = wardrobe.footwear.length ? wardrobe.footwear : FALLBACK_WARDROBE.footwear;
+
+  const accessories = wardrobe.accessories;
+  const outerwears = wardrobe.outerwear;
+
+  let bestOutfit: Omit<GeneratedOutfit, 'generatedAt'> | null = null;
+  let bestScore = -Infinity;
+
+  for (let i = 0; i < 40; i++) {
+
+    const top = randomItem(tops);
+
+    const harmonyColors = COLOR_HARMONY[top.color] || COLOR_HARMONY.unknown;
+
+    const matchedBottoms = bottoms.filter(
+      b => harmonyColors.includes(b.color) && b.color !== top.color
+    );
+
+    const bottom = randomItem(matchedBottoms.length ? matchedBottoms : bottoms);
+
+    const bottomType = (bottom.bottomType || "jeans") as BottomType;
+
+    const compatibleFootwearTypes =
+      BOTTOM_TO_FOOTWEAR[bottomType] || BOTTOM_TO_FOOTWEAR.jeans;
+
+    const matchedFootwear = footwears.filter(
+      f =>
+        f.footwearType &&
+        compatibleFootwearTypes.includes(f.footwearType) &&
+        (harmonyColors.includes(f.color) || f.color === bottom.color)
+    );
+
+    const footwear = randomItem(matchedFootwear.length ? matchedFootwear : footwears);
+
+    let outerwear: WardrobeItem | null = null;
+
+    if (outerwears.length && Math.random() < 0.6) {
+
+      const matchedOuterwear = outerwears.filter(
+        o => harmonyColors.includes(o.color) && o.color !== top.color
+      );
+
+      outerwear = randomItem(matchedOuterwear.length ? matchedOuterwear : outerwears);
+    }
+
+    let accessory: WardrobeItem | null = null;
+
+    if (accessories.length) {
+
+      const matchedAccessories = accessories.filter(
+        a => harmonyColors.includes(a.color) || a.color === "unknown"
+      );
+
+      accessory = randomItem(matchedAccessories.length ? matchedAccessories : accessories);
+    }
+
+    const candidate: Omit<GeneratedOutfit, 'generatedAt'> = {
+      top,
+      bottom,
+      footwear,
+      outerwear,
+      accessory
+    };
+
+    const score = scoreOutfit(candidate);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestOutfit = candidate;
+    }
+
+  }
+
+  return bestOutfit!;
+}
+
+function scoreOutfit(outfit: Omit<GeneratedOutfit, 'generatedAt'>) {
+
+  let score = 50;
+
+  const neutral = ["black", "white", "grey", "navy"];
+
+  if (neutral.includes(outfit.top.color)) score += 10;
+  if (neutral.includes(outfit.bottom.color)) score += 10;
+
+  const harmony = COLOR_HARMONY[outfit.top.color] || [];
+
+  if (harmony.includes(outfit.bottom.color)) score += 20;
+
+  if (harmony.includes(outfit.footwear.color)) score += 15;
+
+  if (outfit.accessory) score += 5;
+
+  if (
+    outfit.top.name.toLowerCase().includes("blazer") &&
+    outfit.bottom.name.toLowerCase().includes("short")
+  ) {
+    score -= 25;
+  }
+
+  return score;
 }

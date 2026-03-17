@@ -1,13 +1,14 @@
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState,useMemo } from 'react';
+import { useRouter } from "expo-router";
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 AsyncStorage.removeItem("fitsense_daily_outfit");
 import {
   Animated,
-  Dimensions,
+  Dimensions,   
   Image,
   Platform,
   ScrollView,
@@ -295,7 +296,29 @@ const items = [
     image: outfit.footwear.image,
     label: "Footwear",
   },
-]
+    // ⭐ ADD THIS
+  ...(outfit.outerwear
+    ? [{
+        emoji: outfit.outerwear.emoji,
+        name: outfit.outerwear.name,
+        color: outfit.outerwear.color,
+        image: outfit.outerwear.image,
+        label: "Outerwear",
+      }]
+    : []),
+
+  // ⭐ ADD THIS
+  ...(outfit.accessory
+    ? [{
+        emoji: outfit.accessory.emoji,
+        name: outfit.accessory.name,
+        color: outfit.accessory.color,
+        image: outfit.accessory.image,
+        label: "Accessory",
+      }]
+    : []),
+];
+
 
   return (
     <GlassPanel style={styles.outfitCard} intensity={24}>
@@ -428,6 +451,7 @@ function FeedCard({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
   const [likedItems, setLikedItems] = useState<Record<string, boolean>>({ '1': true });
@@ -559,12 +583,20 @@ useEffect(() => {
         <View style={styles.sectionPad}>
           <Text style={styles.sectionLabel}>AI Tools</Text>
           <View style={styles.aiGrid}>
-            <AICard
-              icon="✦"
-              title="Outfit Maker"
-              subtitle="AI creates looks from your wardrobe"
-              accentColor={PRIMARY}
-            />
+           <AICard
+            icon="✦"
+            title="Outfit Maker"
+            subtitle="AI creates looks from your wardrobe"
+            accentColor={PRIMARY}
+            onPress={() =>
+              router.push({
+                pathname: "../outfitMaker",
+                params: {
+                  wardrobe: JSON.stringify(userWardrobe)
+                }
+              })
+            }
+          />
             <AICard
               icon="◈"
               title="Fashion Chat"
