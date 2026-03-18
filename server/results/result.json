@@ -1,0 +1,127 @@
+{
+  "image": "/tmp/tmpmde14khy.jpg",
+  "detection_viz": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_detections.jpg",
+  "segmented_dir": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented",
+  "wearing": [
+    "shirt",
+    "pants",
+    "shoes",
+    "watch"
+  ],
+  "counts": {
+    "shirt": 1,
+    "pants": 1,
+    "shoes": 2,
+    "watch": 1
+  },
+  "detections": {
+    "shirt": [
+      [
+        150,
+        0,
+        666,
+        604
+      ]
+    ],
+    "pants": [
+      [
+        203,
+        514,
+        595,
+        1167
+      ]
+    ],
+    "shoes": [
+      [
+        195,
+        1170,
+        377,
+        1299
+      ],
+      [
+        509,
+        1147,
+        602,
+        1290
+      ]
+    ],
+    "watch": [
+      [
+        533,
+        406,
+        602,
+        464
+      ]
+    ]
+  },
+  "segmented_items": {
+    "shirt": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/shirt_0.png"
+    ],
+    "pants": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/pants_0.png"
+    ],
+    "shoes": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/shoes_0.png",
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/shoes_1.png"
+    ],
+    "watch": [
+      "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/watch_0.png"
+    ]
+  },
+  "colors": {
+    "shirt": [
+      {
+        "path": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/shirt_0.png",
+        "dominant_color": "Black",
+        "colors": [
+          "Black",
+          "Black",
+          "Silver"
+        ]
+      }
+    ],
+    "pants": [
+      {
+        "path": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/pants_0.png",
+        "dominant_color": "Eggplant",
+        "colors": [
+          "Eggplant",
+          "Grey",
+          "Graphite"
+        ]
+      }
+    ],
+    "shoes": [
+      {
+        "path": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/shoes_0.png",
+        "dominant_color": "Silver",
+        "colors": [
+          "Silver",
+          "Dark Grey",
+          "Eggplant"
+        ]
+      },
+      {
+        "path": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/shoes_1.png",
+        "dominant_color": "Silver",
+        "colors": [
+          "Silver",
+          "Light Grey",
+          "Steel"
+        ]
+      }
+    ],
+    "watch": [
+      {
+        "path": "/home/prakyat/Documents/fitsense/outfit_recc/server/outfit_model/uploads/user_segmented/watch_0.png",
+        "dominant_color": "Caramel",
+        "colors": [
+          "Caramel",
+          "Grey",
+          "Dark Brown"
+        ]
+      }
+    ]
+  }
+}
