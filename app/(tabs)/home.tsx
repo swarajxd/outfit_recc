@@ -1,3 +1,4 @@
+
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { BlurView } from "expo-blur";
 import Constants from "expo-constants";
@@ -8,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Animated,
-  Dimensions,
+  Dimensions,   
   Image,
   Platform,
   ScrollView,
@@ -334,29 +335,51 @@ function TodayOutfitCard({
     );
   }
 
-  const items = [
-    {
-      emoji: outfit.top.emoji,
-      name: outfit.top.name,
-      color: outfit.top.color,
-      image: outfit.top.image,
-      label: "Top",
-    },
-    {
-      emoji: outfit.bottom.emoji,
-      name: outfit.bottom.name,
-      color: outfit.bottom.color,
-      image: outfit.bottom.image,
-      label: "Bottom",
-    },
-    {
-      emoji: outfit.footwear.emoji,
-      name: outfit.footwear.name,
-      color: outfit.footwear.color,
-      image: outfit.footwear.image,
-      label: "Footwear",
-    },
-  ];
+const items = [
+  {
+    emoji: outfit.top.emoji,
+    name: outfit.top.name,
+    color: outfit.top.color,
+    image: outfit.top.image,
+    label: "Top",
+  },
+  {
+    emoji: outfit.bottom.emoji,
+    name: outfit.bottom.name,
+    color: outfit.bottom.color,
+    image: outfit.bottom.image,
+    label: "Bottom",
+  },
+  {
+    emoji: outfit.footwear.emoji,
+    name: outfit.footwear.name,
+    color: outfit.footwear.color,
+    image: outfit.footwear.image,
+    label: "Footwear",
+  },
+    // ⭐ ADD THIS
+  ...(outfit.outerwear
+    ? [{
+        emoji: outfit.outerwear.emoji,
+        name: outfit.outerwear.name,
+        color: outfit.outerwear.color,
+        image: outfit.outerwear.image,
+        label: "Outerwear",
+      }]
+    : []),
+
+  // ⭐ ADD THIS
+  ...(outfit.accessory
+    ? [{
+        emoji: outfit.accessory.emoji,
+        name: outfit.accessory.name,
+        color: outfit.accessory.color,
+        image: outfit.accessory.image,
+        label: "Accessory",
+      }]
+    : []),
+];
+
 
   return (
     <GlassPanel style={styles.outfitCard} intensity={24}>
@@ -524,8 +547,8 @@ function FeedCard({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<"foryou" | "following">("foryou");
   const [likedItems, setLikedItems] = useState<Record<string, boolean>>({
@@ -689,12 +712,20 @@ export default function HomeScreen() {
         <View style={styles.sectionPad}>
           <Text style={styles.sectionLabel}>AI Tools</Text>
           <View style={styles.aiGrid}>
-            <AICard
-              icon="✦"
-              title="Outfit Maker"
-              subtitle="AI creates looks from your wardrobe"
-              accentColor={PRIMARY}
-            />
+           <AICard
+            icon="✦"
+            title="Outfit Maker"
+            subtitle="AI creates looks from your wardrobe"
+            accentColor={PRIMARY}
+            onPress={() =>
+              router.push({
+                pathname: "../outfitMaker",
+                params: {
+                  wardrobe: JSON.stringify(userWardrobe)
+                }
+              })
+            }
+          />
             <AICard
               icon="◈"
               title="Fashion Chat"
