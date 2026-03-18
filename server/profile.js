@@ -13,6 +13,36 @@ const OUTFIT_API_URL = `http://127.0.0.1:${OUTFIT_PORT}`;
 const OUTFIT_MODEL_DIR = path.join(__dirname, "outfit_model");
 
 /**
+ * Fetch with exponential backoff retry.
+ * Retries on ECONNREFUSED (Python API still booting) and 5xx errors.
+ */
+async function fetchWithRetry(url, options = {}, retries = 6, baseDelayMs = 1500) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      // Retry on server errors too (5xx), but not on 4xx
+      if (res.status >= 500 && attempt < retries) {
+        const delay = baseDelayMs * Math.pow(1.5, attempt);
+        console.warn(`[retry] ${url} returned ${res.status}, retrying in ${Math.round(delay)}ms... (${attempt + 1}/${retries})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      const isConnRefused =
+        err?.cause?.code === "ECONNREFUSED" || err?.code === "ECONNREFUSED";
+      if (isConnRefused && attempt < retries) {
+        const delay = baseDelayMs * Math.pow(1.5, attempt);
+        console.warn(`[retry] Python API not ready (ECONNREFUSED), retrying in ${Math.round(delay)}ms... (${attempt + 1}/${retries})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
  * Recursively walk a JSON object and rewrite image URLs that point to the
  * Python server (port 8000) so they point to the Node server instead.
  * Also converts any remaining absolute file-system paths into /static/... URLs.
@@ -92,7 +122,7 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
     const body = await formDataToBuffer(form);
     headers["Content-Length"] = String(body.length);
 
-    const response = await fetch(`${OUTFIT_API_URL}/upload-outfit`, {
+    const response = await fetchWithRetry(`${OUTFIT_API_URL}/upload-outfit`, {
       method: "POST",
       body,
       headers,
@@ -114,7 +144,7 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
 router.get("/job/:jobId", async (req, res) => {
   try {
     const { jobId } = req.params;
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${OUTFIT_API_URL}/job/${encodeURIComponent(jobId)}`,
     );
     const result = await response.json();
@@ -135,7 +165,7 @@ router.get("/job/:jobId", async (req, res) => {
 router.get("/wardrobe/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${OUTFIT_API_URL}/wardrobe/${encodeURIComponent(userId)}`,
     );
     const result = await response.json();
@@ -195,7 +225,7 @@ router.get("/segmented/:userId", (req, res) => {
 router.get("/wardrobe/:userId/summary", async (req, res) => {
   try {
     const { userId } = req.params;
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${OUTFIT_API_URL}/wardrobe/${encodeURIComponent(userId)}/summary`,
     );
     const result = await response.json();
