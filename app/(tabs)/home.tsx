@@ -8,9 +8,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Animated,
+  ActivityIndicator,
   Dimensions,
   Image,
   Platform,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -19,6 +21,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supabase } from "../../lib/supabase";
 import {
   FALLBACK_WARDROBE,
   GeneratedOutfit,
@@ -97,6 +100,15 @@ const FEED_ITEMS = [
     tag: "#Monochrome",
   },
 ];
+
+type Post = {
+  id: string;
+  image_url: string;
+  caption: string | null;
+  owner_clerk_id: string;
+  tags: string[] | null;
+  created_at: string;
+};
 
 // ─── Color Display Map ────────────────────────────────────────────────────────
 const COLOR_DISPLAY: Record<string, string> = {
@@ -550,9 +562,12 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<"foryou" | "following">("foryou");
-  const [likedItems, setLikedItems] = useState<Record<string, boolean>>({
-    "1": true,
-  });
+  const [likedItems, setLikedItems] = useState<Record<string, boolean>>({});
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [postsError, setPostsError] = useState<string | null>(null);
+  const postsFetchInFlight = useRef(false);
   const [outfit, setOutfit] = useState<GeneratedOutfit | null>(null);
   const [outfitLoading, setOutfitLoading] = useState(true);
   const weekDates = getWeekDates();
@@ -561,8 +576,51 @@ export default function HomeScreen() {
   if (!isLoaded) {
     return null;
   }
+
   const toggleLike = (id: string) =>
     setLikedItems((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  async function fetchPosts() {
+    if (postsFetchInFlight.current) return;
+    postsFetchInFlight.current = true;
+    try {
+      setPostsError(null);
+      const { data, error } = await supabase
+        .from("posts")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      const normalized: Post[] = (data ?? []).map((p: any) => ({
+        id: String(p.id),
+        image_url: String(p.image_url),
+        caption: p.caption ?? null,
+        owner_clerk_id: String(p.owner_clerk_id),
+        tags: Array.isArray(p.tags) ? p.tags.map((t: any) => String(t)) : null,
+        created_at: String(p.created_at),
+      }));
+      setPosts(normalized);
+    } catch (e) {
+      console.error("fetchPosts error", e);
+      const msg =
+        (e as any)?.message ||
+        (e as any)?.error_description ||
+        (e as any)?.details ||
+        String(e);
+      setPostsError(msg);
+      setPosts([]);
+    } finally {
+      postsFetchInFlight.current = false;
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [items, setItems] = useState<any[]>([]);
   useEffect(() => {
@@ -706,6 +764,16 @@ export default function HomeScreen() {
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchPosts();
+            }}
+            tintColor="#fff"
+          />
+        }
       >
         {/* ── AI Tools Grid ── */}
         <View style={styles.sectionPad}>
@@ -769,14 +837,46 @@ export default function HomeScreen() {
         {/* ── Feed ── */}
         <View style={styles.sectionPad}>
           <Text style={styles.sectionLabel}>Trending Fits</Text>
-          {FEED_ITEMS.map((item) => (
-            <FeedCard
-              key={item.id}
-              item={item}
-              liked={!!likedItems[item.id]}
-              onLike={() => toggleLike(item.id)}
-            />
-          ))}
+          {loading ? (
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          ) : postsError ? (
+            <View style={{ paddingVertical: 16 }}>
+              <Text style={{ color: "rgba(255,255,255,0.55)" }}>
+                Couldn’t load posts. Pull to refresh.
+              </Text>
+            </View>
+          ) : posts.length === 0 ? (
+            <View style={{ paddingVertical: 16 }}>
+              <Text style={{ color: "rgba(255,255,255,0.55)" }}>
+                No posts yet. Pull to refresh.
+              </Text>
+            </View>
+          ) : (
+            posts.map((p) => {
+              const derivedItem = {
+                id: p.id,
+                image: p.image_url,
+                matchPercent: 90,
+                username: p.owner_clerk_id,
+                avatar:
+                  "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&q=80",
+                liked: false,
+                caption: p.caption ?? "",
+                tag: p.tags?.[0] ? `#${p.tags[0]}` : "",
+              } as (typeof FEED_ITEMS)[0];
+
+              return (
+                <FeedCard
+                  key={p.id}
+                  item={derivedItem}
+                  liked={!!likedItems[p.id]}
+                  onLike={() => toggleLike(p.id)}
+                />
+              );
+            })
+          )}
         </View>
       </ScrollView>
 
