@@ -59,7 +59,8 @@ const supabaseAdmin = createClient(
 // ---- Start outfit model API (Python) from repo's outfit_model ----
 let outfitProcess = null;
 function startOutfitModel() {
-  const python = path.join(__dirname, "outfit_model/venv/bin/python");
+  // Use the current environment's python (e.g. your activated .venv) to run the outfit API.
+  const python = process.env.PYTHON_EXECUTABLE || "python";
   const depsPath = path.join(REPO_OUTFIT, "deps");
   const pyPath = [depsPath, REPO_OUTFIT].join(path.delimiter);
   const env = { ...process.env, PYTHONPATH: REPO_OUTFIT };
@@ -69,7 +70,8 @@ function startOutfitModel() {
     [
       "-m",
       "uvicorn",
-      "api:app",
+      // Use the lightweight API that exposes /analyze (and our post vectors endpoint).
+      "api_minimal:app",
       "--host",
       "127.0.0.1",
       "--port",
@@ -238,7 +240,45 @@ app.post("/api/create-post", async (req, res) => {
       return res.status(500).json({ error: error.message || error });
     }
 
-    res.json({ ok: true, post: data });
+    // Generate vectors + Gemini attributes for this post image, then persist to posts.outfit_data.
+    // If this fails, we still return the created post (outfit_data will be null).
+    let outfit_data = null;
+    try {
+      const imgResp = await fetch(image_url);
+      if (!imgResp.ok) throw new Error(`failed to download image: ${imgResp.status}`);
+      const buf = Buffer.from(await imgResp.arrayBuffer());
+      const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+
+      const form = new FormData();
+      form.append("file", buf, { filename: "post.jpg", contentType });
+      // Use post id as user_id so the pipeline's outputs are namespaced per post.
+      form.append("user_id", `post_${data.id}`);
+
+      const headers = form.getHeaders();
+      const body = await formDataToBuffer(form);
+      headers["Content-Length"] = String(body.length);
+
+      const vectResp = await fetch(`${OUTFIT_API_URL}/analyze-post`, {
+        method: "POST",
+        body,
+        headers,
+      });
+      if (!vectResp.ok) {
+        const errText = await vectResp.text();
+        throw new Error(errText || `outfit api failed: ${vectResp.status}`);
+      }
+      outfit_data = await vectResp.json();
+
+      const { error: updErr } = await supabaseAdmin
+        .from("posts")
+        .update({ outfit_data })
+        .eq("id", data.id);
+      if (updErr) throw updErr;
+    } catch (e) {
+      console.warn("[create-post] outfit_data generation failed:", e?.message || e);
+    }
+
+    res.json({ ok: true, post: { ...data, outfit_data } });
   } catch (err) {
     console.error("create-post error", err);
     res.status(500).json({ error: String(err) });

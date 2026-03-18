@@ -30,9 +30,15 @@ export default function TodayOutfitCard({ outfit, onRegenerate, loading }: any) 
         <Text style={styles.item}>🧥 Outerwear: {outfit.outerwear.name}</Text>
       )}
 
-      {outfit.accessory && (
-        <Text style={styles.item}>⌚ Accessory: {outfit.accessory.name}</Text>
-      )}
+    {outfit.accessories && outfit.accessories.length > 0 && (
+      <View>
+        {outfit.accessories.map((acc: any, index: number) => (
+          <Text key={index} style={styles.item}>
+            ⌚ Accessory: {acc.name}
+          </Text>
+        ))}
+      </View>
+    )}
 
       <TouchableOpacity style={styles.button} onPress={onRegenerate}>
         {loading ? (
