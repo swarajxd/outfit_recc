@@ -29,11 +29,9 @@ import {
   forceRegenerateOutfit,
   getOrCreateDailyOutfit,
 } from "../utils/outfitEngine";
+import { SERVER_BASE } from "../utils/config";
 
 AsyncStorage.removeItem("fitsense_daily_outfit");
-
-const SERVER_BASE =
-  (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
 
 const PRIMARY = "#FF6B00";
 const BG = "#000000";

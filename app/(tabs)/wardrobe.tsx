@@ -23,11 +23,7 @@ import {
   GeneratedOutfit,
   getOrCreateDailyOutfit
 } from '../utils/outfitEngine';
-
-const SERVER_BASE: string =
-  process.env.EXPO_PUBLIC_API_BASE_URL ||
-  (Constants.expoConfig?.extra as any)?.API_BASE_URL ||
-  "http://localhost:4000";
+import { SERVER_BASE } from "../utils/config";
 
 const PRIMARY = "#FF6B00";
 const BG = "#000000";

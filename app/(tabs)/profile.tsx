@@ -18,9 +18,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { v4 as uuidv4 } from "uuid";
-
-const SERVER_BASE =
-  (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
+import { SERVER_BASE } from "../utils/config";
 
 const PRIMARY = "#FF6B00";
 const BG = "#000000";

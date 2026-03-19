@@ -1,24 +1,21 @@
 import { useAuth, useUser } from "@clerk/clerk-expo"; // useAuth may provide a method to get token
-import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
-
-const SERVER_BASE =
-  (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
+import { SERVER_BASE } from "./utils/config";
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -60,7 +57,8 @@ export default function CreatePostScreen() {
       // On native we must send { uri, name, type }
       const uri = localUri;
       const ext = uri.split(".").pop() || "jpg";
-      const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
+      const mime =
+        ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
       const file: any = {
         uri,
         name: `upload.${ext}`,
