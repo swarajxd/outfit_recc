@@ -8,7 +8,7 @@ import {
   ScrollView,
   Image
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 type Outfit = {
   top?: any;
   bottom?: any;
@@ -19,6 +19,7 @@ type Outfit = {
 import { forceRegenerateOutfit } from "./utils/outfitEngine";
 
 export default function OutfitMaker() {
+  const router = useRouter();
     const { wardrobe } = useLocalSearchParams();
 
 const parsedWardrobe = wardrobe
@@ -114,6 +115,13 @@ const generateOutfit = async () => {
 };
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={styles.backBtn}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <Text style={styles.backIcon}>←</Text>
+      </TouchableOpacity>
 
       <Text style={styles.title}>Outfit Maker</Text>
       <Text style={styles.subtitle}>Create your perfect look instantly</Text>
@@ -234,8 +242,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0a0a0a",
-    padding: 20
+    padding: 20,
+    position: "relative",
   },
+  backBtn: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  backIcon: { color: "#fff", fontSize: 16, fontWeight: "800" },
 
   title: {
     fontSize: 32,

@@ -1,6 +1,7 @@
 import { useAuth, useUser } from "@clerk/clerk-expo"; // useAuth may provide a method to get token
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -15,12 +16,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { v4 as uuidv4 } from "uuid";
 
 const SERVER_BASE =
   (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
 
 export default function CreatePostScreen() {
+  const router = useRouter();
   const { user } = useUser();
   const { getToken } = useAuth();
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -45,29 +46,42 @@ export default function CreatePostScreen() {
     const signJson = await signResp.json();
     const { signature, timestamp, api_key, cloud_name } = signJson;
 
-    // 2) fetch blob from local uri
-    const fetched = await fetch(localUri);
-    const blob = await fetched.blob();
-    const filename = `${uuidv4()}.jpg`;
-
-    // 3) build form data for Cloudinary
+    // 2) build form data for Cloudinary
     const data = new FormData();
-    data.append("file", blob as any); // React Native FormData may accept blob
+    if (Platform.OS === "web") {
+      // On web we can safely fetch as blob
+      const fetched = await fetch(localUri);
+      const blob = await fetched.blob();
+      if (!blob || (blob as any).size === 0) {
+        throw new Error("Empty file");
+      }
+      data.append("file", blob as any);
+    } else {
+      // On native we must send { uri, name, type }
+      const uri = localUri;
+      const ext = uri.split(".").pop() || "jpg";
+      const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
+      const file: any = {
+        uri,
+        name: `upload.${ext}`,
+        type: mime,
+      };
+      data.append("file", file);
+    }
+
     data.append("api_key", api_key);
     data.append("timestamp", String(timestamp));
     data.append("signature", signature);
-
-    // optionally put image in folder 'posts'
     data.append("folder", "posts");
 
-    // 4) upload to Cloudinary
+    // 3) upload to Cloudinary
     const url = `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`;
     const uploadResp = await fetch(url, { method: "POST", body: data });
     const uploadJson = await uploadResp.json();
-    if (!uploadResp.ok)
+    if (!uploadResp.ok) {
       throw new Error(uploadJson.error?.message || "upload failed");
-    // uploadJson contains: secure_url, public_id, etc.
-    return uploadJson; // return object
+    }
+    return uploadJson;
   }
 
   async function handleSubmit() {
@@ -136,55 +150,71 @@ export default function CreatePostScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: "#000" }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Create Post</Text>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={styles.backIcon}>←</Text>
+            </TouchableOpacity>
+            <Text style={styles.title}>Create Post</Text>
+            <View style={{ width: 34 }} />
+          </View>
 
-        <TouchableOpacity style={styles.imageBox} onPress={pickImage}>
-          {imageUri ? (
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.preview}
-              resizeMode="cover"
-            />
-          ) : (
-            <Text style={{ color: "#fff" }}>Tap to pick an image</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.imageBox} onPress={pickImage}>
+            {imageUri ? (
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.preview}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={{ color: "#fff" }}>Tap to pick an image</Text>
+            )}
+          </TouchableOpacity>
 
-        <TextInput
-          placeholder="Caption"
-          placeholderTextColor="#aaa"
-          value={caption}
-          onChangeText={setCaption}
-          style={styles.input}
-        />
-        <TextInput
-          placeholder="Tags (comma separated) e.g. hoodie, black"
-          placeholderTextColor="#aaa"
-          value={tagsText}
-          onChangeText={setTagsText}
-          style={styles.input}
-        />
+          <TextInput
+            placeholder="Caption"
+            placeholderTextColor="#aaa"
+            value={caption}
+            onChangeText={setCaption}
+            style={styles.input}
+          />
+          <TextInput
+            placeholder="Tags (comma separated) e.g. hoodie, black"
+            placeholderTextColor="#aaa"
+            value={tagsText}
+            onChangeText={setTagsText}
+            style={styles.input}
+          />
 
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleSubmit}
-          disabled={uploading}
-        >
-          {uploading ? (
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <ActivityIndicator color="#fff" />
-              <Text style={[styles.btnText, { marginLeft: 8 }]}>
-                Uploading…
-              </Text>
-            </View>
-          ) : (
-            <Text style={styles.btnText}>Upload</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={handleSubmit}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <ActivityIndicator color="#fff" />
+                <Text style={[styles.btnText, { marginLeft: 8 }]}>
+                  Uploading…
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.btnText}>Upload</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -192,14 +222,49 @@ export default function CreatePostScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    paddingTop: 40,
-    minHeight: "100%",
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 40,
+    justifyContent: "center",
     backgroundColor: "#000",
   },
-  title: { color: "#fff", fontSize: 20, fontWeight: "700", marginBottom: 16 },
+  card: {
+    borderRadius: 18,
+    padding: 18,
+    backgroundColor: "#050505",
+    borderWidth: 1,
+    borderColor: "#1f2933",
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backIcon: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  title: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   imageBox: {
-    height: 240,
+    height: 190,
     borderRadius: 12,
     backgroundColor: "#111",
     alignItems: "center",
@@ -207,7 +272,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 12,
   },
-  preview: { width: "100%", height: "100%" },
+  preview: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 12,
+  },
   input: {
     backgroundColor: "#0b0b0b",
     color: "#fff",

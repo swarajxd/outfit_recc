@@ -244,7 +244,19 @@ app.post("/api/create-post", async (req, res) => {
     // If this fails, we still return the created post (outfit_data will be null).
     let outfit_data = null;
     try {
-      const imgResp = await fetch(image_url);
+      // Use a Cloudinary-transcoded JPEG for analysis so phone HEIC/HEIF images are readable by OpenCV.
+      let analysisUrl = image_url;
+      try {
+        const uploadMarker = "/upload/";
+        if (analysisUrl.includes(uploadMarker)) {
+          analysisUrl = analysisUrl.replace(uploadMarker, "/upload/f_jpg/");
+        }
+      } catch {
+        // fall back to original url
+        analysisUrl = image_url;
+      }
+
+      const imgResp = await fetch(analysisUrl);
       if (!imgResp.ok) throw new Error(`failed to download image: ${imgResp.status}`);
       const buf = Buffer.from(await imgResp.arrayBuffer());
       const contentType = imgResp.headers.get("content-type") || "image/jpeg";

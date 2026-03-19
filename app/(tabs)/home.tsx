@@ -38,6 +38,8 @@ const PRIMARY = "#FF6B00";
 const BG = "#000000";
 const CHARCOAL = "#1A1A1A";
 const WIDTH = Dimensions.get("window").width;
+const DEFAULT_AVATAR =
+  "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&q=80";
 
 // ─── Daily Outfit – Week strip ────────────────────────────────────────────────
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -578,6 +580,20 @@ export default function HomeScreen() {
     return null;
   }
 
+  // Match Explore's mapping approach: use Clerk's profile image for avatar.
+  // Note: we don't fetch other users by id here; we display the current user's pfp.
+  const currentUserAvatar =
+    (user?.unsafeMetadata as { profileImageUrl?: string } | undefined)
+      ?.profileImageUrl ||
+    user?.imageUrl ||
+    DEFAULT_AVATAR;
+
+  const currentUserName =
+    user?.fullName ||
+    (user?.unsafeMetadata as { name?: string } | undefined)?.name ||
+    (user as any)?.primaryEmailAddress?.emailAddress ||
+    "Unknown";
+
   const toggleLike = (id: string) =>
     setLikedItems((prev) => ({ ...prev, [id]: !prev[id] }));
 
@@ -923,9 +939,11 @@ export default function HomeScreen() {
                 id: p.id,
                 image: p.image_url,
                 matchPercent: 90,
-                username: p.owner_clerk_id,
-                avatar:
-                  "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&q=80",
+                username:
+                  p.owner_clerk_id === user?.id
+                    ? currentUserName
+                    : p.owner_clerk_id,
+                avatar: currentUserAvatar,
                 liked: false,
                 caption: p.caption ?? "",
                 tag: p.tags?.[0] ? `#${p.tags[0]}` : "",
