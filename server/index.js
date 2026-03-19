@@ -187,6 +187,43 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
   }
 });
 
+// ---- endpoint: generate outfits from saved wardrobe vectors ----
+app.post("/api/outfits/generate", async (req, res) => {
+  try {
+    const { user_id = "default_user", query, k_per_category = 5 } = req.body || {};
+
+    if (!query || typeof query !== "string" || !query.trim()) {
+      return res.status(400).json({ error: "missing or empty 'query'" });
+    }
+
+    const payload = {
+      user_id,
+      query,
+      k_per_category,
+    };
+
+    const response = await fetch(`${OUTFIT_API_URL}/outfits/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("outfits-generate error", response.status, errText);
+      return res
+        .status(response.status)
+        .json({ error: errText || "outfit generation failed" });
+    }
+
+    const result = await response.json(); // { success, result }
+    res.json(result);
+  } catch (err) {
+    console.error("outfits-generate route error", err);
+    res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
 // ---- endpoint: create post record in supabase ----
 app.post("/api/create-post", async (req, res) => {
   try {
