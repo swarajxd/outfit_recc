@@ -18,9 +18,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-    FALLBACK_WARDROBE,
-    GeneratedOutfit,
-    getOrCreateDailyOutfit,
+  FALLBACK_WARDROBE,
+  GeneratedOutfit,
+  getOrCreateDailyOutfit,
+  buildWardrobeFromItems
 } from '../utils/outfitEngine';
 
 const SERVER_BASE: string =
@@ -177,14 +178,24 @@ export default function WardrobeScreen() {
     unique.sort();
     return ["All", ...unique.map(displayCategory)];
   }, [items]);
-  const [todayOutfit, setTodayOutfit] = useState<GeneratedOutfit | null>(null);
+const [todayOutfit, setTodayOutfit] = useState<GeneratedOutfit | null>(null);
 
-  useEffect(() => {
+useEffect(() => {
+
+  if (items.length === 0) {
     getOrCreateDailyOutfit(FALLBACK_WARDROBE)
       .then((o) => setTodayOutfit(o))
       .catch(() => {});
-  }, []);
+    return;
+  }
 
+  const wardrobe = buildWardrobeFromItems(items);
+
+  getOrCreateDailyOutfit(wardrobe)
+    .then((o) => setTodayOutfit(o))
+    .catch(() => {});
+
+}, [items]);
   const filtered =
     activeCategory === 0
       ? items

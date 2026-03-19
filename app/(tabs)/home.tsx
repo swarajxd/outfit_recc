@@ -1,9 +1,14 @@
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState,useMemo } from 'react';
+import { useRouter } from "expo-router";
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+
 import {
   Animated,
-  Dimensions,
+  Dimensions,   
   Image,
   Platform,
   ScrollView,
@@ -19,12 +24,18 @@ import {
   GeneratedOutfit,
   forceRegenerateOutfit,
   getOrCreateDailyOutfit,
+  buildWardrobeFromItems
 } from '../utils/outfitEngine';
-
+import { useUser } from "@clerk/clerk-expo";
+const SERVER_BASE = "http://localhost:4000";
+ 
 const PRIMARY = '#FF6B00';
 const BG = '#000000';
 const CHARCOAL = '#1A1A1A';
 const WIDTH = Dimensions.get('window').width;
+
+
+
 
 // ─── Daily Outfit – Week strip ────────────────────────────────────────────────
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -44,6 +55,8 @@ const getWeekDates = () => {
     };
   });
 };
+
+
 
 const FEED_ITEMS = [
   {
@@ -153,136 +166,114 @@ function AICard({
 
 // ─── Outfit Item Row ──────────────────────────────────────────────────────────
 function OutfitItemRow({
-  emoji, name, color, label, isLast,
+  emoji,
+  name,
+  color,
+  image,
+  label,
+  isLast,
 }: {
-  emoji: string; name: string; color: string; label: string; isLast?: boolean;
+  emoji: string
+  name: string
+  color: string
+  image?: string | null
+  label: string
+  isLast?: boolean
 }) {
-  const dotColor = COLOR_DISPLAY[color] || '#555';
+
+  const dotColor = COLOR_DISPLAY[color] || "#555"
+
   return (
     <View style={[styles.outfitRow, !isLast && styles.outfitRowBorder]}>
+      
       <View style={styles.outfitRowLeft}>
+        
         <View style={styles.outfitEmojiBox}>
-          <Text style={styles.outfitEmoji}>{emoji}</Text>
+          
+          {image ? (
+            <Image
+              source={{ uri: image }}
+              style={{ width: 32, height: 32, resizeMode: "contain" }}
+            />
+          ) : (
+            <Text style={styles.outfitEmoji}>{emoji}</Text>
+          )}
+
         </View>
+
         <View>
           <Text style={styles.outfitLabel}>{label}</Text>
           <Text style={styles.outfitName}>{name}</Text>
         </View>
+
       </View>
-      <View style={[styles.outfitColorDot, { backgroundColor: dotColor, borderColor: dotColor === '#F5F5F0' ? '#444' : dotColor }]}>
-        <Text style={styles.outfitColorText}>{color !== 'unknown' ? color : '–'}</Text>
+
+      <View
+        style={[
+          styles.outfitColorDot,
+          {
+            backgroundColor: dotColor,
+            borderColor: dotColor === "#F5F5F0" ? "#444" : dotColor,
+          },
+        ]}
+      >
+        <Text style={styles.outfitColorText}>
+          {color !== "unknown" ? color : "–"}
+        </Text>
       </View>
+
     </View>
-  );
+  )
 }
 
 // ─── Today's Outfit Card ──────────────────────────────────────────────────────
-function TodayOutfitCard({
-  outfit, onRegenerate, loading,
+function DayOutfitCard({
+  label,
+  date,
+  outfit,
+  onPress,
 }: {
-  outfit: GeneratedOutfit | null; onRegenerate: () => void; loading: boolean;
+  label: string;
+  date: number;
+  outfit?: any;
+  onPress: () => void;
 }) {
-  const spinAnim = useRef(new Animated.Value(0)).current;
-
-  const startSpin = () => {
-    spinAnim.setValue(0);
-    Animated.timing(spinAnim, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const spin = spinAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  const handleRegen = () => {
-    startSpin();
-    onRegenerate();
-  };
-
-  const today = new Date();
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const dateStr = `${dayNames[today.getDay()]}, ${monthNames[today.getMonth()]} ${today.getDate()}`;
-
-  if (loading || !outfit) {
-    return (
-      <GlassPanel style={styles.outfitCard} intensity={24}>
-        <View style={styles.outfitCardHeader}>
-          <View>
-            <Text style={styles.outfitCardTitle}>Today's Outfit</Text>
-            <Text style={styles.outfitCardDate}>{dateStr}</Text>
-          </View>
-        </View>
-        <View style={styles.outfitLoadingBox}>
-          <Text style={styles.outfitLoadingIcon}>✦</Text>
-          <Text style={styles.outfitLoadingText}>
-            {loading ? 'Generating your outfit...' : 'No outfit yet'}
-          </Text>
-        </View>
-      </GlassPanel>
-    );
-  }
-
-  const items = [
-    { emoji: outfit.top.emoji, name: outfit.top.name, color: outfit.top.color, label: 'Top' },
-    { emoji: outfit.bottom.emoji, name: outfit.bottom.name, color: outfit.bottom.color, label: 'Bottom' },
-    { emoji: outfit.footwear.emoji, name: outfit.footwear.name, color: outfit.footwear.color, label: 'Footwear' },
-    ...(outfit.outerwear ? [{ emoji: outfit.outerwear.emoji, name: outfit.outerwear.name, color: outfit.outerwear.color, label: 'Layer' }] : []),
-    ...(outfit.accessory ? [{ emoji: outfit.accessory.emoji, name: outfit.accessory.name, color: outfit.accessory.color, label: 'Accessory' }] : []),
-  ];
-
   return (
-    <GlassPanel style={styles.outfitCard} intensity={24}>
-      {/* Orange gradient top strip */}
-      <LinearGradient
-        colors={['rgba(255,107,0,0.18)', 'rgba(255,107,0,0.0)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={styles.outfitCardTopStrip}
-      />
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+<View style={styles.dayCard}>
 
-      {/* Header */}
-      <View style={styles.outfitCardHeader}>
-        <View>
-          <View style={styles.outfitCardTitleRow}>
-            <Text style={styles.outfitCardTitleDot}>●</Text>
-            <Text style={styles.outfitCardTitle}>Today's Outfit</Text>
-          </View>
-          <Text style={styles.outfitCardDate}>{dateStr}</Text>
-        </View>
-        <TouchableOpacity onPress={handleRegen} style={styles.regenBtn} activeOpacity={0.7}>
-          <Animated.Text style={[styles.regenIcon, { transform: [{ rotate: spin }] }]}>↻</Animated.Text>
-        </TouchableOpacity>
-      </View>
+  {outfit ? (
+    <View style={styles.outfitStack}>
+      {outfit.top && (
+        <Image source={{ uri: outfit.top.image }} style={styles.outfitImage}/>
+      )}
 
-      {/* Divider */}
-      <View style={styles.outfitDivider} />
+      {outfit.bottom && (
+        <Image source={{ uri: outfit.bottom.image }} style={styles.outfitImage}/>
+      )}
 
-      {/* Outfit items */}
-      <View style={styles.outfitItemsContainer}>
-        {items.map((item, idx) => (
-          <OutfitItemRow
-            key={`${item.label}-${idx}`}
-            emoji={item.emoji}
-            name={item.name}
-            color={item.color}
-            label={item.label}
-            isLast={idx === items.length - 1}
-          />
-        ))}
-      </View>
+      {outfit.footwear && (
+        <Image source={{ uri: outfit.footwear.image }} style={styles.outfitImage}/>
+      )}
 
-      {/* Footer badge */}
-      <View style={styles.outfitFooter}>
-        <View style={styles.aiBadge}>
-          <Text style={styles.aiBadgeText}>✦ AI Matched · Color Harmony</Text>
-        </View>
-      </View>
-    </GlassPanel>
+      {outfit.outerwear && (
+        <Image source={{ uri: outfit.outerwear.image }} style={styles.outfitImage}/>
+      )}
+
+      {outfit.accessory && (
+        <Image source={{ uri: outfit.accessory.image }} style={styles.outfitImage}/>
+      )}
+    </View>
+  ) : (
+    <View style={styles.addCircle}>
+      <Text style={styles.addPlus}>+</Text>
+    </View>
+  )}
+
+  <Text style={styles.dayLabel}>{label}, {date}</Text>
+
+</View>
+    </TouchableOpacity>
   );
 }
 
@@ -365,33 +356,94 @@ function FeedCard({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
   const [likedItems, setLikedItems] = useState<Record<string, boolean>>({ '1': true });
   const [outfit, setOutfit] = useState<GeneratedOutfit | null>(null);
   const [outfitLoading, setOutfitLoading] = useState(true);
-  const weekDates = getWeekDates();
+  const weekDates = useMemo(() => getWeekDates(), []);
+  const { user, isLoaded } = useUser();
+   const [savedOutfits, setSavedOutfits] = useState<any>({});
+   
+
+useEffect(() => {
+  const loadSavedOutfits = async () => {
+    const outfits: any = {};
+
+    for (const d of weekDates) {
+      const key = `fitsense_outfit_${d.label}_${d.date}`;
+      const stored = await AsyncStorage.getItem(key);
+
+      if (stored) {
+        outfits[key] = JSON.parse(stored);
+      }
+    }
+
+    setSavedOutfits(outfits);
+  };
+
+  loadSavedOutfits();
+}, [weekDates]);
+
 
   const toggleLike = (id: string) =>
     setLikedItems((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  const [items, setItems] = useState<any[]>([]);
+ useEffect(() => {
+  if (!user?.id) return;
+
+  fetch(`${SERVER_BASE}/api/profile/segmented/${user.id}`)
+    .then(res => res.json())
+    .then(data => setItems(data.items || []))
+    .catch(() => {});
+}, [user]);
+const userWardrobe = useMemo(() => {
+  if (items && items.length > 0) {
+    return buildWardrobeFromItems(items);
+  }
+  return FALLBACK_WARDROBE;
+}, [items]);
+console.log("WARDROBE AFTER BUILD:", userWardrobe);
   // Load or generate today's outfit on mount
-  useEffect(() => {
-    let cancelled = false;
-    setOutfitLoading(true);
-    getOrCreateDailyOutfit(FALLBACK_WARDROBE)
-      .then((o) => { if (!cancelled) { setOutfit(o); setOutfitLoading(false); } })
-      .catch(() => { if (!cancelled) setOutfitLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+useEffect(() => {
+  if (!items || items.length === 0) return;
+
+  let cancelled = false;
+  setOutfitLoading(true);
+
+  const wardrobe = buildWardrobeFromItems(items);
+    console.log("ITEMS FROM API:", items);
+  console.log("BUILT WARDROBE:", wardrobe);
+
+  getOrCreateDailyOutfit(wardrobe)
+    .then((o) => {
+       console.log("GENERATED OUTFIT:", o);
+      if (!cancelled) {
+        setOutfit(o);
+        setOutfitLoading(false);
+      }
+    })
+    .catch(() => {
+      if (!cancelled) setOutfitLoading(false);
+    });
+    
+  return () => {
+    cancelled = true;
+  };
+}, [items]);
 
   const handleRegenerate = () => {
     setOutfitLoading(true);
-    forceRegenerateOutfit(FALLBACK_WARDROBE)
+    forceRegenerateOutfit(userWardrobe)
       .then((o) => { setOutfit(o); setOutfitLoading(false); })
       .catch(() => setOutfitLoading(false));
   };
-
+  console.log("WARDROBE ITEMS", items);
+    if (!isLoaded) {
+    return null;
+  }
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
@@ -458,12 +510,20 @@ export default function HomeScreen() {
         <View style={styles.sectionPad}>
           <Text style={styles.sectionLabel}>AI Tools</Text>
           <View style={styles.aiGrid}>
-            <AICard
-              icon="✦"
-              title="Outfit Maker"
-              subtitle="AI creates looks from your wardrobe"
-              accentColor={PRIMARY}
-            />
+           <AICard
+            icon="✦"
+            title="Outfit Maker"
+            subtitle="AI creates looks from your wardrobe"
+            accentColor={PRIMARY}
+            onPress={() =>
+              router.push({
+                pathname: "../outfitMaker",
+                params: {
+                  wardrobe: JSON.stringify(items),
+                },
+              })
+            }
+          />
             <AICard
               icon="◈"
               title="Fashion Chat"
@@ -473,18 +533,42 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ── Today's Outfit Card ── */}
-        <View style={styles.sectionPad}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionLabel}>Daily Outfit</Text>
-            <Text style={styles.sectionSub}>Rule-based matching</Text>
-          </View>
-          <TodayOutfitCard
-            outfit={outfit}
-            onRegenerate={handleRegenerate}
-            loading={outfitLoading}
-          />
-        </View>
+{/* ── Weekly Planner ── */}
+<View style={styles.sectionPad}>
+  <View style={styles.sectionHeader}>
+    <Text style={styles.sectionLabel}>Your Week</Text>
+    <Text style={styles.sectionSub}>Planner</Text>
+  </View>
+
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    contentContainerStyle={{ gap: 12 }}
+  >
+{weekDates.map((d, i) => {
+  const key = `fitsense_outfit_${d.label}_${d.date}`;
+
+  return (
+    <DayOutfitCard
+      key={i}
+      label={d.label}
+      date={d.date}
+      outfit={savedOutfits[key]}
+      onPress={() =>
+        router.push({
+          pathname: "/dailyOutfit",
+          params: {
+            wardrobe: JSON.stringify(items),
+            day: d.label,
+            date: d.date,
+          },
+        })
+      }
+    />
+  );
+})}
+  </ScrollView>
+</View>
 
         {/* ── Week Strip ── */}
         <View style={styles.sectionPad}>
@@ -721,4 +805,55 @@ logoText: {
   actions: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   actionBtn: { padding: 2 },
   caption: { color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 20, fontWeight: '400' },
+
+  dayCard: {
+  width: 90,
+  height: 140,
+  borderRadius: 20,
+  backgroundColor: "#111",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.08)",
+  alignItems: "center",
+  justifyContent: "space-between",
+  paddingVertical: 14,
+},
+
+dayLabel: {
+  color: "rgba(255,255,255,0.6)",
+  fontSize: 12,
+  fontWeight: "600",
+},
+
+dayDate: {
+  color: "#fff",
+  fontSize: 14,
+  fontWeight: "700",
+},
+
+addCircle: {
+  width: 42,
+  height: 42,
+  borderRadius: 21,
+  backgroundColor: "rgba(255,107,0,0.12)",
+  borderWidth: 1,
+  borderColor: "rgba(255,107,0,0.5)",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+addPlus: {
+  color: "#FF6B00",
+  fontSize: 24,
+  fontWeight: "700",
+},
+outfitStack: {
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 4,
+},
+outfitImage: {
+  width: 40,
+  height: 40,
+  resizeMode: "contain",
+},
 });

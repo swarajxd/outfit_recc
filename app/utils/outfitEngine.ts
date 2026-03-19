@@ -164,84 +164,190 @@ function inferFootwearType(category: string, name: string): string {
     return 'sneakers'; // default
 }
 
+function getEmoji(category: string): string {
+    switch (category) {
+        case 'shirt':
+        case 'tshirt':
+            return '👕';
+        case 'pants':
+            return '👖';
+        case 'shoes':
+            return '👟';
+        default:
+            return '👕';
+    }
+}
+
+
+
+function generateRandomOutfit(wardrobe: any) {
+  return {
+    top: randomItem(wardrobe.tops),
+    bottom: randomItem(wardrobe.bottoms),
+    footwear: randomItem(wardrobe.footwear),
+    outerwear: wardrobe.outerwear.length ? randomItem(wardrobe.outerwear) : null,
+    accessory: wardrobe.accessories.length ? randomItem(wardrobe.accessories) : null
+  };
+}
+
+
 // ─── Convert raw API wardrobe items into engine Wardrobe ─────────────────────
 
-export function buildWardrobeFromItems(rawItems: any[]): Wardrobe {
-    const wardrobe: Wardrobe = {
-        tops: [], bottoms: [], footwear: [], accessories: [], outerwear: [],
+export function buildWardrobeFromItems(items: any[]) {
+  const wardrobe: Wardrobe = {
+    tops: [],
+    bottoms: [],
+    footwear: [],
+    accessories: [],
+    outerwear: [],
+  };
+
+  items.forEach((item) => {
+    if (!item.category) return;
+
+    const piece: WardrobeItem = {
+      id: item.id,
+      name: item.category,
+      image: item.image ?? null,
+      color: normalizeColor(item.color),
+      emoji: getEmoji(item.category),
+      bottomType:
+        item.category === "pants"
+          ? inferBottomType(item.category, item.name ?? "")
+          : undefined,
+      footwearType:
+        item.category === "shoes"
+          ? inferFootwearType(item.category, item.name ?? "")
+          : undefined,
     };
 
-    rawItems.forEach((item, idx) => {
-        const category = (item.category || '').toLowerCase();
-        const name = item.name || item.type || category || 'Item';
-        const color = normalizeColor(item.color);
-        const base: WardrobeItem = {
-            id: item.id || `w${idx}`,
-            name,
-            color,
-            emoji: '👔',
-            image: item.imageUrl || null,
-        };
+    if (item.category === "shirt" || item.category === "tshirt") {
+      wardrobe.tops.push(piece);
+    }
 
-        // Tops
-        if (['tshirts', 'tshirt', 'shirt', 'tops', 'top', 'polo', 'sweater', 'hoodie'].some(k => category.includes(k))) {
-            wardrobe.tops.push({ ...base, emoji: '👕' });
-        }
-        // Bottoms
-        else if (['jeans', 'jean', 'bottom', 'pants', 'trousers', 'shorts', 'chino', 'jogger'].some(k => category.includes(k))) {
-            wardrobe.bottoms.push({ ...base, emoji: '👖', bottomType: inferBottomType(category, name) });
-        }
-        // Footwear
-        else if (['shoes', 'shoe', 'sneakers', 'boots', 'footwear', 'sandal'].some(k => category.includes(k))) {
-            wardrobe.footwear.push({ ...base, emoji: '👟', footwearType: inferFootwearType(category, name) });
-        }
-        // Accessories
-        else if (['watch', 'watches', 'cap', 'caps', 'hat', 'belt', 'bag', 'accessory'].some(k => category.includes(k))) {
-            const accEmoji = category.includes('watch') ? '⌚' : category.includes('cap') || category.includes('hat') ? '🧢' : category.includes('bag') ? '👜' : '⌚';
-            wardrobe.accessories.push({ ...base, emoji: accEmoji });
-        }
-        // Outerwear
-        else if (['jacket', 'blazer', 'coat', 'outerwear', 'hoodie'].some(k => category.includes(k))) {
-            wardrobe.outerwear.push({ ...base, emoji: '🧥' });
-        }
-    });
+    if (item.category === "pants") {
+      wardrobe.bottoms.push(piece);
+    }
 
-    return wardrobe;
+    if (item.category === "shoes") {
+      wardrobe.footwear.push(piece);
+    }
+
+    // FIX ACCESSORIES
+    if (
+      item.category === "accessory" ||
+      item.category === "hat" ||
+      item.category === "watch" ||
+      item.category === "sock" ||
+      item.category === "bag"
+    ) {
+      wardrobe.accessories.push(piece);
+    }
+  });
+  return wardrobe;
 }
 
 // ─── Core Algorithm ───────────────────────────────────────────────────────────
 
 export function generateDailyOutfit(wardrobe: Wardrobe): Omit<GeneratedOutfit, 'generatedAt'> {
-    // Use fallback wardrobe for any empty category
+
+    // Required categories (fallback allowed)
     const tops = wardrobe.tops.length > 0 ? wardrobe.tops : FALLBACK_WARDROBE.tops;
     const bottoms = wardrobe.bottoms.length > 0 ? wardrobe.bottoms : FALLBACK_WARDROBE.bottoms;
     const footwears = wardrobe.footwear.length > 0 ? wardrobe.footwear : FALLBACK_WARDROBE.footwear;
-    const accessories = wardrobe.accessories.length > 0 ? wardrobe.accessories : FALLBACK_WARDROBE.accessories;
-    const outerwears = wardrobe.outerwear.length > 0 ? wardrobe.outerwear : FALLBACK_WARDROBE.outerwear;
 
-    // Step 1 — Pick top
+    // Optional categories (NO fallback — only show if user owns them)
+    const accessories = wardrobe.accessories;
+    const outerwears = wardrobe.outerwear;
+
+    // ─── Step 1: Pick random top ───
     const top = randomItem(tops);
 
-    // Step 2 — Pick bottom that harmonizes with top's color
+    // ─── Step 2: Match bottom with color harmony ───
     const harmonyColors = COLOR_HARMONY[top.color] || COLOR_HARMONY.unknown;
-    const matchedBottoms = bottoms.filter(b => harmonyColors.includes(b.color));
+
+    const matchedBottoms = bottoms.filter(
+    b => harmonyColors.includes(b.color) && b.color !== top.color
+    );
     const bottomPool = matchedBottoms.length > 0 ? matchedBottoms : bottoms;
+
     const bottom = randomItem(bottomPool);
 
-    // Step 3 — Pick footwear that matches bottom type
+    // ─── Step 3: Match footwear with bottom type ───
     const bottomType = (bottom.bottomType || 'jeans') as BottomType;
-    const compatibleFootwearTypes = BOTTOM_TO_FOOTWEAR[bottomType] || BOTTOM_TO_FOOTWEAR.jeans;
-    const matchedFootwear = footwears.filter(f => f.footwearType && compatibleFootwearTypes.includes(f.footwearType));
+
+    const compatibleFootwearTypes =
+        BOTTOM_TO_FOOTWEAR[bottomType] || BOTTOM_TO_FOOTWEAR.jeans;
+
+    const matchedFootwear = footwears.filter(
+    f =>
+        f.footwearType &&
+        compatibleFootwearTypes.includes(f.footwearType) &&
+        (harmonyColors.includes(f.color) || f.color === bottom.color)
+    );
+
     const footwearPool = matchedFootwear.length > 0 ? matchedFootwear : footwears;
+
     const footwear = randomItem(footwearPool);
 
-    // Step 4 — Optional outerwear (30% chance)
-    const outerwear = Math.random() < 0.30 ? randomItem(outerwears) : null;
+    // ─── Step 4: Optional outerwear (only if wardrobe has it) ───
+    let outerwear: WardrobeItem | null = null;
 
-    // Step 5 — Optional accessory (50% chance)
-    const accessory = Math.random() < 0.50 ? randomItem(accessories) : null;
+    if (outerwears.length > 0 && Math.random() < 0.6) {
 
-    return { top, bottom, footwear, outerwear, accessory };
+    const matchedOuterwear = outerwears.filter(
+    o =>
+        harmonyColors.includes(o.color) &&
+        o.color !== top.color
+    );
+
+        const outerwearPool =
+            matchedOuterwear.length > 0 ? matchedOuterwear : outerwears;
+
+        outerwear = randomItem(outerwearPool);
+    }
+
+    // ─── Step 5: Optional accessory (only if wardrobe has it) ───
+    let accessory: WardrobeItem | null = null;
+
+    if (accessories.length > 0) {
+
+        const matchedAccessories = accessories.filter(
+            a => harmonyColors.includes(a.color) || a.color === 'unknown'
+        );
+
+        const accessoryPool =
+            matchedAccessories.length > 0 ? matchedAccessories : accessories;
+
+        accessory = randomItem(accessoryPool);
+    }
+
+   return {
+    top: {
+        ...top,
+        image: top.image ?? null,
+    },
+    bottom: {
+        ...bottom,
+        image: bottom.image ?? null,
+    },
+    footwear: {
+        ...footwear,
+        image: footwear.image ?? null,
+    },
+    outerwear: outerwear
+        ? {
+              ...outerwear,
+              image: outerwear.image ?? null,
+          }
+        : null,
+    accessory: accessory
+        ? {
+              ...accessory,
+              image: accessory.image ?? null,
+          }
+        : null,
+};
 }
 
 // ─── Daily Persistence ────────────────────────────────────────────────────────
@@ -262,7 +368,7 @@ export async function getOrCreateDailyOutfit(wardrobe: Wardrobe): Promise<Genera
     } catch (_) { }
 
     // Generate fresh
-    const outfit: GeneratedOutfit = {
+   const outfit : GeneratedOutfit = {
         ...generateDailyOutfit(wardrobe),
         generatedAt: todayStr,
     };
@@ -277,11 +383,119 @@ export async function getOrCreateDailyOutfit(wardrobe: Wardrobe): Promise<Genera
 export async function forceRegenerateOutfit(wardrobe: Wardrobe): Promise<GeneratedOutfit> {
     const todayStr = getTodayString();
     const outfit: GeneratedOutfit = {
-        ...generateDailyOutfit(wardrobe),
+       ...generateBestOutfit(wardrobe),
         generatedAt: todayStr,
     };
     try {
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(outfit));
     } catch (_) { }
     return outfit;
+}
+
+function generateBestOutfit(wardrobe: Wardrobe): Omit<GeneratedOutfit, 'generatedAt'> {
+
+  // ensure wardrobe never empty
+  const tops = wardrobe.tops.length ? wardrobe.tops : FALLBACK_WARDROBE.tops;
+  const bottoms = wardrobe.bottoms.length ? wardrobe.bottoms : FALLBACK_WARDROBE.bottoms;
+  const footwears = wardrobe.footwear.length ? wardrobe.footwear : FALLBACK_WARDROBE.footwear;
+
+  const accessories = wardrobe.accessories;
+  const outerwears = wardrobe.outerwear;
+
+  let bestOutfit: Omit<GeneratedOutfit, 'generatedAt'> | null = null;
+  let bestScore = -Infinity;
+
+  for (let i = 0; i < 40; i++) {
+
+    const top = randomItem(tops);
+
+    const harmonyColors = COLOR_HARMONY[top.color] || COLOR_HARMONY.unknown;
+
+    const matchedBottoms = bottoms.filter(
+      b => harmonyColors.includes(b.color) && b.color !== top.color
+    );
+
+    const bottom = randomItem(matchedBottoms.length ? matchedBottoms : bottoms);
+
+    const bottomType = (bottom.bottomType || "jeans") as BottomType;
+
+    const compatibleFootwearTypes =
+      BOTTOM_TO_FOOTWEAR[bottomType] || BOTTOM_TO_FOOTWEAR.jeans;
+
+    const matchedFootwear = footwears.filter(
+      f =>
+        f.footwearType &&
+        compatibleFootwearTypes.includes(f.footwearType) &&
+        (harmonyColors.includes(f.color) || f.color === bottom.color)
+    );
+
+    const footwear = randomItem(matchedFootwear.length ? matchedFootwear : footwears);
+
+    let outerwear: WardrobeItem | null = null;
+
+    if (outerwears.length && Math.random() < 0.6) {
+
+      const matchedOuterwear = outerwears.filter(
+        o => harmonyColors.includes(o.color) && o.color !== top.color
+      );
+
+      outerwear = randomItem(matchedOuterwear.length ? matchedOuterwear : outerwears);
+    }
+
+    let accessory: WardrobeItem | null = null;
+
+    if (accessories.length) {
+
+      const matchedAccessories = accessories.filter(
+        a => harmonyColors.includes(a.color) || a.color === "unknown"
+      );
+
+      accessory = randomItem(matchedAccessories.length ? matchedAccessories : accessories);
+    }
+
+    const candidate: Omit<GeneratedOutfit, 'generatedAt'> = {
+      top,
+      bottom,
+      footwear,
+      outerwear,
+      accessory
+    };
+
+    const score = scoreOutfit(candidate);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestOutfit = candidate;
+    }
+
+  }
+
+  return bestOutfit!;
+}
+
+function scoreOutfit(outfit: Omit<GeneratedOutfit, 'generatedAt'>) {
+
+  let score = 50;
+
+  const neutral = ["black", "white", "grey", "navy"];
+
+  if (neutral.includes(outfit.top.color)) score += 10;
+  if (neutral.includes(outfit.bottom.color)) score += 10;
+
+  const harmony = COLOR_HARMONY[outfit.top.color] || [];
+
+  if (harmony.includes(outfit.bottom.color)) score += 20;
+
+  if (harmony.includes(outfit.footwear.color)) score += 15;
+
+  if (outfit.accessory) score += 5;
+
+  if (
+    outfit.top.name.toLowerCase().includes("blazer") &&
+    outfit.bottom.name.toLowerCase().includes("short")
+  ) {
+    score -= 25;
+  }
+
+  return score;
 }
