@@ -285,16 +285,241 @@ app.post("/api/create-post", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT;
-// Start outfit model then listen
-startOutfitModel();
-waitForOutfit().then((ready) => {
-  if (ready) console.log("[outfit] Model API ready");
-  else
-    console.warn(
-      "[outfit] Model API may not be ready yet (check Python/uvicorn)",
-    );
+// -----------------------------------------------------------------------------
+// Likes + For You feed (embedding-based ranking)
+// -----------------------------------------------------------------------------
+
+function l2Normalize(vec) {
+  if (!Array.isArray(vec) || vec.length === 0) return null;
+  let sumSq = 0;
+  for (let i = 0; i < vec.length; i++) {
+    const v = Number(vec[i]);
+    if (!Number.isFinite(v)) return null;
+    sumSq += v * v;
+  }
+  const norm = Math.sqrt(sumSq);
+  if (!Number.isFinite(norm) || norm <= 0) return null;
+  return vec.map((x) => Number(x) / norm);
+}
+
+function dot(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return null;
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += Number(a[i]) * Number(b[i]);
+  return s;
+}
+
+function extractItemEmbeddings(outfit_data) {
+  if (!outfit_data || typeof outfit_data !== "object") return [];
+
+  // Preferred schema (as per spec)
+  const items = Array.isArray(outfit_data.items) ? outfit_data.items : null;
+  if (items) {
+    return items
+      .map((it) => it?.combined_embedding)
+      .filter((v) => Array.isArray(v) && v.length > 0);
+  }
+
+  // Our current pipeline schema: wardrobe_vectors is list of items with combined_embedding
+  const vectors = Array.isArray(outfit_data.wardrobe_vectors)
+    ? outfit_data.wardrobe_vectors
+    : null;
+  if (vectors) {
+    return vectors
+      .map((it) => it?.combined_embedding)
+      .filter((v) => Array.isArray(v) && v.length > 0);
+  }
+
+  return [];
+}
+
+function buildUserVectorFromLikedPosts(likedPosts) {
+  const all = [];
+  for (const p of likedPosts || []) {
+    const ods = p?.outfit_data;
+    const embs = extractItemEmbeddings(ods);
+    for (const e of embs) all.push(e);
+  }
+  if (all.length === 0) return null;
+  const dim = all[0].length;
+  if (!dim || all.some((v) => !Array.isArray(v) || v.length !== dim)) return null;
+
+  const mean = new Array(dim).fill(0);
+  for (const v of all) {
+    for (let i = 0; i < dim; i++) mean[i] += Number(v[i]);
+  }
+  for (let i = 0; i < dim; i++) mean[i] /= all.length;
+  return l2Normalize(mean);
+}
+
+app.post("/api/like-toggle", async (req, res) => {
+  try {
+    const clerkUserId = await verifyClerkToken(req);
+    if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
+
+    const { post_id } = req.body || {};
+    if (!post_id) return res.status(400).json({ error: "missing post_id" });
+    console.log("[like-toggle]", { user_id: clerkUserId, post_id });
+
+    const { data: existing, error: existErr } = await supabaseAdmin
+      .from("likes")
+      .select("id")
+      .match({ user_id: clerkUserId, post_id })
+      .maybeSingle();
+    if (existErr) {
+      // likes table doesn't exist yet
+      if (existErr.code === "PGRST205") {
+        return res.status(400).json({
+          error:
+            "likes table not found in Supabase. Create public.likes (see server/sql/likes.sql) then retry.",
+        });
+      }
+      throw existErr;
+    }
+
+    if (existing?.id) {
+      const { error: delErr } = await supabaseAdmin
+        .from("likes")
+        .delete()
+        .match({ user_id: clerkUserId, post_id });
+      if (delErr) throw delErr;
+      return res.json({ liked: false });
+    }
+
+    const { error: insErr } = await supabaseAdmin
+      .from("likes")
+      .insert([{ user_id: clerkUserId, post_id }]);
+    if (insErr) {
+      const code = insErr?.code;
+      const msg = (insErr?.message || "").toLowerCase();
+      if (code !== "23505" && !msg.includes("duplicate")) throw insErr;
+    }
+    return res.json({ liked: true });
+  } catch (err) {
+    console.error("like-toggle error", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
 });
-app.listen(PORT, "0.0.0.0", () =>
-  console.log(`Server running on http://0.0.0.0:${PORT}`),
-);
+
+app.get("/api/for-you", async (req, res) => {
+  try {
+    const clerkUserId = await verifyClerkToken(req);
+    if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
+
+    // 1) liked posts (need outfit_data)
+    const { data: likedRows, error: likedErr } = await supabaseAdmin
+      .from("likes")
+      .select("post_id")
+      .eq("user_id", clerkUserId);
+    if (likedErr) {
+      // If likes table doesn't exist yet, fall back to latest posts.
+      if (likedErr.code === "PGRST205") {
+        const { data, error } = await supabaseAdmin
+          .from("posts")
+          .select("id,image_url,caption,owner_clerk_id,tags,created_at")
+          .order("created_at", { ascending: false })
+          .limit(20);
+        if (error) throw error;
+        return res.json({ ok: true, posts: data || [] });
+      }
+      throw likedErr;
+    }
+    const likedPostIds = (likedRows || []).map((r) => r.post_id).filter(Boolean);
+    console.log("[for-you]", { user_id: clerkUserId, liked_count: likedPostIds.length });
+
+    if (likedPostIds.length === 0) {
+      const { data, error } = await supabaseAdmin
+        .from("posts")
+        .select("id,image_url,caption,owner_clerk_id,tags,created_at")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return res.json({ ok: true, posts: data || [] });
+    }
+
+    const { data: likedPosts, error: likedPostsErr } = await supabaseAdmin
+      .from("posts")
+      .select("id,outfit_data")
+      .in("id", likedPostIds);
+    if (likedPostsErr) throw likedPostsErr;
+
+    const userVec = buildUserVectorFromLikedPosts(likedPosts || []);
+    if (!userVec) {
+      const { data, error } = await supabaseAdmin
+        .from("posts")
+        .select("id,image_url,caption,owner_clerk_id,tags,created_at")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return res.json({ ok: true, posts: data || [] });
+    }
+
+    // 2) candidate posts
+    const { data: candidates, error: candErr } = await supabaseAdmin
+      .from("posts")
+      .select("id,image_url,caption,owner_clerk_id,tags,outfit_data,created_at")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (candErr) throw candErr;
+
+    // 3) score each post by max item similarity
+    const scored = [];
+    for (const p of candidates || []) {
+      const embs = extractItemEmbeddings(p.outfit_data);
+      let best = -1;
+      for (const e of embs) {
+        const en = l2Normalize(e) || e; // tolerate already-normalized
+        const s = dot(userVec, en);
+        if (typeof s === "number" && Number.isFinite(s) && s > best) best = s;
+      }
+      if (best > -1) {
+        scored.push({
+          id: p.id,
+          image_url: p.image_url,
+          caption: p.caption,
+          owner_clerk_id: p.owner_clerk_id,
+          tags: p.tags,
+          score: best,
+          created_at: p.created_at,
+        });
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    if (scored.length === 0) {
+      const { data, error } = await supabaseAdmin
+        .from("posts")
+        .select("id,image_url,caption,owner_clerk_id,tags,created_at")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return res.json({ ok: true, posts: data || [] });
+    }
+    return res.json({ ok: true, posts: scored.slice(0, 20) });
+  } catch (err) {
+    console.error("for-you error", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+const PORT = parseInt(process.env.PORT || "4000", 10);
+// Start outfit model then listen.
+// If the outfit API is already running (e.g. from another terminal),
+// don't try to spawn a second copy (Windows will error on port 8000).
+waitForOutfit(1500).then((alreadyUp) => {
+  if (alreadyUp) {
+    console.log("[outfit] Model API already running");
+    return true;
+  }
+  startOutfitModel();
+  return waitForOutfit();
+}).then((ready) => {
+  if (ready) console.log("[outfit] Model API ready");
+  else console.warn("[outfit] Model API may not be ready yet (check Python/uvicorn)");
+});
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
+});
+server.on("error", (err) => {
+  console.error("HTTP server error:", err);
+});

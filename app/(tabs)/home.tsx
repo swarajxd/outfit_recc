@@ -21,7 +21,6 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { supabase } from "../../lib/supabase";
 import {
   FALLBACK_WARDROBE,
   GeneratedOutfit,
@@ -108,6 +107,8 @@ type Post = {
   owner_clerk_id: string;
   tags: string[] | null;
   created_at: string;
+  score?: number;
+  isLiked?: boolean;
 };
 
 // ─── Color Display Map ────────────────────────────────────────────────────────
@@ -580,25 +581,54 @@ export default function HomeScreen() {
   const toggleLike = (id: string) =>
     setLikedItems((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  async function getAuthHeader(): Promise<string | null> {
+    if (!user?.id) return null;
+    // Keep dev-token fallback (works with current server verifyClerkToken)
+    let authHeader = `Bearer dev:${user.id}`;
+    try {
+      if (getToken) {
+        const token = await getToken({ template: "supabase" });
+        if (token) authHeader = `Bearer ${token}`;
+      }
+    } catch {
+      authHeader = `Bearer dev:${user.id}`;
+    }
+    return authHeader;
+  }
+
   async function fetchPosts() {
     if (postsFetchInFlight.current) return;
     postsFetchInFlight.current = true;
     try {
       setPostsError(null);
-      const { data, error } = await supabase
-        .from("posts")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(20);
+      if (!user?.id) {
+        setPosts([]);
+        return;
+      }
 
-      if (error) throw error;
+      const authHeader = await getAuthHeader();
+      if (!authHeader) {
+        setPosts([]);
+        return;
+      }
+
+      const endpoint =
+        activeTab === "foryou" ? "/api/for-you" : "/api/for-you";
+      const resp = await fetch(`${SERVER_BASE}${endpoint}`, {
+        headers: { Authorization: authHeader },
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error((json as any)?.error || "Failed to load feed");
+
+      const data = (json as any)?.posts ?? [];
       const normalized: Post[] = (data ?? []).map((p: any) => ({
         id: String(p.id),
         image_url: String(p.image_url),
         caption: p.caption ?? null,
-        owner_clerk_id: String(p.owner_clerk_id),
+        owner_clerk_id: String(p.owner_clerk_id ?? ""),
         tags: Array.isArray(p.tags) ? p.tags.map((t: any) => String(t)) : null,
-        created_at: String(p.created_at),
+        created_at: String(p.created_at ?? ""),
+        score: typeof p.score === "number" ? p.score : undefined,
       }));
       setPosts(normalized);
     } catch (e) {
@@ -617,10 +647,44 @@ export default function HomeScreen() {
     }
   }
 
+  async function handleLike(post_id: string) {
+    const authHeader = await getAuthHeader();
+    if (!authHeader || !user?.id) return;
+
+    console.log("LIKE CLICKED:", user.id, post_id);
+
+    // optimistic UI (local heart state)
+    setLikedItems((prev) => ({ ...prev, [post_id]: !prev[post_id] }));
+
+    try {
+      const resp = await fetch(`${SERVER_BASE}/api/like-toggle`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authHeader,
+        },
+        body: JSON.stringify({ post_id }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error("LIKE ERROR:", json);
+        throw new Error((json as any)?.error || "like-toggle failed");
+      }
+      console.log("LIKE RESULT:", json);
+
+      // Optionally refetch feed so personalization kicks in immediately
+      fetchPosts();
+    } catch (e) {
+      console.error("LIKE ERROR:", e);
+      // revert optimistic toggle on failure
+      setLikedItems((prev) => ({ ...prev, [post_id]: !prev[post_id] }));
+    }
+  }
+
   useEffect(() => {
     fetchPosts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeTab, user?.id]);
 
   const [items, setItems] = useState<any[]>([]);
   useEffect(() => {
@@ -872,7 +936,7 @@ export default function HomeScreen() {
                   key={p.id}
                   item={derivedItem}
                   liked={!!likedItems[p.id]}
-                  onLike={() => toggleLike(p.id)}
+                  onLike={() => handleLike(p.id)}
                 />
               );
             })
