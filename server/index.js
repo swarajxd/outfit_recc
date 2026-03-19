@@ -60,18 +60,51 @@ const supabaseAdmin = createClient(
 let outfitProcess = null;
 let outfitStarting = false;
 let outfitRestartTimer = null;
-function startOutfitModel() {
+
+async function isPortInUse(port) {
+  return new Promise((resolve) => {
+    const net = require("net");
+    const server = net.createServer();
+    server.once("error", (err) => {
+      if (err.code === "EADDRINUSE") resolve(true);
+      else resolve(false);
+    });
+    server.once("listening", () => {
+      server.close();
+      resolve(false);
+    });
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+async function startOutfitModel() {
   if (outfitProcess) {
-    console.log("[outfit] Model API already running (pid=" + outfitProcess.pid + ")");
+    console.log(
+      "[outfit] Model API already running (pid=" + outfitProcess.pid + ")",
+    );
     return;
   }
   if (outfitStarting) return;
   outfitStarting = true;
 
+  // Check if port is already in use
+  const inUse = await isPortInUse(OUTFIT_PORT);
+  if (inUse) {
+    console.log(
+      `[outfit] Port ${OUTFIT_PORT} already in use. Assuming Model API is already running.`,
+    );
+    outfitStarting = false;
+    return;
+  }
+
   const venvPython = path.join(__dirname, "outfit_model/venv/bin/python");
   const python = fs.existsSync(venvPython) ? venvPython : "python3";
   if (!fs.existsSync(venvPython)) {
-    console.warn("[outfit] venv python not found at", venvPython, "- falling back to python3 on PATH");
+    console.warn(
+      "[outfit] venv python not found at",
+      venvPython,
+      "- falling back to python3 on PATH",
+    );
   }
   const depsPath = path.join(REPO_OUTFIT, "deps");
   const pyPath = [depsPath, REPO_OUTFIT].join(path.delimiter);
@@ -82,8 +115,7 @@ function startOutfitModel() {
     [
       "-m",
       "uvicorn",
-      // Use the lightweight API that exposes /analyze (and our post vectors endpoint).
-      "api_minimal:app",
+      "api:app",
       "--host",
       "127.0.0.1",
       "--port",
@@ -266,180 +298,86 @@ app.post("/api/create-post", async (req, res) => {
       return res.status(500).json({ error: error.message || error });
     }
 
-    // Generate vectors + Gemini attributes for this post image, then persist to posts.outfit_data.
-    // If this fails, we still return the created post (outfit_data will be null).
-    let outfit_data = null;
-    try {
-      // Use a Cloudinary-transcoded JPEG for analysis so phone HEIC/HEIF images are readable by OpenCV.
-      let analysisUrl = image_url;
-      try {
-        const uploadMarker = "/upload/";
-        if (analysisUrl.includes(uploadMarker)) {
-          analysisUrl = analysisUrl.replace(uploadMarker, "/upload/f_jpg/");
-        }
-      } catch {
-        // fall back to original url
-        analysisUrl = image_url;
-      }
-
-      const imgResp = await fetch(analysisUrl);
-      if (!imgResp.ok) throw new Error(`failed to download image: ${imgResp.status}`);
-      const buf = Buffer.from(await imgResp.arrayBuffer());
-      const contentType = imgResp.headers.get("content-type") || "image/jpeg";
-
-      const form = new FormData();
-      form.append("file", buf, { filename: "post.jpg", contentType });
-      // Use post id as user_id so the pipeline's outputs are namespaced per post.
-      form.append("user_id", `post_${data.id}`);
-
-      const headers = form.getHeaders();
-      const body = await formDataToBuffer(form);
-      headers["Content-Length"] = String(body.length);
-
-      const vectResp = await fetch(`${OUTFIT_API_URL}/analyze-post`, {
-        method: "POST",
-        body,
-        headers,
-      });
-      if (!vectResp.ok) {
-        const errText = await vectResp.text();
-        throw new Error(errText || `outfit api failed: ${vectResp.status}`);
-      }
-      outfit_data = await vectResp.json();
-
-      const { error: updErr } = await supabaseAdmin
-        .from("posts")
-        .update({ outfit_data })
-        .eq("id", data.id);
-      if (updErr) throw updErr;
-    } catch (e) {
-      console.warn("[create-post] outfit_data generation failed:", e?.message || e);
-    }
-
-    res.json({ ok: true, post: { ...data, outfit_data } });
+    res.json({ ok: true, post: data });
   } catch (err) {
     console.error("create-post error", err);
     res.status(500).json({ error: String(err) });
   }
 });
 
-// -----------------------------------------------------------------------------
-// Likes + For You feed (embedding-based ranking)
-// -----------------------------------------------------------------------------
+// ---- endpoint: for-you feed (basic fetch for now) ----
+app.get("/api/for-you", async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("posts")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20);
 
-function l2Normalize(vec) {
-  if (!Array.isArray(vec) || vec.length === 0) return null;
-  let sumSq = 0;
-  for (let i = 0; i < vec.length; i++) {
-    const v = Number(vec[i]);
-    if (!Number.isFinite(v)) return null;
-    sumSq += v * v;
+    if (error) {
+      console.error("fetch for-you error", error);
+      return res.status(500).json({ error: error.message || error });
+    }
+
+    res.json({ posts: data });
+  } catch (err) {
+    console.error("for-you error", err);
+    res.status(500).json({ error: String(err) });
   }
-  const norm = Math.sqrt(sumSq);
-  if (!Number.isFinite(norm) || norm <= 0) return null;
-  return vec.map((x) => Number(x) / norm);
-}
+});
 
-function dot(a, b) {
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return null;
-  let s = 0;
-  for (let i = 0; i < a.length; i++) s += Number(a[i]) * Number(b[i]);
-  return s;
-}
-
-function extractItemEmbeddings(outfit_data) {
-  if (!outfit_data || typeof outfit_data !== "object") return [];
-
-  // Preferred schema (as per spec)
-  const items = Array.isArray(outfit_data.items) ? outfit_data.items : null;
-  if (items) {
-    return items
-      .map((it) => it?.combined_embedding)
-      .filter((v) => Array.isArray(v) && v.length > 0);
-  }
-
-  // Our current pipeline schema: wardrobe_vectors is list of items with combined_embedding
-  const vectors = Array.isArray(outfit_data.wardrobe_vectors)
-    ? outfit_data.wardrobe_vectors
-    : null;
-  if (vectors) {
-    return vectors
-      .map((it) => it?.combined_embedding)
-      .filter((v) => Array.isArray(v) && v.length > 0);
-  }
-
-  return [];
-}
-
-function buildUserVectorFromLikedPosts(likedPosts) {
-  const all = [];
-  for (const p of likedPosts || []) {
-    const ods = p?.outfit_data;
-    const embs = extractItemEmbeddings(ods);
-    for (const e of embs) all.push(e);
-  }
-  if (all.length === 0) return null;
-  const dim = all[0].length;
-  if (!dim || all.some((v) => !Array.isArray(v) || v.length !== dim)) return null;
-
-  const mean = new Array(dim).fill(0);
-  for (const v of all) {
-    for (let i = 0; i < dim; i++) mean[i] += Number(v[i]);
-  }
-  for (let i = 0; i < dim; i++) mean[i] /= all.length;
-  return l2Normalize(mean);
-}
-
+// ---- endpoint: like toggle ----
 app.post("/api/like-toggle", async (req, res) => {
   try {
     const clerkUserId = await verifyClerkToken(req);
     if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
 
-    const { post_id } = req.body || {};
+    const { post_id } = req.body;
     if (!post_id) return res.status(400).json({ error: "missing post_id" });
-    console.log("[like-toggle]", { user_id: clerkUserId, post_id });
 
-    const { data: existing, error: existErr } = await supabaseAdmin
+    // Check if like exists
+    const { data: existing } = await supabaseAdmin
       .from("likes")
-      .select("id")
-      .match({ user_id: clerkUserId, post_id })
+      .select("*")
+      .eq("post_id", post_id)
+      .eq("user_clerk_id", clerkUserId)
       .maybeSingle();
-    if (existErr) {
-      // likes table doesn't exist yet
-      if (existErr.code === "PGRST205") {
-        return res.status(400).json({
-          error:
-            "likes table not found in Supabase. Create public.likes (see server/sql/likes.sql) then retry.",
-        });
-      }
-      throw existErr;
-    }
 
-    if (existing?.id) {
-      const { error: delErr } = await supabaseAdmin
+    if (existing) {
+      // unlike
+      const { error } = await supabaseAdmin
         .from("likes")
         .delete()
-        .match({ user_id: clerkUserId, post_id });
-      if (delErr) throw delErr;
-      return res.json({ liked: false });
+        .eq("post_id", post_id)
+        .eq("user_clerk_id", clerkUserId);
+      if (error) throw error;
+      res.json({ liked: false });
+    } else {
+      // like
+      const { error } = await supabaseAdmin
+        .from("likes")
+        .insert([{ post_id, user_clerk_id: clerkUserId }]);
+      if (error) throw error;
+      res.json({ liked: true });
     }
-
-    const { error: insErr } = await supabaseAdmin
-      .from("likes")
-      .insert([{ user_id: clerkUserId, post_id }]);
-    if (insErr) {
-      const code = insErr?.code;
-      const msg = (insErr?.message || "").toLowerCase();
-      if (code !== "23505" && !msg.includes("duplicate")) throw insErr;
-    }
-    return res.json({ liked: true });
   } catch (err) {
     console.error("like-toggle error", err);
-    res.status(500).json({ error: String(err?.message || err) });
+    res.status(500).json({ error: String(err) });
   }
 });
 
-
+const PORT = process.env.PORT;
+// Start outfit model then listen
+(async () => {
+  await startOutfitModel();
+  waitForOutfit().then((ready) => {
+    if (ready) console.log("[outfit] Model API ready");
+    else
+      console.warn(
+        "[outfit] Model API may not be ready yet (check Python/uvicorn)",
+      );
+  });
+})();
 
 app.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on http://0.0.0.0:${PORT}`),
@@ -462,128 +400,4 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
   stopOutfitModel("SIGTERM");
   process.exit(0);
-});
-
-
-app.get("/api/for-you", async (req, res) => {
-  try {
-    const clerkUserId = await verifyClerkToken(req);
-    if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
-
-    // 1) liked posts (need outfit_data)
-    const { data: likedRows, error: likedErr } = await supabaseAdmin
-      .from("likes")
-      .select("post_id")
-      .eq("user_id", clerkUserId);
-    if (likedErr) {
-      // If likes table doesn't exist yet, fall back to latest posts.
-      if (likedErr.code === "PGRST205") {
-        const { data, error } = await supabaseAdmin
-          .from("posts")
-          .select("id,image_url,caption,owner_clerk_id,tags,created_at")
-          .order("created_at", { ascending: false })
-          .limit(20);
-        if (error) throw error;
-        return res.json({ ok: true, posts: data || [] });
-      }
-      throw likedErr;
-    }
-    const likedPostIds = (likedRows || []).map((r) => r.post_id).filter(Boolean);
-    console.log("[for-you]", { user_id: clerkUserId, liked_count: likedPostIds.length });
-
-    if (likedPostIds.length === 0) {
-      const { data, error } = await supabaseAdmin
-        .from("posts")
-        .select("id,image_url,caption,owner_clerk_id,tags,created_at")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return res.json({ ok: true, posts: data || [] });
-    }
-
-    const { data: likedPosts, error: likedPostsErr } = await supabaseAdmin
-      .from("posts")
-      .select("id,outfit_data")
-      .in("id", likedPostIds);
-    if (likedPostsErr) throw likedPostsErr;
-
-    const userVec = buildUserVectorFromLikedPosts(likedPosts || []);
-    if (!userVec) {
-      const { data, error } = await supabaseAdmin
-        .from("posts")
-        .select("id,image_url,caption,owner_clerk_id,tags,created_at")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return res.json({ ok: true, posts: data || [] });
-    }
-
-    // 2) candidate posts
-    const { data: candidates, error: candErr } = await supabaseAdmin
-      .from("posts")
-      .select("id,image_url,caption,owner_clerk_id,tags,outfit_data,created_at")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (candErr) throw candErr;
-
-    // 3) score each post by max item similarity
-    const scored = [];
-    for (const p of candidates || []) {
-      const embs = extractItemEmbeddings(p.outfit_data);
-      let best = -1;
-      for (const e of embs) {
-        const en = l2Normalize(e) || e; // tolerate already-normalized
-        const s = dot(userVec, en);
-        if (typeof s === "number" && Number.isFinite(s) && s > best) best = s;
-      }
-      if (best > -1) {
-        scored.push({
-          id: p.id,
-          image_url: p.image_url,
-          caption: p.caption,
-          owner_clerk_id: p.owner_clerk_id,
-          tags: p.tags,
-          score: best,
-          created_at: p.created_at,
-        });
-      }
-    }
-
-    scored.sort((a, b) => b.score - a.score);
-    if (scored.length === 0) {
-      const { data, error } = await supabaseAdmin
-        .from("posts")
-        .select("id,image_url,caption,owner_clerk_id,tags,created_at")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return res.json({ ok: true, posts: data || [] });
-    }
-    return res.json({ ok: true, posts: scored.slice(0, 20) });
-  } catch (err) {
-    console.error("for-you error", err);
-    res.status(500).json({ error: String(err?.message || err) });
-  }
-});
-
-const PORT = parseInt(process.env.PORT || "4000", 10);
-// Start outfit model then listen.
-// If the outfit API is already running (e.g. from another terminal),
-// don't try to spawn a second copy (Windows will error on port 8000).
-waitForOutfit(1500).then((alreadyUp) => {
-  if (alreadyUp) {
-    console.log("[outfit] Model API already running");
-    return true;
-  }
-  startOutfitModel();
-  return waitForOutfit();
-}).then((ready) => {
-  if (ready) console.log("[outfit] Model API ready");
-  else console.warn("[outfit] Model API may not be ready yet (check Python/uvicorn)");
-});
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
-});
-server.on("error", (err) => {
-  console.error("HTTP server error:", err);
 });
