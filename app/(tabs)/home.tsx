@@ -569,9 +569,23 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!user?.id) return;
 
-    fetch(`${SERVER_BASE}/api/profile/segmented/${user.id}`)
+    fetch(`${SERVER_BASE}/api/profile/wardrobe/${user.id}`)
       .then((res) => res.json())
-      .then((data) => setItems(data.items || []))
+      .then((data) => {
+        const w = data?.wardrobe || {};
+        const fetched: any[] = [];
+        for (const key of Object.keys(w)) {
+          const arr = Array.isArray(w[key]) ? w[key] : [];
+          for (const item of arr) {
+            fetched.push({
+              id: item.id,
+              image: item.image,
+              category: item.category,
+            });
+          }
+        }
+        setItems(fetched);
+      })
       .catch(() => {});
   }, [user]);
   const userWardrobe = useMemo(() => {

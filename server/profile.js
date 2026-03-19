@@ -3,8 +3,16 @@ const fs = require("fs");
 const express = require("express");
 const FormData = require("form-data");
 const multer = require("multer");
+const { createClient } = require("@supabase/supabase-js");
 
 const router = express.Router();
+
+// Supabase admin client (server-side only; requires service role key).
+// env vars are loaded by server/index.js via dotenv.
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
 const OUTFIT_PORT = parseInt(process.env.OUTFIT_PORT || "8000", 10);
 const OUTFIT_API_URL = `http://127.0.0.1:${OUTFIT_PORT}`;
@@ -165,16 +173,93 @@ router.get("/job/:jobId", async (req, res) => {
 router.get("/wardrobe/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const response = await fetchWithRetry(
-      `${OUTFIT_API_URL}/wardrobe/${encodeURIComponent(userId)}`,
-    );
-    const result = await response.json();
 
-    // Rewrite image URLs so they go through this Node server's /static route
+    // Fetch wardrobe from Supabase and return in the same shape the
+    // frontend expects: { success, wardrobe: {tshirts, jeans, ... } }
+    const { data, error } = await supabaseAdmin
+      .from("wardrobe_items")
+      .select("item_id,category,image_url,attributes,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return res
+        .status(500)
+        .json({ success: false, error: error.message || String(error) });
+    }
+
+    const items = Array.isArray(data) ? data : [];
+
+    // Map vectors categories to DigitalWardrobe bucket names
+    const bucketFor = (cat) => {
+      const c = String(cat || "").toLowerCase();
+      if (
+        [
+          "tshirt",
+          "shirt",
+          "top",
+          "dress",
+          "sweater",
+          "jacket",
+          "coat",
+          "hoodie",
+          "blouse",
+        ].includes(c)
+      )
+        return "tshirts";
+      if (["pants", "jeans", "trouser", "trousers", "shorts", "skirt"].includes(c))
+        return "jeans";
+      if (["shoes", "shoe", "sneaker", "sneakers", "boot", "boots"].includes(c))
+        return "shoes";
+      if (c === "watch") return "watches";
+      if (["cap", "hat"].includes(c)) return "caps";
+      if (c === "bag") return "bags";
+      if (c === "belt") return "caps";
+      return "tshirts";
+    };
+
+    const wardrobe = {
+      tshirts: [],
+      jeans: [],
+      shoes: [],
+      watches: [],
+      caps: [],
+      bags: [],
+    };
+
+    for (const row of items) {
+      const attrs =
+        row.attributes && typeof row.attributes === "object" ? row.attributes : {};
+      const imageUrl = (row.image_url || "").trim();
+      const finalImage =
+        imageUrl ||
+        (typeof attrs.image_url === "string" ? attrs.image_url : "") ||
+        (typeof attrs.image === "string" ? attrs.image : "") ||
+        "";
+
+      // Keep attributes.image aligned with what the UI renders
+      if (finalImage) {
+        attrs.image = finalImage;
+        attrs.image_url = imageUrl;
+      }
+
+      wardrobe[bucketFor(row.category)].push({
+        id: row.item_id,
+        category: row.category,
+        image: finalImage,
+        color: attrs.color || "unknown",
+        pattern: attrs.pattern || "unknown",
+        attributes: attrs,
+        added_at: row.created_at,
+      });
+    }
+
+    // Rewrite any remaining local filesystem paths to /static/... URLs
+    // (Cloudinary URLs remain untouched since they don't match the /static regex).
     const nodeBase = `${req.protocol}://${req.get("host")}`;
-    rewriteImageUrls(result, nodeBase);
+    rewriteImageUrls({ wardrobe }, nodeBase);
 
-    res.status(response.status).json(result);
+    res.status(200).json({ success: true, wardrobe });
   } catch (err) {
     console.error("wardrobe-fetch error", err);
     res.status(500).json({ error: err.message || String(err) });

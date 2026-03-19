@@ -65,15 +65,24 @@ export default function WardrobeScreen() {
     setIsLoading(true);
     try {
       const resp = await fetch(
-        `${SERVER_BASE}/api/profile/segmented/${encodeURIComponent(userId)}`,
+        `${SERVER_BASE}/api/profile/wardrobe/${encodeURIComponent(userId)}`,
       );
       if (!resp.ok) throw new Error("Failed to fetch wardrobe");
       const json = await resp.json();
-      const fetched: WardrobeItem[] = (json.items || []).map((item: any) => ({
-        id: item.id || item.filename || String(Math.random()),
-        image: item.image,
-        category: item.category || "other",
-      }));
+
+      // Node returns { success, wardrobe: {tshirts:[], jeans:[], ...} }
+      const w = json?.wardrobe || {};
+      const fetched: WardrobeItem[] = [];
+      for (const key of Object.keys(w)) {
+        const arr = Array.isArray(w[key]) ? w[key] : [];
+        for (const item of arr) {
+          fetched.push({
+            id: item.id || String(Math.random()),
+            image: item.image,
+            category: item.category || key.replace(/s$/, "") || "other",
+          });
+        }
+      }
       setItems(fetched);
     } catch (err) {
       console.warn("wardrobe fetch error:", err);

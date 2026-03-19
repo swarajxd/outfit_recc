@@ -58,8 +58,21 @@ const supabaseAdmin = createClient(
 
 // ---- Start outfit model API (Python) from repo's outfit_model ----
 let outfitProcess = null;
+let outfitStarting = false;
+let outfitRestartTimer = null;
 function startOutfitModel() {
-  const python = path.join(__dirname, "outfit_model/venv/bin/python");
+  if (outfitProcess) {
+    console.log("[outfit] Model API already running (pid=" + outfitProcess.pid + ")");
+    return;
+  }
+  if (outfitStarting) return;
+  outfitStarting = true;
+
+  const venvPython = path.join(__dirname, "outfit_model/venv/bin/python");
+  const python = fs.existsSync(venvPython) ? venvPython : "python3";
+  if (!fs.existsSync(venvPython)) {
+    console.warn("[outfit] venv python not found at", venvPython, "- falling back to python3 on PATH");
+  }
   const depsPath = path.join(REPO_OUTFIT, "deps");
   const pyPath = [depsPath, REPO_OUTFIT].join(path.delimiter);
   const env = { ...process.env, PYTHONPATH: REPO_OUTFIT };
@@ -77,6 +90,7 @@ function startOutfitModel() {
     ],
     { cwd: REPO_OUTFIT, env, stdio: ["ignore", "pipe", "pipe"] },
   );
+  outfitStarting = false;
   outfitProcess.stdout.on("data", (d) =>
     process.stdout.write("[outfit] " + d.toString()),
   );
@@ -87,9 +101,22 @@ function startOutfitModel() {
     console.warn("[outfit] process error:", err.message),
   );
   outfitProcess.on("exit", (code) => {
+    const oldPid = outfitProcess?.pid;
     outfitProcess = null;
-    if (code !== 0 && code !== null)
-      console.warn("[outfit] exited with code", code);
+    if (code !== 0 && code !== null) {
+      console.warn("[outfit] exited with code", code, "(pid=" + oldPid + ")");
+    } else {
+      console.log("[outfit] exited (pid=" + oldPid + ")");
+    }
+
+    // Auto-restart if Node is still running (common with uvicorn import errors)
+    if (!outfitRestartTimer) {
+      outfitRestartTimer = setTimeout(() => {
+        outfitRestartTimer = null;
+        console.log("[outfit] restarting Model API...");
+        startOutfitModel();
+      }, 1500);
+    }
   });
   console.log("[outfit] Model API starting on port", OUTFIT_PORT);
 }
@@ -258,3 +285,22 @@ waitForOutfit().then((ready) => {
 app.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on http://0.0.0.0:${PORT}`),
 );
+
+function stopOutfitModel(signal = "SIGTERM") {
+  if (!outfitProcess) return;
+  try {
+    console.log("[outfit] stopping Model API (pid=" + outfitProcess.pid + ")");
+    outfitProcess.kill(signal);
+  } catch (e) {
+    // ignore
+  }
+}
+
+process.on("SIGINT", () => {
+  stopOutfitModel("SIGINT");
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  stopOutfitModel("SIGTERM");
+  process.exit(0);
+});
