@@ -51,3 +51,7 @@ app-example
 /ios
 /android
 server/outfit_model
+
+.venv/
+.venv
+.env

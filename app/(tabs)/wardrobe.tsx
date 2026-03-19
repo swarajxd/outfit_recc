@@ -1,7 +1,9 @@
 
 import { useUser } from "@clerk/clerk-expo";
+import { BlurView } from 'expo-blur';
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,16 +17,17 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
+  buildWardrobeFromItems,
   FALLBACK_WARDROBE,
   GeneratedOutfit,
-  getOrCreateDailyOutfit,
-  buildWardrobeFromItems
+  getOrCreateDailyOutfit
 } from '../utils/outfitEngine';
-const SERVER_BASE =
-  (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
+
+const SERVER_BASE: string =
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  (Constants.expoConfig?.extra as any)?.API_BASE_URL ||
+  "http://localhost:4000";
 
 const PRIMARY = "#FF6B00";
 const BG = "#000000";

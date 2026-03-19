@@ -58,9 +58,13 @@ export default function PostCard({ post, onPress }) {
 
 
   const ratios = [0.75, 1, 0.85, 1.2];
-
-  const ratio =
-    ratios[parseInt(post.id.replace("local-", "")) % ratios.length];
+  let ratio = 1;
+  if (typeof post.id === "string" && post.id.startsWith("local-")) {
+    const idx = parseInt(post.id.replace("local-", ""), 10);
+    if (!Number.isNaN(idx)) {
+      ratio = ratios[idx % ratios.length];
+    }
+  }
 
   return (
     <Pressable

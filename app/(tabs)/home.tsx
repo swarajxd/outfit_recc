@@ -1,17 +1,19 @@
 
 import { useAuth, useUser } from "@clerk/clerk-expo";
-import { BlurView } from "expo-blur";
-import Constants from "expo-constants";
-import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from 'expo-blur';
+import Constants from 'expo-constants';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Animated,
-  Dimensions,   
+  ActivityIndicator,
+  Dimensions,
   Image,
   Platform,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -37,6 +39,8 @@ const PRIMARY = "#FF6B00";
 const BG = "#000000";
 const CHARCOAL = "#1A1A1A";
 const WIDTH = Dimensions.get("window").width;
+const DEFAULT_AVATAR =
+  "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&q=80";
 
 // ─── Daily Outfit – Week strip ────────────────────────────────────────────────
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -98,6 +102,17 @@ const FEED_ITEMS = [
     tag: "#Monochrome",
   },
 ];
+
+type Post = {
+  id: string;
+  image_url: string;
+  caption: string | null;
+  owner_clerk_id: string;
+  tags: string[] | null;
+  created_at: string;
+  score?: number;
+  isLiked?: boolean;
+};
 
 // ─── Color Display Map ────────────────────────────────────────────────────────
 const COLOR_DISPLAY: Record<string, string> = {
@@ -551,9 +566,12 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<"foryou" | "following">("foryou");
-  const [likedItems, setLikedItems] = useState<Record<string, boolean>>({
-    "1": true,
-  });
+  const [likedItems, setLikedItems] = useState<Record<string, boolean>>({});
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [postsError, setPostsError] = useState<string | null>(null);
+  const postsFetchInFlight = useRef(false);
   const [outfit, setOutfit] = useState<GeneratedOutfit | null>(null);
   const [outfitLoading, setOutfitLoading] = useState(true);
   const weekDates = getWeekDates();
@@ -562,8 +580,128 @@ export default function HomeScreen() {
   if (!isLoaded) {
     return null;
   }
+
+  // Match Explore's mapping approach: use Clerk's profile image for avatar.
+  // Note: we don't fetch other users by id here; we display the current user's pfp.
+  const currentUserAvatar =
+    (user?.unsafeMetadata as { profileImageUrl?: string } | undefined)
+      ?.profileImageUrl ||
+    user?.imageUrl ||
+    DEFAULT_AVATAR;
+
+  const currentUserName =
+    user?.fullName ||
+    (user?.unsafeMetadata as { name?: string } | undefined)?.name ||
+    (user as any)?.primaryEmailAddress?.emailAddress ||
+    "Unknown";
+
   const toggleLike = (id: string) =>
     setLikedItems((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  async function getAuthHeader(): Promise<string | null> {
+    if (!user?.id) return null;
+    // Keep dev-token fallback (works with current server verifyClerkToken)
+    let authHeader = `Bearer dev:${user.id}`;
+    try {
+      if (getToken) {
+        const token = await getToken({ template: "supabase" });
+        if (token) authHeader = `Bearer ${token}`;
+      }
+    } catch {
+      authHeader = `Bearer dev:${user.id}`;
+    }
+    return authHeader;
+  }
+
+  async function fetchPosts() {
+    if (postsFetchInFlight.current) return;
+    postsFetchInFlight.current = true;
+    try {
+      setPostsError(null);
+      if (!user?.id) {
+        setPosts([]);
+        return;
+      }
+
+      const authHeader = await getAuthHeader();
+      if (!authHeader) {
+        setPosts([]);
+        return;
+      }
+
+      const endpoint =
+        activeTab === "foryou" ? "/api/for-you" : "/api/for-you";
+      const resp = await fetch(`${SERVER_BASE}${endpoint}`, {
+        headers: { Authorization: authHeader },
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error((json as any)?.error || "Failed to load feed");
+
+      const data = (json as any)?.posts ?? [];
+      const normalized: Post[] = (data ?? []).map((p: any) => ({
+        id: String(p.id),
+        image_url: String(p.image_url),
+        caption: p.caption ?? null,
+        owner_clerk_id: String(p.owner_clerk_id ?? ""),
+        tags: Array.isArray(p.tags) ? p.tags.map((t: any) => String(t)) : null,
+        created_at: String(p.created_at ?? ""),
+        score: typeof p.score === "number" ? p.score : undefined,
+      }));
+      setPosts(normalized);
+    } catch (e) {
+      console.error("fetchPosts error", e);
+      const msg =
+        (e as any)?.message ||
+        (e as any)?.error_description ||
+        (e as any)?.details ||
+        String(e);
+      setPostsError(msg);
+      setPosts([]);
+    } finally {
+      postsFetchInFlight.current = false;
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  async function handleLike(post_id: string) {
+    const authHeader = await getAuthHeader();
+    if (!authHeader || !user?.id) return;
+
+    console.log("LIKE CLICKED:", user.id, post_id);
+
+    // optimistic UI (local heart state)
+    setLikedItems((prev) => ({ ...prev, [post_id]: !prev[post_id] }));
+
+    try {
+      const resp = await fetch(`${SERVER_BASE}/api/like-toggle`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authHeader,
+        },
+        body: JSON.stringify({ post_id }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error("LIKE ERROR:", json);
+        throw new Error((json as any)?.error || "like-toggle failed");
+      }
+      console.log("LIKE RESULT:", json);
+
+      // Optionally refetch feed so personalization kicks in immediately
+      fetchPosts();
+    } catch (e) {
+      console.error("LIKE ERROR:", e);
+      // revert optimistic toggle on failure
+      setLikedItems((prev) => ({ ...prev, [post_id]: !prev[post_id] }));
+    }
+  }
+
+  useEffect(() => {
+    fetchPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, user?.id]);
 
   const [items, setItems] = useState<any[]>([]);
   useEffect(() => {
@@ -721,6 +859,16 @@ export default function HomeScreen() {
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchPosts();
+            }}
+            tintColor="#fff"
+          />
+        }
       >
         {/* ── AI Tools Grid ── */}
         <View style={styles.sectionPad}>
@@ -784,14 +932,48 @@ export default function HomeScreen() {
         {/* ── Feed ── */}
         <View style={styles.sectionPad}>
           <Text style={styles.sectionLabel}>Trending Fits</Text>
-          {FEED_ITEMS.map((item) => (
-            <FeedCard
-              key={item.id}
-              item={item}
-              liked={!!likedItems[item.id]}
-              onLike={() => toggleLike(item.id)}
-            />
-          ))}
+          {loading ? (
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          ) : postsError ? (
+            <View style={{ paddingVertical: 16 }}>
+              <Text style={{ color: "rgba(255,255,255,0.55)" }}>
+                Couldn’t load posts. Pull to refresh.
+              </Text>
+            </View>
+          ) : posts.length === 0 ? (
+            <View style={{ paddingVertical: 16 }}>
+              <Text style={{ color: "rgba(255,255,255,0.55)" }}>
+                No posts yet. Pull to refresh.
+              </Text>
+            </View>
+          ) : (
+            posts.map((p) => {
+              const derivedItem = {
+                id: p.id,
+                image: p.image_url,
+                matchPercent: 90,
+                username:
+                  p.owner_clerk_id === user?.id
+                    ? currentUserName
+                    : p.owner_clerk_id,
+                avatar: currentUserAvatar,
+                liked: false,
+                caption: p.caption ?? "",
+                tag: p.tags?.[0] ? `#${p.tags[0]}` : "",
+              } as (typeof FEED_ITEMS)[0];
+
+              return (
+                <FeedCard
+                  key={p.id}
+                  item={derivedItem}
+                  liked={!!likedItems[p.id]}
+                  onLike={() => handleLike(p.id)}
+                />
+              );
+            })
+          )}
         </View>
       </ScrollView>
 
