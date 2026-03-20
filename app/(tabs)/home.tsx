@@ -788,8 +788,8 @@ useEffect(() => {
               router.push({
                 pathname: "../outfitMaker",
                 params: {
-                  wardrobe: JSON.stringify(userWardrobe)
-                }
+                  wardrobe: JSON.stringify(items),
+                },
               })
             }
           />
@@ -827,7 +827,7 @@ useEffect(() => {
         router.push({
           pathname: "/dailyOutfit",
           params: {
-            wardrobe: JSON.stringify(userWardrobe),
+            wardrobe: JSON.stringify(items),
             day: d.label,
             date: d.date,
           },

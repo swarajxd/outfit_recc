@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-bright": "#393939",
+              "secondary": "#ffb5a0",
+              "on-error": "#690005",
+              "inverse-surface": "#e2e2e2",
+              "secondary-fixed": "#ffdbd1",
+              "primary-fixed-dim": "#ffb5a0",
+              "outline-variant": "#5d4038",
+              "on-secondary-container": "#ff9b7f",
+              "on-primary-fixed-variant": "#872000",
+              "on-background": "#e2e2e2",
+              "primary-container": "#ff5625",
+              "tertiary-fixed": "#d4e3ff",
+              "surface-container-lowest": "#0e0e0e",
+              "surface-dim": "#131313",
+              "on-primary-fixed": "#3b0900",
+              "on-secondary": "#601400",
+              "on-tertiary-fixed": "#001c3a",
+              "surface-container-high": "#2a2a2a",
+              "surface-container-highest": "#353535",
+              "on-primary": "#601400",
+              "on-primary-container": "#541100",
+              "on-tertiary": "#00315e",
+              "on-surface-variant": "#e7bdb2",
+              "error": "#ffb4ab",
+              "surface-variant": "#353535",
+              "surface-container": "#1f1f1f",
+              "outline": "#ad887e",
+              "primary-fixed": "#ffdbd1",
+              "on-tertiary-fixed-variant": "#004785",
+              "background": "#131313",
+              "secondary-container": "#872101",
+              "surface": "#131313",
+              "on-secondary-fixed-variant": "#872101",
+              "on-surface": "#e2e2e2",
+              "tertiary-container": "#2592ff",
+              "on-tertiary-container": "#002a53",
+              "inverse-on-surface": "#303030",
+              "primary": "#ffb5a0",
+              "on-error-container": "#ffdad6",
+              "tertiary-fixed-dim": "#a5c8ff",
+              "surface-container-low": "#1b1b1b",
+              "inverse-primary": "#b12d00",
+              "on-secondary-fixed": "#3b0900",
+              "surface-tint": "#ffb5a0",
+              "tertiary": "#a5c8ff",
+              "secondary-fixed-dim": "#ffb5a0",
+              "error-container": "#93000a"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #131313; color: #e2e2e2; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+        .glass-nav { background: rgba(31, 31, 31, 0.7); backdrop-filter: blur(24px); }
+        .item-card-hover:hover .selection-circle { border-color: #ff4500; background-color: rgba(255, 69, 0, 0.1); }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface min-h-screen pb-32">
+<!-- Top Navigation Bar -->
+<header class="fixed top-0 w-full z-50 bg-[#131313]/70 backdrop-blur-[24px] shadow-[0px_24px_48px_rgba(0,0,0,0.4)] flex justify-between items-center px-6 h-16">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-white/60 hover:text-[#FF4500] transition-colors duration-300 cursor-pointer">menu</span>
+</div>
+<div class="text-sm tracking-[0.2em] font-bold text-white uppercase font-headline">ATELIER</div>
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/15 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="User profile avatar close up" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAi2XHB_6bHuGmLj6PvJXAlotddh1okp013wAk5IHl_xD8s_Kpiw-dQfpzhq8gqISuBDf-b8iOgHFoPx7t8vNp5W1JXhZdopnJO2Bu3wBBE1gajDUEHkdIyW9JdWJPmd7peOeDXC4guc-xzmTb42hzCpLnqU3xGkhwsF88xrSjgPqeIWFjmaI8amrS_IecS56njT8Gc20lz52aCsFZmiVR_jupHFn9IN-lwP65FMB-mztK6YhLF_-KUpQPlg8lsAQiaHXT6_WKoO2W_"/>
+</div>
+</header>
+<main class="pt-24 px-6 md:px-12 max-w-7xl mx-auto">
+<!-- Hero Section -->
+<section class="mb-12">
+<div class="flex flex-col gap-2">
+<span class="text-[#FF4500] text-[10px] uppercase tracking-[0.3em] font-bold font-label">Vault Collection</span>
+<h1 class="text-5xl md:text-7xl font-extralight tracking-tighter text-white font-headline leading-tight">Wardrobe</h1>
+</div>
+</section>
+<!-- Category Filters -->
+<nav class="flex gap-3 mb-12 overflow-x-auto pb-4 no-scrollbar">
+<button class="px-8 py-3 rounded-full bg-white text-surface text-xs font-bold uppercase tracking-widest transition-all scale-100 active:scale-95">All</button>
+<button class="px-8 py-3 rounded-full bg-surface-container-low text-white/60 text-xs font-bold uppercase tracking-widest hover:text-white transition-all border border-outline-variant/10">Tops</button>
+<button class="px-8 py-3 rounded-full bg-surface-container-low text-white/60 text-xs font-bold uppercase tracking-widest hover:text-white transition-all border border-outline-variant/10">Bottoms</button>
+<button class="px-8 py-3 rounded-full bg-surface-container-low text-white/60 text-xs font-bold uppercase tracking-widest hover:text-white transition-all border border-outline-variant/10">Outerwear</button>
+<button class="px-8 py-3 rounded-full bg-surface-container-low text-white/60 text-xs font-bold uppercase tracking-widest hover:text-white transition-all border border-outline-variant/10">Accessories</button>
+</nav>
+<!-- Bento Grid Wardrobe Items -->
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-10">
+<!-- Item 1: Selected State -->
+<div class="group relative flex flex-col gap-4 item-card-hover cursor-pointer">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Premium black designer blazer on dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjY4gkgZ7iNPj_6aby4uiiZB8qH5Ardd3lExovLBi1ow-dYv0zPSXExwkxQmSFtxHKilFD5nHsmDexcdYhPf56nIOpU9V5z7kbNWlga57HywMWkmw7WvzV_hFzmgWVhTB-UPjLOuJyuripHAlMNpRooTRNv4pXZZ88Ti7jovbea5E35ddCvR2hGsh8eSfoL_zSC5LLwrvCBu2D44_PmW6CiHZGYSOArQrPsVp59ig2vxgQsRxAEM3_UFlg530Y3D2Xuj58rhHefhRV"/>
+<div class="absolute top-4 right-4 z-10">
+<div class="w-6 h-6 rounded-full border-2 border-[#FF4500] bg-[#FF4500] flex items-center justify-center transition-all shadow-lg">
+<span class="material-symbols-outlined text-white text-[16px]" style="font-variation-settings: 'wght' 700;">check</span>
+</div>
+</div>
+<div class="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors"></div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] uppercase tracking-widest text-[#FF4500] font-bold">Saint Laurent</span>
+<h3 class="text-sm font-medium text-white/90">Structured Wool Blazer</h3>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="group relative flex flex-col gap-4 item-card-hover cursor-pointer">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="High quality white minimalist cotton t-shirt" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9yOWmY4K4-JvIZgVTVsD2xH_IY9g6iT4aM7IPvwGBbdFmWHNBMcerQ2LHEddrWIYOPWN-PQYDgLZc79LissqJ8eMnrrktUyI1G2y4VOz14Dp-1cEZIo8LEQcgVohiqNbHdW_4AuMSxb2nFVYMmV6yMeeiaiTZANKyYmvgw7YAl9knA96aGpyUp4cWW9PQEUyfDIoeR7ty7qjAyg8McXba8sddxchYYJhTRvqwYzvmE7xlEK1lMdbUHnusYYvUDi3Ii1LqrTeVHQg6"/>
+<div class="absolute top-4 right-4 z-10">
+<div class="selection-circle w-6 h-6 rounded-full border-2 border-white/20 bg-black/20 backdrop-blur-md transition-all"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] uppercase tracking-widest text-white/40 font-bold">Acne Studios</span>
+<h3 class="text-sm font-medium text-white/90">Heavy Cotton Tee</h3>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="group relative flex flex-col gap-4 item-card-hover cursor-pointer">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Tailored dark denim jeans detail" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAHy1yrC7oioFvw0MZ0MrHvSnAswQ5NApE1bSstahVq_F3vzPGq4bcEWdTtd4dz-E8wDLKEUcMjwHb8IUT2ORSqH0X1urLrOULqLAGf93qTDEpYF7grHVZYjKnK8v5uCW-OVLZzMcrRu6MHJcP84zO6YhHrVu_SG3G37Ee9LfizZnJ_ApG7XEwJowMDhilZwo08bUnjF7xwE26LnkFypaM9gFUhvAtZSiKz1iXwwRM7ddFoFm0Z9TOC5bXF08P0AO8eMJicvFVmwOn5"/>
+<div class="absolute top-4 right-4 z-10">
+<div class="selection-circle w-6 h-6 rounded-full border-2 border-white/20 bg-black/20 backdrop-blur-md transition-all"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] uppercase tracking-widest text-white/40 font-bold">APC</span>
+<h3 class="text-sm font-medium text-white/90">Petit Standard Denim</h3>
+</div>
+</div>
+<!-- Item 4: Selected State -->
+<div class="group relative flex flex-col gap-4 item-card-hover cursor-pointer">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Luxury charcoal cashmere overcoat" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiRp5kq70dzW9nsC38NTjH6qOiPjrcfi6t_HIKbWguHwdejD6Hel4FRgDKlDNIqFlBvcU9Uub3DFwNKCRJS9bz0CiMCABoXrAHczXVCjBxliW4DRfcYHhvqCngHAyJcbVfcRlukgvCVZK5x81uU18_EXmTTaVtzbvYG6JFWDdxRNN2361GDgSDKpy4eaEeBsMF0HWMRVqWpXy_9X5alihMXU8y6z1DbdBwhdJ9O0WoO5rlpMEihNKbGk4b_DHpP4XgipD-ZlAmFT3N"/>
+<div class="absolute top-4 right-4 z-10">
+<div class="w-6 h-6 rounded-full border-2 border-[#FF4500] bg-[#FF4500] flex items-center justify-center transition-all shadow-lg">
+<span class="material-symbols-outlined text-white text-[16px]" style="font-variation-settings: 'wght' 700;">check</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] uppercase tracking-widest text-[#FF4500] font-bold">Prada</span>
+<h3 class="text-sm font-medium text-white/90">Cashmere Double Coat</h3>
+</div>
+</div>
+<!-- Item 5 -->
+<div class="group relative flex flex-col gap-4 item-card-hover cursor-pointer">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="White leather high end sneakers" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDEKsjAaMlitCXMiLlPN8IvYH7BV9mDzA9b4QTQ3zLC7ZpTJF-7UfTEGRIrgxK-wi26pzCtBliWpaXTQPFjEx91EoHBjfjkSZPgQXyRD55DZMGow0DmOdnuO66zeQZWb_HBg4ogPTJg30KMjvhxu1BT-mRl7u6B0GYqvgQkKSvYtL5FkNl2lHgw65uShR-1WhvhMqHDpYe3lgZ--WRDIzOUZQm7jmYkCDGt_5dwxcVRBhPj-HyzyGRjyu6aJWDOiEPgxbSoDyRykSt0"/>
+<div class="absolute top-4 right-4 z-10">
+<div class="selection-circle w-6 h-6 rounded-full border-2 border-white/20 bg-black/20 backdrop-blur-md transition-all"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] uppercase tracking-widest text-white/40 font-bold">Common Projects</span>
+<h3 class="text-sm font-medium text-white/90">Achilles Low White</h3>
+</div>
+</div>
+<!-- Item 6 -->
+<div class="group relative flex flex-col gap-4 item-card-hover cursor-pointer">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Minimalist silver wrist watch with black band" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAUTxBDW6BZpSic0Fz4LoiFO9EAnEVet_XZdjWRlgf1y7tG36TwldRwfENpPpATyM3NUAJsp5rrrH3ZlfzZoWboDQ80gWgz4jbKlWNlKt9WkvzAembtf13LtDRpxKcWE7g9QLWknB97Ehwp5d3VQ83JmqGOxfwx8PB-wH9T2DP5qy4o83lGzePqi3yuSZhma6z4Ej7-15GcEWmh4znMfONXMHQnodMnRVVnIMNdarOffv9ILj5ra1BNQxJaWjca2jt6swrWi0Qj65ZE"/>
+<div class="absolute top-4 right-4 z-10">
+<div class="selection-circle w-6 h-6 rounded-full border-2 border-white/20 bg-black/20 backdrop-blur-md transition-all"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] uppercase tracking-widest text-white/40 font-bold">Cartier</span>
+<h3 class="text-sm font-medium text-white/90">Tank Must Watch</h3>
+</div>
+</div>
+<!-- Item 7 -->
+<div class="group relative flex flex-col gap-4 item-card-hover cursor-pointer">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Black premium leather biker jacket" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCD_k0Aa9fjDKABi7njCR7TvjFaWFwKr7SsuOM35M2HJTAuNvIsbbcD94WAIyzhnauS2_s8YkGAFhN1QprHxQIcdsQQNddl2v7kaVIyWciuZHbNOk8WIg5q_Yykc582qgzS4B2w3rC1J8_d7NkRv4fBYCD0Kd-UzCeAnfNVAh9V56KIGXbpy5pC_xoqFm8yeSfM7JK_YgoxW2e3eLiOKH8yPLRKGcLFQTafDLzLzA94JkZYEistIW4bCgTKIVfkTwVSVqCpMNzeWZj1"/>
+<div class="absolute top-4 right-4 z-10">
+<div class="selection-circle w-6 h-6 rounded-full border-2 border-white/20 bg-black/20 backdrop-blur-md transition-all"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] uppercase tracking-widest text-white/40 font-bold">Schott NYC</span>
+<h3 class="text-sm font-medium text-white/90">Perfecto 618 Leather</h3>
+</div>
+</div>
+<!-- Item 8 -->
+<div class="group relative flex flex-col gap-4 item-card-hover cursor-pointer">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Cream cable knit luxury sweater" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAZllbg2yaftHqz0M3LTKVXw63Lqt3DYAuWu9nF2uznSt416QRmyWI8LiP2XjhZxM0gTGqwIsqyJjE-n6wxll8TZVLAeTVDaiAnD9b8XuRm1quif22nhPyNt0-Akf-tmjyiDfCWLkBiRk1NdQfaVGubipVyYmSa4lRqM1O5yIxMfC2rEu7RMHmdkCKfhM4BbDWUTXBcY4RjxbWc5O4ZJTNQfo50meyADb_KGxNxcgKDNuozJOiHOUXUeGH9u0myxnvCR8xrrbrmEDMz"/>
+<div class="absolute top-4 right-4 z-10">
+<div class="selection-circle w-6 h-6 rounded-full border-2 border-white/20 bg-black/20 backdrop-blur-md transition-all"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] uppercase tracking-widest text-white/40 font-bold">The Row</span>
+<h3 class="text-sm font-medium text-white/90">Wool Cable Sweater</h3>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Action Bar -->
+<div class="fixed bottom-0 left-0 w-full z-50 px-6 pb-8 pointer-events-none">
+<div class="max-w-md mx-auto pointer-events-auto">
+<div class="glass-nav rounded-full px-4 py-4 flex items-center justify-between shadow-[0px_-12px_32px_rgba(0,0,0,0.3)]">
+<div class="pl-4">
+<span class="text-[10px] text-white/40 uppercase tracking-widest block font-bold">Selected</span>
+<span class="text-white text-lg font-bold leading-none">2 Items</span>
+</div>
+<button class="bg-gradient-to-r from-primary-container to-[#FF4500] text-on-primary-container px-8 py-3 rounded-full font-bold text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all">
+                    Create Outfit
+                </button>
+</div>
+</div>
+</div>
+<!-- Navigation Shell (BottomNavBar) -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center h-20 px-8 pb-safe bg-[#1F1F1F]/70 backdrop-blur-[24px] rounded-t-[3rem] z-40 lg:hidden">
+<div class="flex flex-col items-center justify-center text-white/40 hover:text-white transition-all duration-200">
+<span class="material-symbols-outlined">home</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#FF4500] scale-110">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">checkroom</span>
+</div>
+<div class="flex flex-col items-center justify-center text-white/40 hover:text-white transition-all duration-200">
+<span class="material-symbols-outlined">auto_fix_high</span>
+</div>
+<div class="flex flex-col items-center justify-center text-white/40 hover:text-white transition-all duration-200">
+<span class="material-symbols-outlined">shopping_bag</span>
+</div>
+<div class="flex flex-col items-center justify-center text-white/40 hover:text-white transition-all duration-200">
+<span class="material-symbols-outlined">person</span>
+</div>
+</nav>
+</body></html>

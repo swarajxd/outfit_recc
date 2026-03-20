@@ -13,10 +13,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   buildWardrobeFromItems,
   FALLBACK_WARDROBE,
@@ -24,6 +26,13 @@ import {
   getOrCreateDailyOutfit
 } from '../utils/outfitEngine';
 import { SERVER_BASE } from "../utils/config";
+
+const DEFAULT_SERVER_BASE: string =
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  (Constants.expoConfig?.extra as any)?.API_BASE_URL ||
+  "http://localhost:4000";
+
+const API_BASE_STORAGE_KEY = "fitsense_api_base_url";
 
 const PRIMARY = "#FF6B00";
 const BG = "#000000";
@@ -46,6 +55,9 @@ function displayCategory(cat: string) {
 export default function WardrobeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
+  const [serverBase, setServerBase] = useState<string>(DEFAULT_SERVER_BASE);
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [tempServerBase, setTempServerBase] = useState<string>(DEFAULT_SERVER_BASE);
   const [activeCategory, setActiveCategory] = useState(0);
   const [items, setItems] = useState<WardrobeItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,7 +100,21 @@ export default function WardrobeScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [userId, serverBase]);
+
+  // Load persisted API base (for phone to hit laptop IP)
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(API_BASE_STORAGE_KEY);
+        if (stored && stored.trim()) {
+          setServerBase(stored.trim());
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     fetchWardrobe();
@@ -131,7 +157,7 @@ export default function WardrobeScreen() {
       formData.append("user_id", userId);
 
       const uploadResp = await fetch(
-        `${SERVER_BASE}/api/profile/upload-wardrobe`,
+        `${serverBase}/api/profile/upload-wardrobe`,
         { method: "POST", body: formData },
       );
       if (!uploadResp.ok) throw new Error("Upload failed");
@@ -145,7 +171,7 @@ export default function WardrobeScreen() {
       const poll = async (): Promise<void> => {
         attempts++;
         const statusResp = await fetch(
-          `${SERVER_BASE}/api/profile/job/${encodeURIComponent(jobId)}`,
+          `${serverBase}/api/profile/job/${encodeURIComponent(jobId)}`,
         );
         const statusJson = await statusResp.json();
 
@@ -229,9 +255,20 @@ useEffect(() => {
               <Text style={styles.headerSub}>FITSENSE AI</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.searchBtn}>
-            <Text style={{ color: "#fff", fontSize: 18 }}>⌕</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity style={styles.searchBtn}>
+              <Text style={{ color: "#fff", fontSize: 18 }}>⌕</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.ipBtn}
+              onPress={() => {
+                setTempServerBase(serverBase);
+                setIsConfigOpen(true);
+              }}
+            >
+              <Text style={styles.ipBtnText}>IP</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Category Filter */}
@@ -329,6 +366,49 @@ useEffect(() => {
         <TouchableOpacity style={styles.fab} onPress={uploadToWardrobe}>
           <Text style={styles.fabIcon}>+</Text>
         </TouchableOpacity>
+      )}
+      {isConfigOpen && (
+        <View style={styles.overlay}>
+          <View style={styles.overlayCard}>
+            <Text style={styles.overlayTitle}>Set Server IP</Text>
+            <Text style={styles.overlaySubtitle}>
+              Enter the base URL of your laptop (e.g. http://192.168.0.10:4000) so your phone can reach the wardrobe API.
+            </Text>
+            <TextInput
+              style={styles.overlayInput}
+              placeholder="http://192.168.x.x:4000"
+              placeholderTextColor="rgba(255,255,255,0.4)"
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={tempServerBase}
+              onChangeText={setTempServerBase}
+            />
+            <View style={styles.overlayButtons}>
+              <TouchableOpacity
+                style={[styles.overlayButton, styles.overlayButtonSecondary]}
+                onPress={() => setIsConfigOpen(false)}
+              >
+                <Text style={styles.overlayButtonTextSecondary}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.overlayButton, styles.overlayButtonPrimary]}
+                onPress={async () => {
+                  const trimmed = tempServerBase.trim();
+                  if (!trimmed) return;
+                  setServerBase(trimmed);
+                  try {
+                    await AsyncStorage.setItem(API_BASE_STORAGE_KEY, trimmed);
+                  } catch {
+                    // ignore
+                  }
+                  setIsConfigOpen(false);
+                }}
+              >
+                <Text style={styles.overlayButtonTextPrimary}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -524,5 +604,90 @@ const styles = StyleSheet.create({
   },
   outfitBannerChevron: {
     color: 'rgba(255,255,255,0.35)', fontSize: 22, fontWeight: '300',
+  },
+  ipBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ipBtnText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  overlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  overlayCard: {
+    width: "100%",
+    borderRadius: 18,
+    backgroundColor: "#111",
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    gap: 12,
+  },
+  overlayTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  overlaySubtitle: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+  },
+  overlayInput: {
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: "#fff",
+    fontSize: 13,
+    backgroundColor: "rgba(0,0,0,0.7)",
+  },
+  overlayButtons: {
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  overlayButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  overlayButtonSecondary: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  overlayButtonPrimary: {
+    backgroundColor: PRIMARY,
+  },
+  overlayButtonTextSecondary: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  overlayButtonTextPrimary: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
 });
