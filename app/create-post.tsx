@@ -159,7 +159,7 @@ export default function CreatePostScreen() {
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={() => router.replace("/(tabs)/home")}
               style={styles.backBtn}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >

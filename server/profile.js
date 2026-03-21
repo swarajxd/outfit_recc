@@ -24,14 +24,21 @@ const OUTFIT_MODEL_DIR = path.join(__dirname, "outfit_model");
  * Fetch with exponential backoff retry.
  * Retries on ECONNREFUSED (Python API still booting) and 5xx errors.
  */
-async function fetchWithRetry(url, options = {}, retries = 6, baseDelayMs = 1500) {
+async function fetchWithRetry(
+  url,
+  options = {},
+  retries = 6,
+  baseDelayMs = 1500,
+) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url, options);
       // Retry on server errors too (5xx), but not on 4xx
       if (res.status >= 500 && attempt < retries) {
         const delay = baseDelayMs * Math.pow(1.5, attempt);
-        console.warn(`[retry] ${url} returned ${res.status}, retrying in ${Math.round(delay)}ms... (${attempt + 1}/${retries})`);
+        console.warn(
+          `[retry] ${url} returned ${res.status}, retrying in ${Math.round(delay)}ms... (${attempt + 1}/${retries})`,
+        );
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -41,7 +48,9 @@ async function fetchWithRetry(url, options = {}, retries = 6, baseDelayMs = 1500
         err?.cause?.code === "ECONNREFUSED" || err?.code === "ECONNREFUSED";
       if (isConnRefused && attempt < retries) {
         const delay = baseDelayMs * Math.pow(1.5, attempt);
-        console.warn(`[retry] Python API not ready (ECONNREFUSED), retrying in ${Math.round(delay)}ms... (${attempt + 1}/${retries})`);
+        console.warn(
+          `[retry] Python API not ready (ECONNREFUSED), retrying in ${Math.round(delay)}ms... (${attempt + 1}/${retries})`,
+        );
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -207,7 +216,9 @@ router.get("/wardrobe/:userId", async (req, res) => {
         ].includes(c)
       )
         return "tshirts";
-      if (["pants", "jeans", "trouser", "trousers", "shorts", "skirt"].includes(c))
+      if (
+        ["pants", "jeans", "trouser", "trousers", "shorts", "skirt"].includes(c)
+      )
         return "jeans";
       if (["shoes", "shoe", "sneaker", "sneakers", "boot", "boots"].includes(c))
         return "shoes";
@@ -229,7 +240,9 @@ router.get("/wardrobe/:userId", async (req, res) => {
 
     for (const row of items) {
       const attrs =
-        row.attributes && typeof row.attributes === "object" ? row.attributes : {};
+        row.attributes && typeof row.attributes === "object"
+          ? row.attributes
+          : {};
       const imageUrl = (row.image_url || "").trim();
       const finalImage =
         imageUrl ||

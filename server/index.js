@@ -24,7 +24,7 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-User-Id"],
   }),
 );
 
@@ -35,6 +35,32 @@ app.use("/static", express.static(path.join(REPO_OUTFIT)));
 
 // Mount profile routes
 app.use("/api/profile", profileRouter);
+
+// ---- endpoint: list posts for profile (Supabase) ----
+app.get("/api/profile/posts", async (req, res) => {
+  try {
+    const userId = req.header("x-user-id") || req.query.user_id;
+    if (!userId) {
+      return res.status(400).json({ error: "missing user id" });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("posts")
+      .select("*")
+      .eq("owner_clerk_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("fetch profile posts error", error);
+      return res.status(500).json({ error: error.message || error });
+    }
+
+    res.json({ posts: data });
+  } catch (err) {
+    console.error("profile posts endpoint error", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
 
 // Multer for outfit-analysis (store in memory to forward to Python)
 
@@ -268,76 +294,6 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
   }
 });
 
-// ---- endpoint: list posts for profile (Supabase) ----
-app.get("/api/profile/posts", async (req, res) => {
-  try {
-    // For demo: trust X-User-Id or query param as the Clerk user id.
-    const userId = req.header("x-user-id") || req.query.user_id;
-    if (!userId) {
-      return res.status(400).json({ error: "missing user id" });
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from("posts")
-      .select("id, image_url, caption, tags, created_at")
-      .eq("owner_clerk_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("supabase posts error", error);
-      return res.status(500).json({ error: error.message || String(error) });
-    }
-
-    res.json({ items: data || [] });
-  } catch (err) {
-    console.error("profile posts error", err);
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-// ---- endpoint: lightweight profile stats (followers/following/style) ----
-app.get("/api/profile/stats", async (req, res) => {
-  try {
-    const userId = req.header("x-user-id") || req.query.user_id;
-    if (!userId) {
-      return res.status(400).json({ error: "missing user id" });
-    }
-
-    // Derive simple stats from posts count for demo purposes.
-    let followers = 0;
-    let following = 0;
-    let styleScore = 92; // base score for demo
-
-    try {
-      const { data, error, count } = await supabaseAdmin
-        .from("posts")
-        .select("id", { count: "exact", head: true })
-        .eq("owner_clerk_id", userId);
-      if (error) {
-        console.warn("supabase stats posts error", error.message || error);
-      }
-      const postCount = typeof count === "number" ? count : (data || []).length;
-      followers = 100 + postCount * 3;
-      following = 80 + Math.round(postCount * 1.5);
-      styleScore = Math.min(99, 70 + postCount); // cap at 99
-    } catch (e) {
-      console.warn("profile stats supabase error", e.message || e);
-      followers = 1200;
-      following = 850;
-      styleScore = 92;
-    }
-
-    res.json({
-      followers,
-      following,
-      style_score: styleScore,
-    });
-  } catch (err) {
-    console.error("profile stats error", err);
-    res.status(500).json({ error: String(err) });
-  }
-});
-
 // ---- endpoint: create post record in supabase ----
 app.post("/api/create-post", async (req, res) => {
   try {
@@ -389,7 +345,16 @@ app.get("/api/for-you", async (req, res) => {
       return res.status(500).json({ error: error.message || error });
     }
 
-    res.json({ posts: data });
+    // Rewrite any local Python URLs to Node /static URLs
+    const nodeBase = `${req.protocol}://${req.get("host")}`;
+    const posts = (data || []).map((p) => {
+      if (p.image_url && p.image_url.includes(":8000/static/")) {
+        p.image_url = p.image_url.replace(/:\d+\/static\//, `:${PORT}/static/`);
+      }
+      return p;
+    });
+
+    res.json({ posts });
   } catch (err) {
     console.error("for-you error", err);
     res.status(500).json({ error: String(err) });
@@ -434,6 +399,11 @@ app.post("/api/like-toggle", async (req, res) => {
     console.error("like-toggle error", err);
     res.status(500).json({ error: String(err) });
   }
+});
+
+// ---- endpoint: health check ----
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, status: "Server is running" });
 });
 
 const PORT = process.env.PORT;

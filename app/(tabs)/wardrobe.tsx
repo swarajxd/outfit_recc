@@ -296,31 +296,7 @@ useEffect(() => {
         </ScrollView>
       </View>
 
-      {/* Today's Outfit Banner */}
-      {todayOutfit && (
-        <View style={styles.outfitBanner}>
-          <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFill} />
-          <LinearGradient
-            colors={['rgba(255,107,0,0.12)', 'rgba(255,107,0,0.0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.outfitBannerBorder} />
-          <View style={styles.outfitBannerLeft}>
-            <Text style={styles.outfitBannerLabel}>✦ Today's Outfit</Text>
-            <View style={styles.outfitBannerItems}>
-              {[todayOutfit.top, todayOutfit.bottom, todayOutfit.footwear].map((item, i) => (
-                <View key={i} style={styles.outfitBannerItem}>
-                  <Text style={styles.outfitBannerEmoji}>{item.emoji}</Text>
-                  <Text style={styles.outfitBannerName} numberOfLines={1}>{item.name}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-          <Text style={styles.outfitBannerChevron}>›</Text>
-        </View>
-      )}
+     
 
       {/* Grid */}
       <ScrollView

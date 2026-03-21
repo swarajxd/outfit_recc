@@ -1,25 +1,24 @@
-
 // app/home.tsx
-import { useClerk, useUser } from '@clerk/clerk-expo';
-import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { useClerk, useUser } from "@clerk/clerk-expo";
+import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Image,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Image,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { SERVER_BASE } from "./utils/config";
 
 const { width, height } = Dimensions.get("window");
 
@@ -39,23 +38,12 @@ export default function Home() {
   const slideAnim = useRef(new Animated.Value(30)).current;
   const imageScaleAnim = useRef(new Animated.Value(0)).current;
 
-  // Get default URL based on platform
-  const getDefaultApiUrl = () => {
-    const computerIP = "192.168.0.107"; // Updated to correct IP
-
-    if (Platform.OS === "android") {
-      return `http://${computerIP}:8000`;
-    } else if (Platform.OS === "ios") {
-      return `http://${computerIP}:8000`;
-    }
-    return `http://${computerIP}:8000`;
-  };
-
-  const [apiUrl, setApiUrl] = useState<string>(() => getDefaultApiUrl());
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [apiUrl, setApiUrl] = useState(`${SERVER_BASE}/api`);
 
-  const API_BASE_URL = apiUrl || getDefaultApiUrl();
+  // Use the central SERVER_BASE utility which handles localhost vs 10.0.2.2
+  const API_BASE_URL = apiUrl || `${SERVER_BASE}/api`;
 
   // Entrance animations
   useEffect(() => {
@@ -462,14 +450,14 @@ export default function Home() {
               <Text style={styles.apiConfigTitle}>⚙️ API Configuration</Text>
               <Text style={styles.apiConfigHint}>
                 {Platform.OS === "android"
-                  ? "• Emulator: http://10.0.2.2:8000\n• Physical Device: http://192.168.0.107:8000"
-                  : "• Simulator: http://localhost:8000\n• Physical Device: http://192.168.0.107:8000"}
+                  ? "• Emulator: http://10.0.2.2:4000/api\n• Physical Device: http://YOUR_IP:4000/api"
+                  : "• Simulator/Web: http://localhost:4000/api\n• Physical Device: http://YOUR_IP:4000/api"}
               </Text>
               <TextInput
                 style={styles.apiInput}
                 value={apiUrl}
                 onChangeText={setApiUrl}
-                placeholder="http://10.0.2.2:8000"
+                placeholder="http://10.0.2.2:4000/api"
                 placeholderTextColor="#6b7280"
                 autoCapitalize="none"
                 autoCorrect={false}
