@@ -32,11 +32,8 @@ export interface WardrobeItem {
   color: ClothingColor;
   emoji: string;
   image?: string | null;
-  // Bottom specific
   bottomType?: BottomType;
-  // Footwear specific
   footwearType?: string;
-  // Scoring metadata (inferred from name/category if not set)
   style?: StyleTag[];
   occasion?: OccasionTag[];
   season?: SeasonTag[];
@@ -51,11 +48,6 @@ export interface Wardrobe {
   outerwear: WardrobeItem[];
 }
 
-/**
- * Structured user intent parsed from a natural language prompt.
- * e.g. "casual streetwear for summer" →
- * { styles: ['streetwear','casual'], occasions: ['casual'], seasons: ['summer'], fits: ['relaxed'] }
- */
 export interface OutfitIntent {
   styles: StyleTag[];
   occasions: OccasionTag[];
@@ -64,17 +56,14 @@ export interface OutfitIntent {
   rawPrompt: string;
 }
 
-/**
- * Score breakdown — each dimension 0.0–1.0, weighted into a final 0–100 score.
- */
 export interface OutfitScore {
-  total: number;        // 0–100, the final weighted score
-  styleMatch: number;   // 0–1, how well all items align to requested style
-  colorHarmony: number; // 0–1, color pairing quality
-  fitBalance: number;   // 0–1, top/bottom fit silhouette compatibility
-  occasionMatch: number;// 0–1, how appropriate items are for the occasion
-  seasonMatch: number;  // 0–1, how season-appropriate the outfit is
-  diversityBonus: number;// 0–1, rewards unique combinations
+  total: number;
+  styleMatch: number;
+  colorHarmony: number;
+  fitBalance: number;
+  occasionMatch: number;
+  seasonMatch: number;
+  diversityBonus: number;
 }
 
 export interface ScoredOutfit {
@@ -84,14 +73,13 @@ export interface ScoredOutfit {
   outerwear?: WardrobeItem | null;
   accessory?: WardrobeItem | null;
   score: OutfitScore;
-  reasons: string[];       // human-readable explanation of why this outfit scores well
-  generatedAt: string;     // ISO date string YYYY-MM-DD
+  reasons: string[];
+  generatedAt: string;
 }
 
-// Legacy type alias so existing code using GeneratedOutfit doesn't break
 export type GeneratedOutfit = ScoredOutfit;
 
-// ─── Color Harmony Rules ──────────────────────────────────────────────────────
+// ─── Color Harmony ────────────────────────────────────────────────────────────
 
 const COLOR_HARMONY: Record<ClothingColor, ClothingColor[]> = {
   black: ['blue', 'grey', 'white', 'khaki', 'olive', 'burgundy', 'charcoal', 'beige', 'camel'],
@@ -112,14 +100,13 @@ const COLOR_HARMONY: Record<ClothingColor, ClothingColor[]> = {
   unknown: ['black', 'grey', 'navy', 'khaki', 'white', 'brown', 'beige', 'charcoal'],
 };
 
-// Clash pairs — these combinations actively hurt the score
 const COLOR_CLASHES: [ClothingColor, ClothingColor][] = [
   ['blue', 'green'],
   ['red', 'green'],
   ['burgundy', 'blue'],
   ['olive', 'grey'],
-  ['brown', 'black'], // mixing warm+cool browns with black
-  ['navy', 'blue'],   // two similar blues look unintentional
+  ['brown', 'black'],
+  ['navy', 'blue'],
 ];
 
 const NEUTRAL_COLORS = new Set<ClothingColor>(['black', 'white', 'grey', 'navy', 'charcoal', 'beige', 'cream']);
@@ -134,17 +121,11 @@ const BOTTOM_TO_FOOTWEAR: Record<BottomType, string[]> = {
   joggers: ['sneakers', 'slip-ons'],
 };
 
-// ─── Fit Silhouette Compatibility ─────────────────────────────────────────────
-// Scores how well top fit + bottom fit work together visually.
-// relaxed+relaxed = deliberate, slim+slim = sharp, mixing is context-dependent.
-
 const FIT_COMPATIBILITY: Record<FitTag, Record<FitTag, number>> = {
   slim: { slim: 1.0, regular: 0.75, relaxed: 0.45 },
   regular: { slim: 0.75, regular: 1.0, relaxed: 0.80 },
   relaxed: { slim: 0.45, regular: 0.80, relaxed: 1.0 },
 };
-
-// ─── Style → Occasion mapping (used when user specifies occasion not style) ───
 
 const STYLE_OCCASION_AFFINITY: Record<StyleTag, OccasionTag[]> = {
   streetwear: ['casual', 'weekend', 'outdoor'],
@@ -157,10 +138,6 @@ const STYLE_OCCASION_AFFINITY: Record<StyleTag, OccasionTag[]> = {
   athleisure: ['casual', 'weekend', 'outdoor'],
 };
 
-// ─── Season Appropriateness ────────────────────────────────────────────────────
-
-// Items without a season tag are assumed all-season.
-// This map nudges certain fabric/style keywords toward a season.
 const SEASON_KEYWORDS: Record<SeasonTag, string[]> = {
   summer: ['linen', 'cotton', 'shorts', 'tee', 'short sleeve', 'light', 'tank'],
   winter: ['wool', 'knit', 'coat', 'puffer', 'fleece', 'sweater', 'pullover', 'hoodie', 'jacket', 'overcoat'],
@@ -234,8 +211,36 @@ export function normalizeColor(raw: string | null | undefined): ClothingColor {
     brown: 'brown', green: 'green', 'dark green': 'green', olive: 'olive',
     red: 'red', burgundy: 'burgundy', maroon: 'burgundy', cream: 'cream',
     charcoal: 'charcoal', 'dark grey': 'charcoal', 'dark gray': 'charcoal',
+    // Extended mappings for Gemini outputs
+    'navy blue': 'navy', 'sky blue': 'blue', 'cobalt': 'blue',
+    'off-white': 'white', 'ivory': 'white', 'off white': 'white',
+    'charcoal grey': 'charcoal', 'charcoal gray': 'charcoal',
+    'dark brown': 'brown', 'chocolate': 'brown',
+    'light grey': 'grey', 'light gray': 'grey', 'silver': 'grey',
+    'light wash blue': 'blue', 'washed blue': 'blue', 'indigo': 'navy',
+    'stone': 'beige', 'sand': 'beige', 'nude': 'beige', 'taupe': 'beige',
+    'mustard': 'camel', 'yellow': 'camel', 'gold': 'camel',
+    'wine': 'burgundy', 'maroon dark': 'burgundy',
+    'forest green': 'green', 'army green': 'olive', 'khaki green': 'olive',
+    'pink': 'white', 'lavender': 'grey', 'purple': 'burgundy',
+    'orange': 'camel', 'coral': 'camel', 'rust': 'camel',
+    'teal': 'blue', 'turquoise': 'blue', 'cyan': 'blue',
+    'distressed dark brown': 'brown', 'faded olive brown': 'olive',
+    'washed charcoal grey': 'charcoal', 'light wash faded blue': 'blue',
+    'washed dark charcoal gray': 'charcoal',
   };
-  return MAP[c] || 'unknown';
+  // Direct match
+  if (MAP[c]) return MAP[c];
+  // Substring match for complex Gemini descriptions like "navy blue with white collar"
+  for (const [key, val] of Object.entries(MAP)) {
+    if (c.startsWith(key)) return val as ClothingColor;
+  }
+  // Fallback: check if any known color word appears in the string
+  const colorWords: ClothingColor[] = ['black', 'white', 'grey', 'navy', 'blue', 'khaki', 'beige', 'brown', 'green', 'red', 'burgundy', 'olive', 'cream', 'camel', 'charcoal'];
+  for (const color of colorWords) {
+    if (c.includes(color)) return color;
+  }
+  return 'unknown';
 }
 
 export function inferBottomType(category: string, name: string): BottomType {
@@ -243,8 +248,9 @@ export function inferBottomType(category: string, name: string): BottomType {
   if (s.includes('jean') || s.includes('denim')) return 'jeans';
   if (s.includes('short')) return 'shorts';
   if (s.includes('trouser') || s.includes('pant') || s.includes('slack')) return 'trousers';
-  if (s.includes('jogger') || s.includes('sweat')) return 'joggers';
-  return 'chinos';
+  if (s.includes('jogger') || s.includes('sweat') || s.includes('track')) return 'joggers';
+  if (s.includes('chino')) return 'chinos';
+  return 'jeans'; // default
 }
 
 export function inferFootwearType(category: string, name: string): string {
@@ -257,26 +263,21 @@ export function inferFootwearType(category: string, name: string): string {
   if (s.includes('derby')) return 'derby';
   if (s.includes('brogue')) return 'brogues';
   if (s.includes('slip')) return 'slip-ons';
+  if (s.includes('heel') || s.includes('pump')) return 'heels';
+  if (s.includes('mule')) return 'slip-ons';
   return 'sneakers';
-}
-
-function getEmoji(category: string): string {
-  switch (category) {
-    case 'shirt': case 'tshirt': return '👕';
-    case 'pants': return '👖';
-    case 'shoes': return '👟';
-    default: return '👕';
-  }
 }
 
 function inferStyleTags(name: string, category: string): StyleTag[] {
   const s = `${name} ${category}`.toLowerCase();
   const tags: StyleTag[] = [];
-  if (s.includes('oversized') || s.includes('cargo') || s.includes('jogger') || s.includes('hoodie')) tags.push('streetwear');
-  if (s.includes('linen') || s.includes('polo') || s.includes('oxford') || s.includes('chino') || s.includes('blazer')) tags.push('smart-casual');
-  if (s.includes('slim') || s.includes('trouser') || s.includes('derby') || s.includes('brogue')) tags.push('formal');
-  if (s.includes('knit') || s.includes('minimal') || s.includes('clean')) tags.push('minimal');
-  if (s.includes('sneaker') || s.includes('tee') || s.includes('t-shirt')) tags.push('casual');
+  if (s.includes('oversized') || s.includes('cargo') || s.includes('jogger') || s.includes('hoodie') || s.includes('graphic') || s.includes('streetwear')) tags.push('streetwear');
+  if (s.includes('linen') || s.includes('polo') || s.includes('oxford') || s.includes('chino') || s.includes('blazer') || s.includes('smart')) tags.push('smart-casual');
+  if (s.includes('slim') || s.includes('trouser') || s.includes('derby') || s.includes('brogue') || s.includes('formal') || s.includes('suit')) tags.push('formal');
+  if (s.includes('knit') || s.includes('minimal') || s.includes('clean') || s.includes('simple')) tags.push('minimal');
+  if (s.includes('sneaker') || s.includes('tee') || s.includes('t-shirt') || s.includes('casual') || s.includes('denim')) tags.push('casual');
+  if (s.includes('preppy') || s.includes('classic') || s.includes('college')) tags.push('preppy');
+  if (s.includes('athletic') || s.includes('sport') || s.includes('gym') || s.includes('track') || s.includes('athleisure')) tags.push('athleisure');
   if (!tags.length) tags.push('casual');
   return tags;
 }
@@ -292,42 +293,132 @@ function inferSeasonTags(name: string): SeasonTag[] {
 
 function inferFit(name: string): FitTag {
   const s = name.toLowerCase();
-  if (s.includes('slim') || s.includes('skinny') || s.includes('fitted') || s.includes('tailored')) return 'slim';
-  if (s.includes('oversized') || s.includes('relaxed') || s.includes('loose') || s.includes('baggy') || s.includes('cargo') || s.includes('jogger')) return 'relaxed';
+  if (s.includes('slim') || s.includes('skinny') || s.includes('fitted') || s.includes('tailored') || s.includes('straight leg')) return 'slim';
+  if (s.includes('oversized') || s.includes('relaxed') || s.includes('loose') || s.includes('baggy') || s.includes('cargo') || s.includes('jogger') || s.includes('wide') || s.includes('baggy')) return 'relaxed';
   return 'regular';
 }
 
+// ─── Category matchers (covers all Supabase bucket names + Gemini categories) ─
+
+function isTopCat(cat: string): boolean {
+  return [
+    'shirt', 'tshirt', 't-shirt', 'top', 'polo', 'blouse', 'sweater',
+    'hoodie', 'knit', 'pullover', 'crewneck', 'sweatshirt', 'henley',
+    'jersey', 'tank', 'vest', 'flannel', 'tunic', 'rugby', 'tshirts',
+    'sweat', 'longsleeve', 'long-sleeve', 'button-up', 'button-down',
+  ].some(k => cat.includes(k));
+}
+
+function isBottomCat(cat: string): boolean {
+  return [
+    'pant', 'jean', 'trouser', 'bottom', 'short', 'chino', 'jogger',
+    'slack', 'skirt', 'legging', 'cargo', 'jeans', 'denim',
+  ].some(k => cat.includes(k));
+}
+
+function isFootwearCat(cat: string): boolean {
+  return [
+    'shoe', 'sneaker', 'boot', 'sandal', 'loafer', 'oxford',
+    'brogue', 'slip', 'heel', 'trainer', 'mule', 'shoes', 'footwear',
+  ].some(k => cat.includes(k));
+}
+
+function isOuterwearCat(cat: string): boolean {
+  return [
+    'jacket', 'coat', 'blazer', 'outerwear', 'overcoat',
+    'cardigan', 'puffer', 'bomber', 'raincoat', 'windbreaker',
+  ].some(k => cat.includes(k));
+}
+
+function isAccessoryCat(cat: string): boolean {
+  return [
+    'accessory', 'cap', 'hat', 'bag', 'belt', 'watch', 'sock',
+    'scarf', 'glove', 'sunglasses', 'glasses', 'jewelry', 'wallet',
+    'watches', 'caps', 'bags',
+  ].some(k => cat.includes(k));
+}
+
+function getEmojiForCat(cat: string): string {
+  if (isTopCat(cat)) return '👕';
+  if (isBottomCat(cat)) return '👖';
+  if (isFootwearCat(cat)) return '👟';
+  if (isOuterwearCat(cat)) return '🧥';
+  if (isAccessoryCat(cat)) return '⌚';
+  return '👕';
+}
+
 // ─── Build Wardrobe from API items ────────────────────────────────────────────
+// Handles all category strings from Supabase buckets, Gemini outputs,
+// and raw detection labels (tshirt, jeans, shoes, watches, caps, bags...).
 
 export function buildWardrobeFromItems(items: any[]): Wardrobe {
   const wardrobe: Wardrobe = { tops: [], bottoms: [], footwear: [], accessories: [], outerwear: [] };
 
   items.forEach((item) => {
     if (!item.category) return;
+    const cat = item.category.toLowerCase().trim();
+
+    // Dig out color from multiple possible locations
+    const attrs = item.attributes || {};
+    const normAttrs = attrs.normalized_attributes || {};
+    const colorRaw =
+      item.color ||
+      normAttrs.color ||
+      attrs.color ||
+      null;
+
+    // Use style_category from Gemini for a richer name if available
+    const geminiStyleCat = normAttrs.style_category || attrs.style_category || null;
+    const displayName = geminiStyleCat
+      ? `${geminiStyleCat}`
+      : (item.name || item.category);
 
     const piece: WardrobeItem = {
       id: item.id,
-      name: item.name || item.category,
-      image: item.image ?? null,
-      color: normalizeColor(item.color),
-      emoji: getEmoji(item.category),
-      style: inferStyleTags(item.name || '', item.category),
-      season: inferSeasonTags(item.name || ''),
-      fit: inferFit(item.name || ''),
-      bottomType: item.category === 'pants' ? inferBottomType(item.category, item.name ?? '') : undefined,
-      footwearType: item.category === 'shoes' ? inferFootwearType(item.category, item.name ?? '') : undefined,
+      name: displayName,
+      image: item.image ?? item.image_url ?? null,
+      color: normalizeColor(colorRaw),
+      emoji: getEmojiForCat(cat),
+      style: inferStyleTags(displayName, cat),
+      season: inferSeasonTags(displayName),
+      fit: inferFit(normAttrs.fit || attrs.fit || displayName),
+      bottomType: isBottomCat(cat) ? inferBottomType(cat, displayName) : undefined,
+      footwearType: isFootwearCat(cat) ? inferFootwearType(cat, displayName) : undefined,
     };
 
-    if (item.category === 'shirt' || item.category === 'tshirt') wardrobe.tops.push(piece);
-    if (item.category === 'pants') wardrobe.bottoms.push(piece);
-    if (item.category === 'shoes') wardrobe.footwear.push(piece);
-    if (['accessory', 'hat', 'watch', 'sock', 'bag'].includes(item.category)) wardrobe.accessories.push(piece);
+    // Also attach occasion from derived metadata if available
+    const derived = attrs.derived || normAttrs.derived || null;
+    if (derived?.occasion) {
+      piece.occasion = [derived.occasion as OccasionTag];
+    }
+    if (derived?.season && derived.season !== 'all-season') {
+      piece.season = [derived.season as SeasonTag];
+    }
+
+    if (isTopCat(cat)) wardrobe.tops.push(piece);
+    else if (isBottomCat(cat)) wardrobe.bottoms.push(piece);
+    else if (isFootwearCat(cat)) wardrobe.footwear.push(piece);
+    else if (isOuterwearCat(cat)) wardrobe.outerwear.push(piece);
+    else if (isAccessoryCat(cat)) wardrobe.accessories.push(piece);
+    else wardrobe.tops.push(piece); // unknown → tops
   });
+
+  // Debug: log counts so you can verify items are routing correctly
+  if (__DEV__) {
+    console.log('[outfitEngine] buildWardrobeFromItems:', {
+      tops: wardrobe.tops.length,
+      bottoms: wardrobe.bottoms.length,
+      footwear: wardrobe.footwear.length,
+      outerwear: wardrobe.outerwear.length,
+      accessories: wardrobe.accessories.length,
+      total: items.length,
+    });
+  }
 
   return wardrobe;
 }
 
-// ─── Step 1: Parse Intent ─────────────────────────────────────────────────────
+// ─── Parse Intent ─────────────────────────────────────────────────────────────
 
 const STYLE_KEYWORDS: Record<StyleTag, string[]> = {
   streetwear: ['street', 'hype', 'urban', 'drip', 'edgy', 'hypebeast', 'graphic', 'sneaker'],
@@ -378,7 +469,6 @@ export function parseIntent(prompt: string): OutfitIntent {
   const seasons = extract<SeasonTag>(SEASON_KEYWORDS_INTENT);
   const fits = extract<FitTag>(FIT_KEYWORDS);
 
-  // If user gave an occasion but no style, infer likely styles from occasion
   if (styles.length === 0 && occasions.length > 0) {
     for (const [style, occs] of Object.entries(STYLE_OCCASION_AFFINITY) as [StyleTag, OccasionTag[]][]) {
       if (occs.some(o => occasions.includes(o))) styles.push(style);
@@ -394,32 +484,18 @@ export function parseIntent(prompt: string): OutfitIntent {
   };
 }
 
-// ─── Step 2: Scoring Functions ────────────────────────────────────────────────
+// ─── Scoring ──────────────────────────────────────────────────────────────────
 
-/**
- * Style match: average overlap of each item's style tags with the intent.
- * A top tagged ['streetwear','casual'] against intent ['streetwear'] → 0.5 overlap → high.
- */
 function scoreStyleMatch(items: WardrobeItem[], intent: OutfitIntent): number {
   if (!intent.styles.length) return 0.5;
-
   const itemScores = items.map(item => {
-    if (!item.style?.length) return 0.4; // unknown items get slight penalty
+    if (!item.style?.length) return 0.4;
     const overlap = item.style.filter(s => intent.styles.includes(s)).length;
     return overlap / Math.max(item.style.length, intent.styles.length);
   });
-
   return itemScores.reduce((a, b) => a + b, 0) / itemScores.length;
 }
 
-/**
- * Color harmony: multi-factor.
- * +0.40 if bottom color is in top's harmony list
- * +0.25 if footwear color is in harmony list OR matches bottom
- * +0.15 bonus if outerwear (when present) harmonizes
- * +0.20 neutral bonus — outfits with ≤1 non-neutral color
- * -0.25 clash penalty for known bad pairs
- */
 function scoreColorHarmony(
   top: WardrobeItem,
   bottom: WardrobeItem,
@@ -429,30 +505,25 @@ function scoreColorHarmony(
   const harmony = COLOR_HARMONY[top.color] || COLOR_HARMONY.unknown;
   let score = 0;
 
-  // Core pairing
   if (harmony.includes(bottom.color) && top.color !== bottom.color) score += 0.40;
-  else if (top.color === bottom.color) score += 0.10; // monochrome — ok but not ideal unless intentional
+  else if (top.color === bottom.color) score += 0.10;
 
-  // Footwear
   if (footwear.color === bottom.color || harmony.includes(footwear.color)) score += 0.25;
 
-  // Outerwear harmony
   if (outerwear) {
     const outHarmony = COLOR_HARMONY[outerwear.color] || COLOR_HARMONY.unknown;
     if (outHarmony.includes(top.color) || outHarmony.includes(bottom.color)) score += 0.15;
   } else {
-    score += 0.15; // no outerwear, don't penalise
+    score += 0.15;
   }
 
-  // Neutral bonus: clean palette
   const allColors: ClothingColor[] = [top.color, bottom.color, footwear.color];
   if (outerwear) allColors.push(outerwear.color);
   const nonNeutralCount = allColors.filter(c => !NEUTRAL_COLORS.has(c)).length;
-  if (nonNeutralCount === 0) score += 0.20; // full neutral — always safe
-  else if (nonNeutralCount === 1) score += 0.15; // one accent — sharp
-  else if (nonNeutralCount === 2) score += 0.05; // two accents — risky but ok
+  if (nonNeutralCount === 0) score += 0.20;
+  else if (nonNeutralCount === 1) score += 0.15;
+  else if (nonNeutralCount === 2) score += 0.05;
 
-  // Clash penalty
   for (const [a, b] of COLOR_CLASHES) {
     const colors = new Set(allColors);
     if (colors.has(a) && colors.has(b)) { score -= 0.25; break; }
@@ -461,73 +532,42 @@ function scoreColorHarmony(
   return Math.max(0, Math.min(1, score));
 }
 
-/**
- * Fit balance: how well the top and bottom silhouettes work together.
- * Uses the FIT_COMPATIBILITY matrix. Defaults to 0.6 if fit data is missing.
- */
 function scoreFitBalance(top: WardrobeItem, bottom: WardrobeItem, intent: OutfitIntent): number {
   const topFit = top.fit || 'regular';
   const bottomFit = bottom.fit || 'regular';
   const baseScore = FIT_COMPATIBILITY[topFit][bottomFit];
-
-  // Bonus: if intent specifies a fit preference and items match it
   if (intent.fits.length > 0) {
     const topMatch = intent.fits.includes(topFit) ? 0.1 : 0;
     const bottomMatch = intent.fits.includes(bottomFit) ? 0.1 : 0;
     return Math.min(1, baseScore + topMatch + bottomMatch);
   }
-
   return baseScore;
 }
 
-/**
- * Occasion match: what fraction of items are appropriate for the target occasion.
- * Items without occasion tags get a neutral 0.5 so they don't ruin the score.
- */
 function scoreOccasionMatch(items: WardrobeItem[], intent: OutfitIntent): number {
   if (!intent.occasions.length) return 0.7;
-
   const itemScores = items.map(item => {
     if (!item.occasion?.length) return 0.5;
     const overlap = item.occasion.filter(o => intent.occasions.includes(o)).length;
     return overlap > 0 ? 0.5 + (overlap / intent.occasions.length) * 0.5 : 0.2;
   });
-
   return itemScores.reduce((a, b) => a + b, 0) / itemScores.length;
 }
 
-/**
- * Season match: checks whether items are appropriate for the requested season.
- * Items with no season data are treated as all-season (score: 0.7).
- */
 function scoreSeasonMatch(items: WardrobeItem[], intent: OutfitIntent): number {
   if (!intent.seasons.length) return 0.7;
-
   const isAllSeason = (s?: SeasonTag[]) => !s || s.length === 4 || s.length === 0;
-
   const itemScores = items.map(item => {
     if (isAllSeason(item.season)) return 0.7;
     const match = item.season!.some(s => intent.seasons.includes(s));
-    return match ? 1.0 : 0.1; // off-season is a meaningful penalty
+    return match ? 1.0 : 0.1;
   });
-
   return itemScores.reduce((a, b) => a + b, 0) / itemScores.length;
 }
 
-/**
- * Diversity bonus: rewards outfits where the top+bottom pair hasn't been
- * seen in recently generated outfits. Pass usedPairKeys to track.
- */
-function scoreDiversityBonus(
-  top: WardrobeItem,
-  bottom: WardrobeItem,
-  usedPairKeys: Set<string>,
-): number {
-  const key = `${top.id}__${bottom.id}`;
-  return usedPairKeys.has(key) ? 0 : 1;
+function scoreDiversityBonus(top: WardrobeItem, bottom: WardrobeItem, usedPairKeys: Set<string>): number {
+  return usedPairKeys.has(`${top.id}__${bottom.id}`) ? 0 : 1;
 }
-
-// ─── Step 3: Compute Final Score ──────────────────────────────────────────────
 
 const SCORE_WEIGHTS = {
   styleMatch: 0.30,
@@ -570,8 +610,6 @@ function computeOutfitScore(
   return { total, styleMatch, colorHarmony, fitBalance, occasionMatch, seasonMatch, diversityBonus };
 }
 
-// ─── Step 4: Generate Explanations ───────────────────────────────────────────
-
 function buildReasons(
   top: WardrobeItem,
   bottom: WardrobeItem,
@@ -583,42 +621,31 @@ function buildReasons(
 ): string[] {
   const reasons: string[] = [];
 
-  // Style
   if (score.styleMatch >= 0.8) reasons.push(`Strong ${intent.styles[0]} style alignment`);
   else if (score.styleMatch >= 0.5) reasons.push(`Fits the ${intent.styles[0]} vibe`);
 
-  // Color
   const allColors = [top.color, bottom.color, footwear.color];
   const nonNeutral = allColors.filter(c => !NEUTRAL_COLORS.has(c)).length;
   if (nonNeutral === 0) reasons.push('Clean all-neutral palette — always works');
   else if (nonNeutral === 1) reasons.push(`Balanced palette: neutral base with a ${allColors.find(c => !NEUTRAL_COLORS.has(c))} accent`);
   if (score.colorHarmony >= 0.75) reasons.push('Colors pair well together');
 
-  // Fit
   if (score.fitBalance >= 0.9) reasons.push(`${top.fit || 'regular'} top + ${bottom.fit || 'regular'} bottom — silhouettes match`);
   else if (score.fitBalance < 0.5) reasons.push('Note: mixed fit silhouettes — intentional contrast');
 
-  // Occasion
   if (score.occasionMatch >= 0.8) reasons.push(`Appropriate for ${intent.occasions[0]}`);
-
-  // Season
   if (score.seasonMatch >= 0.9) reasons.push(`Good choice for ${intent.seasons[0] || 'this season'}`);
-
-  // Extras
   if (accessory) reasons.push(`${accessory.name} ties the look together`);
   if (outerwear) reasons.push(`${outerwear.name} adds depth to the outfit`);
 
-  // Footwear logic
   const btType = bottom.bottomType || 'jeans';
   const validFwTypes = BOTTOM_TO_FOOTWEAR[btType] || [];
   if (footwear.footwearType && validFwTypes.includes(footwear.footwearType)) {
     reasons.push(`${footwear.name} pairs well with ${bottom.name}`);
   }
 
-  return reasons.slice(0, 5); // cap at 5 reasons
+  return reasons.slice(0, 5);
 }
-
-// ─── Step 5: Select Best Accessory & Outerwear for an outfit ─────────────────
 
 function pickBestAccessory(
   accessories: WardrobeItem[],
@@ -628,7 +655,6 @@ function pickBestAccessory(
 ): WardrobeItem | null {
   if (!accessories.length) return null;
   const harmony = COLOR_HARMONY[top.color] || COLOR_HARMONY.unknown;
-
   return accessories
     .map(a => {
       let s = 0;
@@ -647,13 +673,10 @@ function pickBestOuterwear(
   intent: OutfitIntent,
 ): WardrobeItem | null {
   if (!outerwears.length) return null;
-
-  // Skip outerwear for summer unless user specifically asks for layers
   const wantsSummer = intent.seasons.includes('summer') && !intent.seasons.includes('winter') && !intent.seasons.includes('fall');
   if (wantsSummer && Math.random() > 0.3) return null;
 
   const harmony = COLOR_HARMONY[top.color] || COLOR_HARMONY.unknown;
-
   const candidates = outerwears
     .map(o => {
       let s = 0;
@@ -664,18 +687,11 @@ function pickBestOuterwear(
       return { item: o, score: s };
     })
     .sort((a, b) => b.score - a.score);
-
-  // Only include outerwear if it's a reasonably good match
   return candidates[0]?.score >= 3 ? candidates[0].item : null;
 }
 
-// ─── Step 6: Main Generation — Intent-Aware Exhaustive + Ranked ──────────────
+// ─── Main Generation ──────────────────────────────────────────────────────────
 
-/**
- * Core generation function.
- * Generates outfit combinations, scores every candidate, and returns the top N
- * diverse outfits — ensuring no two results share the same (top, bottom) pair.
- */
 export function generateRankedOutfits(
   wardrobe: Wardrobe,
   intent: OutfitIntent,
@@ -690,43 +706,28 @@ export function generateRankedOutfits(
   const usedPairKeys = new Set<string>();
   const candidates: Array<{ outfit: Omit<ScoredOutfit, 'reasons' | 'generatedAt'>; score: OutfitScore }> = [];
 
-  // ── Exhaustive combination pass ──────────────────────────────────────────
   for (const top of tops) {
     const harmony = COLOR_HARMONY[top.color] || COLOR_HARMONY.unknown;
-
-    // Pre-filter bottoms: must harmonize with top and differ in color
-    const compatibleBottoms = bottoms.filter(b =>
-      harmony.includes(b.color) && b.color !== top.color
-    );
+    const compatibleBottoms = bottoms.filter(b => harmony.includes(b.color) && b.color !== top.color);
     const bottomPool = compatibleBottoms.length >= 2 ? compatibleBottoms : bottoms;
 
     for (const bottom of bottomPool) {
-      // Pre-filter footwear: must suit bottom type
       const btType = (bottom.bottomType || 'jeans') as BottomType;
       const validFwTypes = BOTTOM_TO_FOOTWEAR[btType] || BOTTOM_TO_FOOTWEAR.jeans;
-      const compatibleFootwear = footwears.filter(f =>
-        f.footwearType && validFwTypes.includes(f.footwearType)
-      );
+      const compatibleFootwear = footwears.filter(f => f.footwearType && validFwTypes.includes(f.footwearType));
       const footwearPool = compatibleFootwear.length ? compatibleFootwear : footwears;
 
       for (const footwear of footwearPool) {
         const outerwear = pickBestOuterwear(outerwears, top, bottom, intent);
         const accessory = pickBestAccessory(accessories, top, bottom, intent);
-
         const score = computeOutfitScore(top, bottom, footwear, outerwear, accessory, intent, usedPairKeys);
-
-        candidates.push({
-          outfit: { top, bottom, footwear, outerwear, accessory, score },
-          score,
-        });
+        candidates.push({ outfit: { top, bottom, footwear, outerwear, accessory, score }, score });
       }
     }
   }
 
-  // ── Sort by total score ───────────────────────────────────────────────────
   candidates.sort((a, b) => b.score.total - a.score.total);
 
-  // ── Diversify: pick top N with unique (top, bottom) pairs ────────────────
   const todayStr = getTodayString();
   const results: ScoredOutfit[] = [];
   const seenPairs = new Set<string>();
@@ -734,59 +735,34 @@ export function generateRankedOutfits(
 
   for (const { outfit, score } of candidates) {
     if (results.length >= topN) break;
-
     const pairKey = `${outfit.top.id}__${outfit.bottom.id}`;
     const topKey = outfit.top.id;
-
-    // Enforce unique top+bottom pair and avoid same top appearing in all results
     if (seenPairs.has(pairKey)) continue;
-    if (results.length >= 1 && seenTops.has(topKey)) continue; // allow same top at most once
-
+    if (results.length >= 1 && seenTops.has(topKey)) continue;
     seenPairs.add(pairKey);
     seenTops.add(topKey);
     usedPairKeys.add(pairKey);
-
     const reasons = buildReasons(outfit.top, outfit.bottom, outfit.footwear, outfit.outerwear ?? null, outfit.accessory ?? null, score, intent);
-
-    results.push({
-      ...outfit,
-      outerwear: outfit.outerwear ?? null,
-      accessory: outfit.accessory ?? null,
-      score,
-      reasons,
-      generatedAt: todayStr,
-    });
+    results.push({ ...outfit, outerwear: outfit.outerwear ?? null, accessory: outfit.accessory ?? null, score, reasons, generatedAt: todayStr });
   }
 
-  // ── Fallback: if not enough diverse results, relax the top-uniqueness rule ─
+  // Fallback: relax top-uniqueness if not enough results
   if (results.length < topN) {
     for (const { outfit, score } of candidates) {
       if (results.length >= topN) break;
       const pairKey = `${outfit.top.id}__${outfit.bottom.id}`;
       if (seenPairs.has(pairKey)) continue;
       seenPairs.add(pairKey);
-
       const reasons = buildReasons(outfit.top, outfit.bottom, outfit.footwear, outfit.outerwear ?? null, outfit.accessory ?? null, score, intent);
-      results.push({
-        ...outfit,
-        outerwear: outfit.outerwear ?? null,
-        accessory: outfit.accessory ?? null,
-        score,
-        reasons,
-        generatedAt: todayStr,
-      });
+      results.push({ ...outfit, outerwear: outfit.outerwear ?? null, accessory: outfit.accessory ?? null, score, reasons, generatedAt: todayStr });
     }
   }
 
   return results;
 }
 
-// ─── Daily Outfit (single best) ───────────────────────────────────────────────
+// ─── Daily Outfit ─────────────────────────────────────────────────────────────
 
-/**
- * Generates a single daily outfit without any intent (just the best-scoring combo).
- * Used for the "Outfit of the Day" feature.
- */
 export function generateDailyOutfit(wardrobe: Wardrobe): Omit<ScoredOutfit, 'generatedAt'> {
   const defaultIntent: OutfitIntent = {
     styles: ['casual', 'smart-casual'],
@@ -798,8 +774,6 @@ export function generateDailyOutfit(wardrobe: Wardrobe): Omit<ScoredOutfit, 'gen
   const results = generateRankedOutfits(wardrobe, defaultIntent, 1);
   return results[0];
 }
-
-// ─── Daily Persistence ────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'fitsense_daily_outfit_v2';
 
@@ -813,15 +787,8 @@ export async function getOrCreateDailyOutfit(wardrobe: Wardrobe): Promise<Scored
     }
   } catch (_) { }
 
-  const outfit: ScoredOutfit = {
-    ...generateDailyOutfit(wardrobe),
-    generatedAt: todayStr,
-  };
-
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(outfit));
-  } catch (_) { }
-
+  const outfit: ScoredOutfit = { ...generateDailyOutfit(wardrobe), generatedAt: todayStr };
+  try { await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(outfit)); } catch (_) { }
   return outfit;
 }
 
@@ -836,8 +803,6 @@ export async function forceRegenerateOutfit(wardrobe: Wardrobe, intent?: OutfitI
   };
   const results = generateRankedOutfits(wardrobe, effectiveIntent, 1);
   const outfit: ScoredOutfit = { ...results[0], generatedAt: todayStr };
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(outfit));
-  } catch (_) { }
+  try { await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(outfit)); } catch (_) { }
   return outfit;
 }

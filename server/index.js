@@ -24,7 +24,7 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-User-Id"],
   }),
 );
 
@@ -36,10 +36,38 @@ app.use("/static", express.static(path.join(REPO_OUTFIT)));
 // Mount profile routes
 app.use("/api/profile", profileRouter);
 
+// ---- endpoint: list posts for profile (Supabase) ----
+app.get("/api/profile/posts", async (req, res) => {
+  try {
+    const userId = req.header("x-user-id") || req.query.user_id;
+    if (!userId) {
+      return res.status(400).json({ error: "missing user id" });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("posts")
+      .select("*")
+      .eq("owner_clerk_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("fetch profile posts error", error);
+      return res.status(500).json({ error: error.message || error });
+    }
+
+    res.json({ posts: data });
+  } catch (err) {
+    console.error("profile posts endpoint error", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // Multer for outfit-analysis (store in memory to forward to Python)
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
-
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
 
 // configure cloudinary
 cloudinary.config({
@@ -56,24 +84,108 @@ const supabaseAdmin = createClient(
 
 // ---- Start outfit model API (Python) from repo's outfit_model ----
 let outfitProcess = null;
-function startOutfitModel() {
-  const python = process.env.PYTHON_PATH || "python3";
+let outfitStarting = false;
+let outfitRestartTimer = null;
+
+async function isPortInUse(port) {
+  return new Promise((resolve) => {
+    const net = require("net");
+    const server = net.createServer();
+    server.once("error", (err) => {
+      if (err.code === "EADDRINUSE") resolve(true);
+      else resolve(false);
+    });
+    server.once("listening", () => {
+      server.close();
+      resolve(false);
+    });
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+async function startOutfitModel() {
+  if (outfitProcess) {
+    console.log(
+      "[outfit] Model API already running (pid=" + outfitProcess.pid + ")",
+    );
+    return;
+  }
+  if (outfitStarting) return;
+  outfitStarting = true;
+
+  // Check if port is already in use
+  const inUse = await isPortInUse(OUTFIT_PORT);
+  if (inUse) {
+    console.log(
+      `[outfit] Port ${OUTFIT_PORT} already in use. Assuming Model API is already running.`,
+    );
+    outfitStarting = false;
+    return;
+  }
+
+  // Resolve Python: prefer PYTHON_PATH env var, then venv (Linux path), then
+  // venv (Windows path), then fall back to bare "python" (works on Windows)
+  // or "python3" (Linux/macOS).  Avoids the Windows Store alias that exits 9009.
+  const envPython = process.env.PYTHON_PATH;
+  const venvPythonUnix = path.join(__dirname, "outfit_model", "venv", "bin", "python");
+  const venvPythonWin  = path.join(__dirname, "outfit_model", "venv", "Scripts", "python.exe");
+  let python;
+  if (envPython && fs.existsSync(envPython)) {
+    python = envPython;
+  } else if (fs.existsSync(venvPythonWin)) {
+    python = venvPythonWin;
+  } else if (fs.existsSync(venvPythonUnix)) {
+    python = venvPythonUnix;
+  } else {
+    // Last resort: use "python" (Windows) which falls back gracefully,
+    // since "python3" doesn't exist on Windows by default (exits code 9009).
+    python = process.platform === "win32" ? "python" : "python3";
+    console.warn("[outfit] No venv python found — falling back to", python, "on PATH");
+  }
   const depsPath = path.join(REPO_OUTFIT, "deps");
   const pyPath = [depsPath, REPO_OUTFIT].join(path.delimiter);
-  const env = { ...process.env, PYTHONPATH: pyPath };
+  const env = { ...process.env, PYTHONPATH: REPO_OUTFIT };
   outfitProcess = spawn(
     python,
 
-    ["-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", String(OUTFIT_PORT)],
-    { cwd: REPO_OUTFIT, env, stdio: ["ignore", "pipe", "pipe"] }
+    [
+      "-m",
+      "uvicorn",
+      "api:app",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(OUTFIT_PORT),
+    ],
+    { cwd: REPO_OUTFIT, env, stdio: ["ignore", "pipe", "pipe"] },
   );
-  outfitProcess.stdout.on("data", (d) => process.stdout.write("[outfit] " + d.toString()));
-  outfitProcess.stderr.on("data", (d) => process.stderr.write("[outfit] " + d.toString()));
-  outfitProcess.on("error", (err) => console.warn("[outfit] process error:", err.message));
+  outfitStarting = false;
+  outfitProcess.stdout.on("data", (d) =>
+    process.stdout.write("[outfit] " + d.toString()),
+  );
+  outfitProcess.stderr.on("data", (d) =>
+    process.stderr.write("[outfit] " + d.toString()),
+  );
+  outfitProcess.on("error", (err) =>
+    console.warn("[outfit] process error:", err.message),
+  );
   outfitProcess.on("exit", (code) => {
+    const oldPid = outfitProcess?.pid;
     outfitProcess = null;
-    if (code !== 0 && code !== null) console.warn("[outfit] exited with code", code);
+    if (code !== 0 && code !== null) {
+      console.warn("[outfit] exited with code", code, "(pid=" + oldPid + ")");
+    } else {
+      console.log("[outfit] exited (pid=" + oldPid + ")");
+    }
 
+    // Auto-restart if Node is still running (common with uvicorn import errors)
+    if (!outfitRestartTimer) {
+      outfitRestartTimer = setTimeout(() => {
+        outfitRestartTimer = null;
+        console.log("[outfit] restarting Model API...");
+        startOutfitModel();
+      }, 1500);
+    }
   });
   console.log("[outfit] Model API starting on port", OUTFIT_PORT);
 }
@@ -83,10 +195,14 @@ function waitForOutfit(timeoutMs = 60000) {
   return new Promise((resolve) => {
     const check = () => {
       fetch(`${OUTFIT_API_URL}/health`).then(
-
-        (r) => { if (r.ok) return resolve(true); setTimeout(check, 500); },
-        () => { if (Date.now() - start < timeoutMs) setTimeout(check, 500); else resolve(false); }
-
+        (r) => {
+          if (r.ok) return resolve(true);
+          setTimeout(check, 500);
+        },
+        () => {
+          if (Date.now() - start < timeoutMs) setTimeout(check, 500);
+          else resolve(false);
+        },
       );
     };
     check();
@@ -134,9 +250,9 @@ function formDataToBuffer(form) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     form.on("data", (chunk) => {
-
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "binary"));
-
+      chunks.push(
+        Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "binary"),
+      );
     });
     form.on("error", reject);
     form.on("end", () => resolve(Buffer.concat(chunks)));
@@ -157,15 +273,17 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
     const body = await formDataToBuffer(form);
     headers["Content-Length"] = String(body.length);
 
-    const response = await fetch(
-      `${OUTFIT_API_URL}/analyze?save_result=true`,
-      { method: "POST", body, headers }
-    );
+    const response = await fetch(`${OUTFIT_API_URL}/analyze?save_result=true`, {
+      method: "POST",
+      body,
+      headers,
+    });
     if (!response.ok) {
       const errText = await response.text();
       console.error("outfit-api error", response.status, errText);
-      return res.status(response.status).json({ error: errText || "outfit analysis failed" });
-
+      return res
+        .status(response.status)
+        .json({ error: errText || "outfit analysis failed" });
     }
     const result = await response.json();
     const resultsDir = path.join(SERVER_DIR, "results");
@@ -174,8 +292,7 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
       fs.writeFileSync(
         path.join(resultsDir, "result.json"),
 
-        JSON.stringify(result, null, 2)
-
+        JSON.stringify(result, null, 2),
       );
     } catch (e) {
       console.warn("Could not write result.json:", e.message);
@@ -184,76 +301,6 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
   } catch (err) {
     console.error("outfit-analysis error", err);
     res.status(500).json({ error: err.message || String(err) });
-  }
-});
-
-// ---- endpoint: list posts for profile (Supabase) ----
-app.get("/api/profile/posts", async (req, res) => {
-  try {
-    // For demo: trust X-User-Id or query param as the Clerk user id.
-    const userId = req.header("x-user-id") || req.query.user_id;
-    if (!userId) {
-      return res.status(400).json({ error: "missing user id" });
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from("posts")
-      .select("id, image_url, caption, tags, created_at")
-      .eq("owner_clerk_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("supabase posts error", error);
-      return res.status(500).json({ error: error.message || String(error) });
-    }
-
-    res.json({ items: data || [] });
-  } catch (err) {
-    console.error("profile posts error", err);
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-// ---- endpoint: lightweight profile stats (followers/following/style) ----
-app.get("/api/profile/stats", async (req, res) => {
-  try {
-    const userId = req.header("x-user-id") || req.query.user_id;
-    if (!userId) {
-      return res.status(400).json({ error: "missing user id" });
-    }
-
-    // Derive simple stats from posts count for demo purposes.
-    let followers = 0;
-    let following = 0;
-    let styleScore = 92; // base score for demo
-
-    try {
-      const { data, error, count } = await supabaseAdmin
-        .from("posts")
-        .select("id", { count: "exact", head: true })
-        .eq("owner_clerk_id", userId);
-      if (error) {
-        console.warn("supabase stats posts error", error.message || error);
-      }
-      const postCount = typeof count === "number" ? count : (data || []).length;
-      followers = 100 + postCount * 3;
-      following = 80 + Math.round(postCount * 1.5);
-      styleScore = Math.min(99, 70 + postCount); // cap at 99
-    } catch (e) {
-      console.warn("profile stats supabase error", e.message || e);
-      followers = 1200;
-      following = 850;
-      styleScore = 92;
-    }
-
-    res.json({
-      followers,
-      following,
-      style_score: styleScore,
-    });
-  } catch (err) {
-    console.error("profile stats error", err);
-    res.status(500).json({ error: String(err) });
   }
 });
 
@@ -294,15 +341,113 @@ app.post("/api/create-post", async (req, res) => {
   }
 });
 
+// ---- endpoint: for-you feed (basic fetch for now) ----
+app.get("/api/for-you", async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("posts")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error("fetch for-you error", error);
+      return res.status(500).json({ error: error.message || error });
+    }
+
+    // Rewrite any local Python URLs to Node /static URLs
+    const nodeBase = `${req.protocol}://${req.get("host")}`;
+    const posts = (data || []).map((p) => {
+      if (p.image_url && p.image_url.includes(":8000/static/")) {
+        p.image_url = p.image_url.replace(/:\d+\/static\//, `:${PORT}/static/`);
+      }
+      return p;
+    });
+
+    res.json({ posts });
+  } catch (err) {
+    console.error("for-you error", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ---- endpoint: like toggle ----
+app.post("/api/like-toggle", async (req, res) => {
+  try {
+    const clerkUserId = await verifyClerkToken(req);
+    if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
+
+    const { post_id } = req.body;
+    if (!post_id) return res.status(400).json({ error: "missing post_id" });
+
+    // Check if like exists
+    const { data: existing } = await supabaseAdmin
+      .from("likes")
+      .select("*")
+      .eq("post_id", post_id)
+      .eq("user_clerk_id", clerkUserId)
+      .maybeSingle();
+
+    if (existing) {
+      // unlike
+      const { error } = await supabaseAdmin
+        .from("likes")
+        .delete()
+        .eq("post_id", post_id)
+        .eq("user_clerk_id", clerkUserId);
+      if (error) throw error;
+      res.json({ liked: false });
+    } else {
+      // like
+      const { error } = await supabaseAdmin
+        .from("likes")
+        .insert([{ post_id, user_clerk_id: clerkUserId }]);
+      if (error) throw error;
+      res.json({ liked: true });
+    }
+  } catch (err) {
+    console.error("like-toggle error", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ---- endpoint: health check ----
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, status: "Server is running" });
+});
+
 const PORT = process.env.PORT;
 // Start outfit model then listen
-startOutfitModel();
-waitForOutfit().then((ready) => {
-  if (ready) console.log("[outfit] Model API ready");
+(async () => {
+  await startOutfitModel();
+  waitForOutfit().then((ready) => {
+    if (ready) console.log("[outfit] Model API ready");
+    else
+      console.warn(
+        "[outfit] Model API may not be ready yet (check Python/uvicorn)",
+      );
+  });
+})();
 
-  else console.warn("[outfit] Model API may not be ready yet (check Python/uvicorn)");
-
-});
 app.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on http://0.0.0.0:${PORT}`),
 );
+
+function stopOutfitModel(signal = "SIGTERM") {
+  if (!outfitProcess) return;
+  try {
+    console.log("[outfit] stopping Model API (pid=" + outfitProcess.pid + ")");
+    outfitProcess.kill(signal);
+  } catch (e) {
+    // ignore
+  }
+}
+
+process.on("SIGINT", () => {
+  stopOutfitModel("SIGINT");
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  stopOutfitModel("SIGTERM");
+  process.exit(0);
+});

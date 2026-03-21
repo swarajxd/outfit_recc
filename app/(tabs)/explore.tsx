@@ -1,5 +1,5 @@
 import { useUser } from "@clerk/clerk-expo";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
     Dimensions,
     Image,
@@ -9,8 +9,10 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supabase } from "../../lib/supabase";
 
 const PRIMARY = "#FF6B00";
 const BG = "#0a0806";
@@ -81,20 +83,83 @@ const GRID_ITEMS = [
   },
 ];
 
+type GridItem = {
+  id: string;
+  image: string;
+  match: number;
+  user?: string | null;
+  avatar?: string | null;
+  tall: boolean;
+};
+
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
   const [activeCategory, setActiveCategory] = useState(0);
+  const [gridItems, setGridItems] = useState<GridItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Get user avatar - prefer Cloudinary URL from metadata, fallback to Clerk imageUrl
   const userAvatar =
     (user?.unsafeMetadata as { profileImageUrl?: string })?.profileImageUrl ||
     user?.imageUrl ||
     DEFAULT_AVATAR;
+  const username =
+    (user as any)?.username ||
+    user?.fullName ||
+    (user?.unsafeMetadata as { name?: string } | undefined)?.name ||
+    (user as any)?.primaryEmailAddress?.emailAddress ||
+    "@you";
 
-  // Split items into two columns (staggered)
-  const leftCol = GRID_ITEMS.filter((_, i) => i % 2 === 0);
-  const rightCol = GRID_ITEMS.filter((_, i) => i % 2 !== 0);
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchGridItems() {
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from("posts")
+          .select("id,image_url,owner_clerk_id,caption,created_at")
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        if (error) throw error;
+
+        if (cancelled) return;
+        const mapped: GridItem[] = (data ?? []).map((p: any, i: number) => {
+          const match = 92 - (i % 5); // keeps badge style but doesn't change layout
+          return {
+            id: String(p.id),
+            image: String(p.image_url),
+            match,
+            user: p.owner_clerk_id ? String(p.owner_clerk_id) : null,
+            avatar: userAvatar || DEFAULT_AVATAR,
+            tall: i % 2 === 0,
+          };
+        });
+
+        setGridItems(mapped);
+      } catch (e) {
+        console.error("explore fetchGridItems error", e);
+        if (!cancelled) setGridItems([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchGridItems();
+    return () => {
+      cancelled = true;
+    };
+  }, [userAvatar]);
+
+  const leftCol = useMemo(
+    () => gridItems.filter((_, i) => i % 2 === 0),
+    [gridItems],
+  );
+  const rightCol = useMemo(
+    () => gridItems.filter((_, i) => i % 2 !== 0),
+    [gridItems],
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -106,12 +171,17 @@ export default function ExploreScreen() {
             <TouchableOpacity style={styles.iconBtn}>
               <Text style={{ color: "#fff", fontSize: 18 }}>🔔</Text>
             </TouchableOpacity>
-            <Image
-              source={{
-                uri: userAvatar,
-              }}
-              style={styles.avatar}
-            />
+            <View style={styles.userPill}>
+              <Image
+                source={{
+                  uri: userAvatar,
+                }}
+                style={styles.avatar}
+              />
+              <Text style={styles.userPillText} numberOfLines={1}>
+                {String(username)}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -165,15 +235,18 @@ export default function ExploreScreen() {
         <View style={styles.grid}>
           {/* Left Column */}
           <View style={[styles.column, { marginRight: GAP / 2 }]}>
-            {leftCol.map((item) => (
-              <GridCard key={item.id} item={item} />
-            ))}
+            {loading ? (
+              <View style={{ height: 180, justifyContent: "center", alignItems: "center" }}>
+                <ActivityIndicator color="#fff" />
+              </View>
+            ) : (
+              leftCol.map((item) => <GridCard key={item.id} item={item} />)
+            )}
           </View>
           {/* Right Column */}
           <View style={[styles.column, { marginLeft: GAP / 2 }]}>
-            {rightCol.map((item) => (
-              <GridCard key={item.id} item={item} />
-            ))}
+            {!loading &&
+              rightCol.map((item) => <GridCard key={item.id} item={item} />)}
           </View>
         </View>
       </ScrollView>
@@ -181,7 +254,7 @@ export default function ExploreScreen() {
   );
 }
 
-function GridCard({ item }: { item: (typeof GRID_ITEMS)[0] }) {
+function GridCard({ item }: { item: GridItem }) {
   const height = item.tall ? COL_WIDTH * 1.5 : COL_WIDTH * 0.85;
   return (
     <View style={[styles.gridCard, { height, marginBottom: GAP }]}>
@@ -225,6 +298,22 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  userPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingRight: 10,
+    paddingLeft: 2,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: CARD_DARK,
+  },
+  userPillText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+    maxWidth: 110,
+  },
   iconBtn: {
     width: 40,
     height: 40,

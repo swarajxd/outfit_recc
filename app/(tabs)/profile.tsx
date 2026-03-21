@@ -18,9 +18,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { v4 as uuidv4 } from "uuid";
-
-const SERVER_BASE =
-  (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
+import { SERVER_BASE } from "../utils/config";
 
 const PRIMARY = "#FF6B00";
 const BG = "#000000";
@@ -150,7 +148,7 @@ export default function ProfileScreen() {
       );
       if (!resp.ok) throw new Error("Failed to fetch posts");
       const json = await resp.json();
-      const items: PostItem[] = (json.items || []).map((p: any) => ({
+      const items: PostItem[] = (json.posts || []).map((p: any) => ({
         id: String(p.id ?? uuidv4()),
         image_url: p.image_url,
         caption: p.caption ?? null,
@@ -175,16 +173,24 @@ export default function ProfileScreen() {
     setIsWardrobeLoading(true);
     try {
       const resp = await fetch(
-        `${SERVER_BASE}/api/profile/segmented/${encodeURIComponent(userId)}`,
+        `${SERVER_BASE}/api/profile/wardrobe/${encodeURIComponent(userId)}`,
       );
       if (!resp.ok) throw new Error("Failed to fetch wardrobe");
       const json = await resp.json();
-      const items: WardrobeItem[] = (json.items || []).map((item: any) => ({
-        id: item.id || uuidv4(),
-        image: item.image,
-        category: item.category || "",
-      }));
-      setWardrobeItems(items);
+
+      const w = json?.wardrobe || {};
+      const fetched: WardrobeItem[] = [];
+      for (const key of Object.keys(w)) {
+        const arr = Array.isArray(w[key]) ? w[key] : [];
+        for (const item of arr) {
+          fetched.push({
+            id: item.id || uuidv4(),
+            image: item.image,
+            category: item.category || key.replace(/s$/, "") || "",
+          });
+        }
+      }
+      setWardrobeItems(fetched);
     } catch (err) {
       console.warn("wardrobe fetch error:", err);
     } finally {
@@ -459,13 +465,9 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Top Bar */}
         <View style={styles.topBar}>
-          <TouchableOpacity>
-            <Text style={styles.topBarIcon}>⚙</Text>
-          </TouchableOpacity>
+          
           <Text style={styles.topBarHandle}>{userHandle}</Text>
-          <TouchableOpacity>
-            <Text style={styles.topBarIcon}>⬆</Text>
-          </TouchableOpacity>
+          
         </View>
 
         {/* Avatar */}
@@ -496,38 +498,11 @@ export default function ProfileScreen() {
             <TouchableOpacity style={styles.editBtn} onPress={openEditModal}>
               <Text style={styles.editBtnText}>Edit Profile</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.insightBtn}>
-              <Text style={{ color: "#000", fontSize: 16 }}>📊</Text>
-            </TouchableOpacity>
+            
           </View>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {followers !== null ? followers.toLocaleString() : "—"}
-            </Text>
-            <Text style={styles.statLabel}>FOLLOWERS</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {following !== null ? following.toLocaleString() : "—"}
-            </Text>
-            <Text style={styles.statLabel}>FOLLOWING</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <View style={styles.statValueRow}>
-              <Text style={[styles.statValue, { color: PRIMARY }]}>
-                {styleScore !== null ? styleScore : "—"}
-              </Text>
-              <Text style={styles.statPercent}>%</Text>
-            </View>
-            <Text style={styles.statLabel}>STYLE SENSE</Text>
-          </View>
-        </View>
+        
 
         {/* Tabs */}
         <View style={styles.tabs}>
