@@ -80,6 +80,7 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "missing image file" });
 
     const userId = req.body.user_id || "default_user";
+    const useImagen = req.body.use_imagen || "false";       // ← read mode from request
 
     const form = new FormData();
     form.append("file", req.file.buffer, {
@@ -87,6 +88,7 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
       contentType: req.file.mimetype || "image/jpeg",
     });
     form.append("user_id", userId);
+    form.append("use_imagen", useImagen);                   // ← forward to Python
 
     const headers = form.getHeaders();
     const body = await formDataToBuffer(form);
