@@ -30,6 +30,14 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# Python / ML
+aiwork/
+runs/
+*.pt
+*.pth
+*.onnx
+
+
 # local env files
 .env*.local
 .env
@@ -42,3 +50,8 @@ app-example
 # generated native folders
 /ios
 /android
+server/outfit_model
+
+.venv/
+.venv
+.env

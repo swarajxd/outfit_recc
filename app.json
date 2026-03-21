@@ -44,6 +44,7 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": { "API_BASE_URL": "http://10.0.2.2:4000" }
   }
 }

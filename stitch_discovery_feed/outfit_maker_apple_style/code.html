@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-bright": "#393939",
+              "secondary": "#ffb5a0",
+              "on-error": "#690005",
+              "inverse-surface": "#e2e2e2",
+              "secondary-fixed": "#ffdbd1",
+              "primary-fixed-dim": "#ffb5a0",
+              "outline-variant": "#5d4038",
+              "on-secondary-container": "#ff9b7f",
+              "on-primary-fixed-variant": "#872000",
+              "on-background": "#e2e2e2",
+              "primary-container": "#ff5625",
+              "tertiary-fixed": "#d4e3ff",
+              "surface-container-lowest": "#0e0e0e",
+              "surface-dim": "#131313",
+              "on-primary-fixed": "#3b0900",
+              "on-secondary": "#601400",
+              "on-tertiary-fixed": "#001c3a",
+              "surface-container-high": "#2a2a2a",
+              "surface-container-highest": "#353535",
+              "on-primary": "#601400",
+              "on-primary-container": "#541100",
+              "on-tertiary": "#00315e",
+              "on-surface-variant": "#e7bdb2",
+              "error": "#ffb4ab",
+              "surface-variant": "#353535",
+              "surface-container": "#1f1f1f",
+              "outline": "#ad887e",
+              "primary-fixed": "#ffdbd1",
+              "on-tertiary-fixed-variant": "#004785",
+              "background": "#131313",
+              "secondary-container": "#872101",
+              "surface": "#131313",
+              "on-secondary-fixed-variant": "#872101",
+              "on-surface": "#e2e2e2",
+              "tertiary-container": "#2592ff",
+              "on-tertiary-container": "#002a53",
+              "inverse-on-surface": "#303030",
+              "primary": "#ffb5a0",
+              "on-error-container": "#ffdad6",
+              "tertiary-fixed-dim": "#a5c8ff",
+              "surface-container-low": "#1b1b1b",
+              "inverse-primary": "#b12d00",
+              "on-secondary-fixed": "#3b0900",
+              "surface-tint": "#ffb5a0",
+              "tertiary": "#a5c8ff",
+              "secondary-fixed-dim": "#ffb5a0",
+              "error-container": "#93000a"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #131313;
+            color: #e2e2e2;
+        }
+        .glass-panel {
+            background: rgba(31, 31, 31, 0.7);
+            backdrop-filter: blur(24px);
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #ff5625 0%, #ffb5a0 100%);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface selection:bg-primary-container selection:text-white pb-32">
+<!-- Top Navigation Bar -->
+<header class="bg-[#131313]/70 backdrop-blur-[24px] fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 w-full shadow-[0px_24px_48px_rgba(0,0,0,0.4)]">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-white/60 hover:text-[#FF4500] transition-colors duration-300 cursor-pointer">menu</span>
+<span class="text-sm tracking-[0.2em] font-bold text-white uppercase">ATELIER</span>
+</div>
+<div class="hidden md:flex gap-8">
+<a class="text-[#FF4500] font-medium text-sm uppercase tracking-wider" href="#">Design</a>
+<a class="text-white/60 hover:text-[#FF4500] transition-colors duration-300 font-medium text-sm uppercase tracking-wider" href="#">Wardrobe</a>
+<a class="text-white/60 hover:text-[#FF4500] transition-colors duration-300 font-medium text-sm uppercase tracking-wider" href="#">Studio</a>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-white/60">search</span>
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/20 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="User profile circular avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDjNNa5IQJyGnjg5y2YiF5DKAJCXdjZjGsBF-G8e7QEyPmK_ixvVu9uc85wxZMBedKtp9vQROsoMh_OJYGmb29Xy5PZ0wYSFGhBTO93UbS7UbCsqQG_V-VXKlmD3W6iGTSrS8wTPb3sM5_ksxTfEAhka6mNDBTnhTRBRgWQpcDoK4PesPd32TZoIZmGpd1cejt3ODRjaWE1r_1_IBbWSXIuRwcvBhKbfJIx5yYEbJmPqaUkAEMUEVbL0owHAd1XFYgMRxhTZUFV8ivV"/>
+</div>
+</div>
+</header>
+<main class="pt-24 px-6 max-w-5xl mx-auto space-y-16">
+<!-- Hero Input Section -->
+<section class="space-y-8">
+<div class="space-y-2">
+<span class="text-[#FF4500] text-[10px] font-bold tracking-[0.2em] uppercase">AI Style Concierge</span>
+<h1 class="text-4xl md:text-6xl font-extrabold tracking-[-0.04em] leading-tight">Define Your <br/><span class="text-white/40 italic">Aesthetic.</span></h1>
+</div>
+<div class="relative group">
+<input class="w-full bg-surface-container-lowest border-none rounded-xl px-8 py-6 text-xl md:text-2xl font-light focus:ring-2 focus:ring-primary/30 transition-all outline-none placeholder:text-white/20" placeholder="Describe your vibe..." type="text"/>
+<div class="absolute right-4 top-1/2 -translate-y-1/2">
+<button class="primary-gradient p-4 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-on-primary-container" style="font-variation-settings: 'FILL' 1;">auto_fix_high</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Configuration Bento Grid -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Occasion -->
+<div class="bg-surface-container-low p-8 rounded-xl space-y-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-white/40">event</span>
+<h3 class="text-sm font-bold uppercase tracking-widest text-white/60">Occasion</h3>
+</div>
+<div class="flex flex-col gap-3">
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-transparent hover:border-primary/40 transition-all active:bg-surface-container-high">Gallery Opening</button>
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-primary/40 text-primary transition-all">Late Night Lounge</button>
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-transparent hover:border-primary/40 transition-all active:bg-surface-container-high">Executive Meeting</button>
+</div>
+</div>
+<!-- Style Preference -->
+<div class="bg-surface-container-low p-8 rounded-xl space-y-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-white/40">style</span>
+<h3 class="text-sm font-bold uppercase tracking-widest text-white/60">Style</h3>
+</div>
+<div class="flex flex-col gap-3">
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-primary/40 text-primary transition-all">Avant-Garde</button>
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-transparent hover:border-primary/40 transition-all active:bg-surface-container-high">Quiet Luxury</button>
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-transparent hover:border-primary/40 transition-all active:bg-surface-container-high">Tech-Wear</button>
+</div>
+</div>
+<!-- Climate -->
+<div class="bg-surface-container-low p-8 rounded-xl space-y-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-white/40">thermostat</span>
+<h3 class="text-sm font-bold uppercase tracking-widest text-white/60">Climate</h3>
+</div>
+<div class="flex flex-col gap-3">
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-transparent hover:border-primary/40 transition-all active:bg-surface-container-high">Alpine Chill</button>
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-transparent hover:border-primary/40 transition-all active:bg-surface-container-high">Urban Temperate</button>
+<button class="w-full py-4 px-6 bg-surface-container rounded-full text-left text-sm font-medium border border-primary/40 text-primary transition-all">Tropical Dusk</button>
+</div>
+</div>
+</section>
+<!-- CTA Button -->
+<div class="flex justify-center pt-8">
+<button class="primary-gradient px-12 py-5 rounded-full text-on-primary-container font-bold text-lg shadow-[0px_24px_48px_rgba(255,69,0,0.3)] hover:scale-105 active:scale-95 transition-all">
+                Create Outfit
+            </button>
+</div>
+<!-- Curated Results Section -->
+<section class="space-y-12">
+<div class="flex justify-between items-end border-b border-outline-variant/10 pb-6">
+<h2 class="text-2xl font-bold tracking-tight">Curated Looks</h2>
+<span class="text-white/40 text-sm">3 Recommendations Found</span>
+</div>
+<!-- Outfit Card 1 -->
+<article class="group relative bg-surface-container-low rounded-xl overflow-hidden md:flex">
+<div class="md:w-1/2 h-[500px] overflow-hidden">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="High fashion model in avant-garde black structured coat" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBuDaPrI4MFU37tPdrrxLTp9DHUmfmLF7wc5GwK1oo1BoW5TbEF4wBluvVlUkmSNHfU6jGTEDz6yuYYLqV61PsGW52d_uI2VCTojZPVD3D1XIelJjzFeVXtFc0R4ovu7E0SNBgfC3btqcBaZ3IaMvCNUuYhw2EMlCBADMK1jM27kRZH8E6QHzDe93w1CwjbhE9S8DPo_ZVvFp1PRd6sHRLKlC7zp9wdoujmQ1v4BVY64_pAaWDitCGGp5sQH_TW6g22NIpUnArldAXd"/>
+</div>
+<div class="md:w-1/2 p-8 md:p-12 flex flex-col justify-between space-y-8">
+<div class="space-y-4">
+<div class="flex justify-between items-start">
+<div>
+<span class="text-primary text-[10px] font-bold tracking-widest uppercase mb-2 block">Look 01 / Midnight Velvet</span>
+<h3 class="text-3xl font-bold tracking-tight">Monolithic Structure</h3>
+</div>
+<span class="material-symbols-outlined text-white/20 hover:text-primary transition-colors cursor-pointer">favorite</span>
+</div>
+<p class="text-white/60 leading-relaxed font-light">A sophisticated silhouette merging architectural lines with soft-touch textiles. Perfect for environments where presence is felt, not heard.</p>
+</div>
+<div class="grid grid-cols-3 gap-4">
+<div class="aspect-square bg-surface-container rounded-lg p-2 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-contain" data-alt="Luxury designer leather boots" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAp1QYLJXyNzWr7X_VU_KuGW6MmhziWLz2_myzWWFnwnL2_mU7aMnwuGZbyTc22jdZs-H-pEpu8VCAGrLk42USIwNnoFMI_WM_ghaiDwgorGjnIR3Sjdqsac5JmCQTrpeyQiJxHsCLK4idpm3bOYKsRJCqEFb-0beAI5aqyOduW37PnkTyW4P3nG2K0c4McbozGCYCPd42ZbMaMAzmEifHnRdILKnnVA6rTdwRCek4XQ6jIp1n0WQCBteAqVCFgt1LNXqD-4877foZq"/>
+</div>
+<div class="aspect-square bg-surface-container rounded-lg p-2 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-contain" data-alt="Minimalist titanium watch" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDeuMR9tHAODJCeOMfiTYzTEn3we9iCyWEWwTxREjES48SnVcW0exhchcDfWx0yImNG5u7NsLsbKjeUBgv4y7zy8IrTvPR80N8vG9jiKxU4sgWOXO4USrkhxDnm3L5uLAMIvFLdgDnrkIidbBO_aN7S0W8hW0ezhHYcereoaZDrjKpArF5Fn-bNnyilmGqBK6kwVOeW8pu_pg-8TnvqXoxfJ1JcPMb5nSg1CDjZPU86Wp-qW1a1fH2KErxKRqxBXtXPOmkt6sApsu8F"/>
+</div>
+<div class="aspect-square bg-surface-container rounded-lg p-2 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-contain" data-alt="Small structured leather clutch" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAIB9VAove2lVuVJrJPfaX1AVWcuYtJVPp_lNiwJDeOSsbJzWwW79vdNVnfKvcgqea_qRTH1MvFV1MhYtv-SgNZG8lFPuBvk-0udo8N0GdbOwtuDkEp70ZVnC3qAFCt-5vlTvS0qDHzRXdKSx22GMWROVNk_5aABSY7u0GgLuiFw_9J75cgF2NU2SYQsqywcHxmEQCtAtW8ix3IjlofwSN6cN1qE4e4mz6rvw665nIFcCv9SbNmmVWUzrfxp3gSGXCwVMuKklaqJMe0"/>
+</div>
+</div>
+<button class="w-full py-4 border border-outline-variant/30 rounded-full text-sm font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all">
+                        View Outfit Details
+                    </button>
+</div>
+</article>
+<!-- Outfit Card 2 -->
+<article class="group relative bg-surface-container-low rounded-xl overflow-hidden md:flex flex-row-reverse">
+<div class="md:w-1/2 h-[500px] overflow-hidden">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Fashionable street style with vibrant orange accents" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcrZCgctbap-67stITYl2te3cPHYYKOqfCgf1EACqzs4dZI53kK9d1xltDN2I03QS4N_qkDJqz4Xw4Fk7gfbHeZgyuBgEIpPDyX0qRF1lHFqQPvEqaf_XTm6pnf2YA-0tR8yqBccuYFGaI3j88OXcpa_rLrz2vZvp7wZq4lD4R4ya8pVKlVQyll519_R4gvkhOY9KubVLNsLP9nKq54zFc2fnyMfZmjkaaeDpz-q1RZBfKLG3RhwUWKugp318M_A5Tcip1lxAhk5o0"/>
+</div>
+<div class="md:w-1/2 p-8 md:p-12 flex flex-col justify-between space-y-8 text-right">
+<div class="space-y-4">
+<div class="flex justify-between items-start flex-row-reverse">
+<div>
+<span class="text-primary text-[10px] font-bold tracking-widest uppercase mb-2 block">Look 02 / Sunset Kinetic</span>
+<h3 class="text-3xl font-bold tracking-tight">Kinetic Energy</h3>
+</div>
+<span class="material-symbols-outlined text-white/20 hover:text-primary transition-colors cursor-pointer">favorite</span>
+</div>
+<p class="text-white/60 leading-relaxed font-light ml-auto max-w-sm">Vibrant pops of safety orange balanced against industrial grays. Designed for the urban explorer seeking high visibility in the concrete jungle.</p>
+</div>
+<div class="grid grid-cols-3 gap-4 flex-row-reverse">
+<div class="aspect-square bg-surface-container rounded-lg p-2 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-contain" data-alt="Designer sneakers with orange details" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBJQhN4PShIHcHw98HvB4KWFBToUDqeG9ZVwyba-4xiFeSQ60JePnvijLbFsRuXJXQ7gNnoC1WFuko2jDU2UiTQ-08Aed7G_9HOffa1djVW1CID50bLsGHabiB2SHR40SkV6oy1JHrCO2HcEBiokt31zbeNNg5xLDncvB8pTZMl3Es1vkDAajrcqbFIZI_uzFtm-0Q2T-Z_QGGNd1q6D_IpW_OHKXNby0IsSO8u70H9iyoM9aDizhQQwgjnaufYAQe07nfz9apx60M1"/>
+</div>
+<div class="aspect-square bg-surface-container rounded-lg p-2 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-contain" data-alt="Matte black sunglasses" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCvhWPb0tVrnN8FYIwLUEVGDmUhRckDlNxCzKapQtiZ1tv5i-1K_Evp5dcVxjpbNmulbdgj9VRQNnE2sACoL58ONgzXgG9LNZtVCR-sHWKNXgAWN7GYGXEibAV3i85NbQiFjS1Wla7jF8ndq8oRVXx39QH0QK5Qwe0hcA0q7N1KDQc_l3mpBSxAvTRu5qIoz3UgBZzsmGDfPTmJh02zxJJVPCh6LdVxu15Bmd-wqa46ahwO_8aaE0oO_Kvyh8ZHO1gIUV-hsaxXgeSK"/>
+</div>
+<div class="aspect-square bg-surface-container rounded-lg p-2 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-contain" data-alt="Modern technical backpack" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC4xBRIHY9iO03MVJQTdb3JhghzedLOn9XSG6zOUz8kd9vjUrxrLrHHYuwpBoSwB4zgs5TMmuEOpznDaYcLMgMJQ0yQvOINS-LAf6xYeiQYfWwbin2jVFPK7cY8CbPHlxn3-vCY6yBzwKUu5gr09uiEqszZAVMBQeItt00JVVcgLBdL7RPKXnUJC5U-2jPd24pcBOO5sCSsgjMwfl0EotoOrt8VpviP6Kv02gftvXvDA3bZHXx1HvlOMxKoFGbXWxip0N6BC21IOUWj"/>
+</div>
+</div>
+<button class="w-full py-4 border border-outline-variant/30 rounded-full text-sm font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all">
+                        View Outfit Details
+                    </button>
+</div>
+</article>
+</section>
+</main>
+<!-- Bottom Navigation Bar (Mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full flex justify-around items-center h-20 px-8 pb-safe bg-[#1F1F1F]/70 backdrop-blur-[24px] z-50 rounded-t-[3rem] shadow-[0px_-12px_32px_rgba(0,0,0,0.3)]">
+<div class="flex flex-col items-center justify-center text-[#FF4500] scale-110">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-['Inter'] text-[10px] uppercase tracking-wider mt-1">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center text-white/40">
+<span class="material-symbols-outlined">checkroom</span>
+<span class="font-['Inter'] text-[10px] uppercase tracking-wider mt-1">Closet</span>
+</div>
+<div class="flex flex-col items-center justify-center text-white/40">
+<span class="material-symbols-outlined">auto_fix_high</span>
+<span class="font-['Inter'] text-[10px] uppercase tracking-wider mt-1">Create</span>
+</div>
+<div class="flex flex-col items-center justify-center text-white/40">
+<span class="material-symbols-outlined">shopping_bag</span>
+<span class="font-['Inter'] text-[10px] uppercase tracking-wider mt-1">Shop</span>
+</div>
+<div class="flex flex-col items-center justify-center text-white/40">
+<span class="material-symbols-outlined">person</span>
+<span class="font-['Inter'] text-[10px] uppercase tracking-wider mt-1">Profile</span>
+</div>
+</nav>
+<!-- FAB (Contextual) -->
+<button class="fixed right-6 bottom-24 md:bottom-8 primary-gradient w-14 h-14 rounded-full flex items-center justify-center shadow-2xl z-40 active:scale-90 transition-all">
+<span class="material-symbols-outlined text-on-primary-container" style="font-variation-settings: 'FILL' 1;">add</span>
+</button>
+</body></html>

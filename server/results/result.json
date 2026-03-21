@@ -1,0 +1,73 @@
+{
+  "image": "C:\\Users\\admin\\AppData\\Local\\Temp\\tmp8yubsydf.jpg",
+  "detection_viz": "I:\\outfit recc\\fitsense-auth\\server\\outfit_model\\uploads\\user_detections.jpg",
+  "segmented_dir": "I:\\outfit recc\\fitsense-auth\\server\\outfit_model\\uploads\\user_segmented",
+  "wearing": [
+    "pants",
+    "tshirt",
+    "shoes",
+    "sock"
+  ],
+  "counts": {
+    "pants": 1,
+    "tshirt": 1,
+    "shoes": 2,
+    "sock": 1
+  },
+  "detections": {
+    "pants": [
+      [
+        1112,
+        2090,
+        2026,
+        3556
+      ]
+    ],
+    "tshirt": [
+      [
+        1117,
+        1127,
+        1942,
+        2253
+      ]
+    ],
+    "shoes": [
+      [
+        1042,
+        3484,
+        1484,
+        3816
+      ],
+      [
+        1748,
+        3381,
+        2222,
+        3611
+      ]
+    ],
+    "sock": [
+      [
+        1776,
+        3417,
+        1950,
+        3523
+      ]
+    ]
+  },
+  "segmented_items": {
+    "pants": [
+      "I:\\outfit recc\\fitsense-auth\\server\\outfit_model\\uploads\\user_segmented\\pants_0.png"
+    ],
+    "tshirt": [
+      "I:\\outfit recc\\fitsense-auth\\server\\outfit_model\\uploads\\user_segmented\\tshirt_0.png"
+    ],
+    "shoes": [
+      "I:\\outfit recc\\fitsense-auth\\server\\outfit_model\\uploads\\user_segmented\\shoes_0.png",
+      "I:\\outfit recc\\fitsense-auth\\server\\outfit_model\\uploads\\user_segmented\\shoes_1.png"
+    ],
+    "sock": [
+      "I:\\outfit recc\\fitsense-auth\\server\\outfit_model\\uploads\\user_segmented\\sock_0.png"
+    ]
+  },
+  "colors": {}
+}
