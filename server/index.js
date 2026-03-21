@@ -406,6 +406,46 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true, status: "Server is running" });
 });
 
+// ---- endpoint: recommend outfit (vector-based) ----
+app.get("/api/recommend-outfit", async (req, res) => {
+  try {
+    const userId = req.header("x-user-id") || req.query.user_id;
+    const query = req.query.query || "casual outfit";
+
+    if (!userId) {
+      return res.status(400).json({ error: "missing user id" });
+    }
+
+    const pyUrl = `${OUTFIT_API_URL}/recommend-outfit?user_id=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`;
+    const pyResponse = await fetch(pyUrl);
+
+    if (!pyResponse.ok) {
+      const errText = await pyResponse.text();
+      return res.status(pyResponse.status).json({ error: errText });
+    }
+
+    const result = await pyResponse.json();
+
+    // Rewrite image paths to Node /static URLs if they point to port 8000
+    if (result.outfits && Array.isArray(result.outfits)) {
+      result.outfits.forEach((o) => {
+        const outfit = o.outfit || {};
+        ["top", "bottom", "shoes"].forEach((key) => {
+          const it = outfit[key];
+          if (it && it.image && it.image.includes(":8000/static/")) {
+            it.image = it.image.replace(/:\d+\/static\//, `:${PORT}/static/`);
+          }
+        });
+      });
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error("recommend-outfit error", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 const PORT = process.env.PORT;
 // Start outfit model then listen
 (async () => {

@@ -1,19 +1,22 @@
-import React, { useState, useMemo } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  Image,
-  Platform,
-} from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useUser } from "@clerk/clerk-expo";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
+import {
+    ActivityIndicator,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { forceRegenerateOutfit } from "../utils/outfitEngine";
+import {
+    forceRegenerateOutfit,
+    getVectorBasedOutfit,
+} from "../utils/outfitEngine";
 
 // ─── Design Tokens (Cupertino Noir / Stitch) ────────────────────────────────
 const SURFACE = "#131313";
@@ -34,6 +37,8 @@ type Outfit = {
   footwear?: any;
   outerwear?: any;
   accessory?: any;
+  score?: number;
+  reasons?: string[];
 };
 
 // ─── Occasion / Weather / Style config ─────────────────────────────────────
@@ -60,6 +65,7 @@ const CONFIG_SECTIONS = [
 
 export default function OutfitMaker() {
   const router = useRouter();
+  const { user } = useUser();
   const insets = useSafeAreaInsets();
   const { wardrobe } = useLocalSearchParams();
 
@@ -76,21 +82,98 @@ export default function OutfitMaker() {
     }
     if (!Array.isArray(raw)) return raw; // already a Wardrobe object (fallback)
 
-    const w: any = { tops: [], bottoms: [], footwear: [], accessories: [], outerwear: [] };
+    const w: any = {
+      tops: [],
+      bottoms: [],
+      footwear: [],
+      accessories: [],
+      outerwear: [],
+    };
 
     raw.forEach((item) => {
       const cat = (item.category || "").toLowerCase();
-      const piece = { ...item, name: item.category, emoji: "👕", color: "unknown" };
+      const piece = {
+        ...item,
+        name: item.category,
+        emoji: "👕",
+        color: "unknown",
+      };
 
-      if (["shirt","tshirt","t-shirt","top","polo","blouse","sweater","hoodie","knit","pullover"].some(k => cat.includes(k))) {
+      if (
+        [
+          "shirt",
+          "tshirt",
+          "t-shirt",
+          "top",
+          "polo",
+          "blouse",
+          "sweater",
+          "hoodie",
+          "knit",
+          "pullover",
+        ].some((k) => cat.includes(k))
+      ) {
         w.tops.push(piece);
-      } else if (["pant","jean","trouser","bottom","short","chino","jogger","slack","skirt"].some(k => cat.includes(k))) {
-        w.bottoms.push({ ...piece, bottomType: cat.includes("short") ? "shorts" : cat.includes("jogger") ? "joggers" : "jeans" });
-      } else if (["shoe","sneaker","boot","sandal","loafer","oxford","brogue","slip"].some(k => cat.includes(k))) {
-        w.footwear.push({ ...piece, footwearType: cat.includes("boot") ? "boots" : cat.includes("loafer") ? "loafers" : "sneakers" });
-      } else if (["jacket","coat","blazer","outerwear","overcoat","cardigan"].some(k => cat.includes(k))) {
+      } else if (
+        [
+          "pant",
+          "jean",
+          "trouser",
+          "bottom",
+          "short",
+          "chino",
+          "jogger",
+          "slack",
+          "skirt",
+        ].some((k) => cat.includes(k))
+      ) {
+        w.bottoms.push({
+          ...piece,
+          bottomType: cat.includes("short")
+            ? "shorts"
+            : cat.includes("jogger")
+              ? "joggers"
+              : "jeans",
+        });
+      } else if (
+        [
+          "shoe",
+          "sneaker",
+          "boot",
+          "sandal",
+          "loafer",
+          "oxford",
+          "brogue",
+          "slip",
+        ].some((k) => cat.includes(k))
+      ) {
+        w.footwear.push({
+          ...piece,
+          footwearType: cat.includes("boot")
+            ? "boots"
+            : cat.includes("loafer")
+              ? "loafers"
+              : "sneakers",
+        });
+      } else if (
+        ["jacket", "coat", "blazer", "outerwear", "overcoat", "cardigan"].some(
+          (k) => cat.includes(k),
+        )
+      ) {
         w.outerwear.push(piece);
-      } else if (["accessory","cap","hat","bag","belt","watch","sock","scarf","glove"].some(k => cat.includes(k))) {
+      } else if (
+        [
+          "accessory",
+          "cap",
+          "hat",
+          "bag",
+          "belt",
+          "watch",
+          "sock",
+          "scarf",
+          "glove",
+        ].some((k) => cat.includes(k))
+      ) {
         w.accessories.push(piece);
       } else {
         // Unknown category — put in tops as best guess so wardrobe isn't empty
@@ -102,6 +185,7 @@ export default function OutfitMaker() {
 
   const [prompt, setPrompt] = useState("");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = useState({
     occasion: "",
     weather: "",
@@ -114,21 +198,51 @@ export default function OutfitMaker() {
   };
 
   const generateOutfit = async () => {
-    if (!parsedWardrobe) {
-      console.log("No wardrobe found");
-      return;
-    }
-
+    setLoading(true);
     try {
+      // 1. Build a combined query from prompt + answers
+      const parts = [];
+      if (prompt) parts.push(prompt);
+      if (answers.style) parts.push(`${answers.style} style`);
+      if (answers.occasion) parts.push(`for ${answers.occasion}`);
+      if (answers.weather) parts.push(`in ${answers.weather} weather`);
+
+      const fullQuery = parts.join(" ") || "casual outfit";
+
+      // 2. Try vector-based generation if user is logged in
+      if (user?.id) {
+        try {
+          console.log("Attempting vector recommendation for:", fullQuery);
+          const vectorOutfit = await getVectorBasedOutfit(user.id, fullQuery);
+          setOutfit(vectorOutfit);
+          setLoading(false);
+          setMessage("");
+          return;
+        } catch (vErr) {
+          console.warn(
+            "Vector recommendation failed, falling back to rules:",
+            vErr,
+          );
+        }
+      }
+
+      // 3. Fallback to rule-based generation
+      if (!parsedWardrobe) {
+        console.log("No wardrobe found for fallback");
+        setLoading(false);
+        return;
+      }
+
       let filteredWardrobe = { ...parsedWardrobe };
       let missingItems = false;
 
       if (filteredWardrobe.tops.length === 0) missingItems = true;
       if (filteredWardrobe.bottoms.length === 0) missingItems = true;
       if (filteredWardrobe.footwear.length === 0) missingItems = true;
+
       if (missingItems) {
         setMessage(
-          "You don't have items exactly matching this request in your wardrobe. Showing the closest outfit instead."
+          "You don't have items exactly matching this request in your wardrobe. Showing the closest outfit instead.",
         );
       } else {
         setMessage("");
@@ -174,7 +288,7 @@ export default function OutfitMaker() {
         const formalTops = parsedWardrobe.tops.filter(
           (item: any) =>
             item.name.toLowerCase().includes("shirt") ||
-            item.name.toLowerCase().includes("blazer")
+            item.name.toLowerCase().includes("blazer"),
         );
         if (formalTops.length > 0) {
           filteredWardrobe.tops = formalTops;
@@ -183,7 +297,7 @@ export default function OutfitMaker() {
         filteredWardrobe.bottoms = parsedWardrobe.bottoms.filter(
           (item: any) =>
             item.name.toLowerCase().includes("short") ||
-            item.name.toLowerCase().includes("jogger")
+            item.name.toLowerCase().includes("jogger"),
         );
       }
 
@@ -195,32 +309,32 @@ export default function OutfitMaker() {
       setOutfit(result);
     } catch (err) {
       console.log("Error generating outfit", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   const renderResultItem = (item: any, label: string) => {
     const hasImage =
-      item.image &&
-      typeof item.image === "string" &&
-      item.image.length > 4;
+      item.image && typeof item.image === "string" && item.image.length > 4;
     return (
-    <View key={label} style={styles.resultItem}>
-      <View style={styles.resultImageWrap}>
-        {hasImage ? (
-          <Image
-            source={{ uri: item.image }}
-            style={StyleSheet.absoluteFillObject}
-            resizeMode="cover"
-          />
-        ) : (
-          <Text style={styles.resultEmoji}>{item.emoji || "👕"}</Text>
-        )}
+      <View key={label} style={styles.resultItem}>
+        <View style={styles.resultImageWrap}>
+          {hasImage ? (
+            <Image
+              source={{ uri: item.image }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+            />
+          ) : (
+            <Text style={styles.resultEmoji}>{item.emoji || "👕"}</Text>
+          )}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.resultLabel}>{label.toUpperCase()}</Text>
+          <Text style={styles.resultName}>{item.name}</Text>
+        </View>
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.resultLabel}>{label.toUpperCase()}</Text>
-        <Text style={styles.resultName}>{item.name}</Text>
-      </View>
-    </View>
     );
   };
 
@@ -275,7 +389,10 @@ export default function OutfitMaker() {
                   return (
                     <TouchableOpacity
                       key={opt}
-                      style={[styles.pillOption, isSelected && styles.pillSelected]}
+                      style={[
+                        styles.pillOption,
+                        isSelected && styles.pillSelected,
+                      ]}
                       onPress={() => selectOption(section.key, opt)}
                       activeOpacity={0.75}
                     >
@@ -295,16 +412,24 @@ export default function OutfitMaker() {
           ))}
         </View>
 
-        {/* ── CTA BUTTON ──────────────────────────────────────────────── */}
+        {/* ── CTA BUTTON ─────────────────────────────────────────────── */}
         <View style={styles.ctaWrap}>
-          <TouchableOpacity onPress={generateOutfit} activeOpacity={0.85}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={generateOutfit}
+            disabled={loading}
+          >
             <LinearGradient
-              colors={[PRIMARY_CONTAINER, PRIMARY_LIGHT]}
+              colors={[PRIMARY, PRIMARY_CONTAINER]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.ctaBtn}
             >
-              <Text style={styles.ctaText}>Generate Outfit</Text>
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.ctaText}>Generate Outfit</Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -316,18 +441,41 @@ export default function OutfitMaker() {
           </View>
         )}
 
-        {/* ── RESULT SECTION ──────────────────────────────────────────── */}
+        {/* ── RESULTS ─────────────────────────────────────────────────── */}
         {outfit && (
           <View style={styles.resultSection}>
             <View style={styles.resultHeaderRow}>
-              <Text style={styles.resultHeadline}>Curated Look</Text>
+              <View>
+                <Text style={styles.resultHeadline}>Your Outfit</Text>
+                {outfit.score !== undefined && (
+                  <Text style={styles.resultScore}>
+                    {Math.round(outfit.score * 100)}% Match
+                  </Text>
+                )}
+              </View>
               <Text style={styles.resultCount}>
                 {
-                  Object.values(outfit).filter(Boolean).length
+                  [
+                    outfit.top,
+                    outfit.bottom,
+                    outfit.footwear,
+                    outfit.outerwear,
+                    outfit.accessory,
+                  ].filter(Boolean).length
                 }{" "}
-                Pieces
+                pieces
               </Text>
             </View>
+
+            {outfit.reasons && outfit.reasons.length > 0 && (
+              <View style={styles.reasonsBox}>
+                {outfit.reasons.map((r, i) => (
+                  <Text key={i} style={styles.reasonText}>
+                    • {r}
+                  </Text>
+                ))}
+              </View>
+            )}
 
             <View style={styles.resultCard}>
               {outfit.top && renderResultItem(outfit.top, "Top")}
@@ -515,9 +663,27 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.5,
   },
+  resultScore: {
+    color: PRIMARY_LIGHT,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 2,
+  },
   resultCount: {
     color: ON_SURFACE_DIM,
     fontSize: 12,
+  },
+  reasonsBox: {
+    backgroundColor: SURFACE_LOWEST,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    gap: 6,
+  },
+  reasonText: {
+    color: ON_SURFACE_MID,
+    fontSize: 13,
+    lineHeight: 18,
   },
   resultCard: {
     backgroundColor: SURFACE_LOW,

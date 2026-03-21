@@ -646,7 +646,7 @@ useEffect(() => {
     console.log("ITEMS FROM API:", items);
     console.log("BUILT WARDROBE:", wardrobe);
 
-    getOrCreateDailyOutfit(wardrobe)
+    getOrCreateDailyOutfit(wardrobe, user?.id || undefined)
       .then((o) => {
         console.log("GENERATED OUTFIT:", o);
         if (!cancelled) {
@@ -661,11 +661,11 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [items]);
+  }, [items, user?.id]);
 
   const handleRegenerate = () => {
     setOutfitLoading(true);
-    forceRegenerateOutfit(userWardrobe)
+    forceRegenerateOutfit(userWardrobe, user?.id || undefined)
       .then((o) => {
         setOutfit(o);
         setOutfitLoading(false);
