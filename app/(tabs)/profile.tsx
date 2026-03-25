@@ -1,20 +1,19 @@
 import { useUser } from "@clerk/clerk-expo";
-import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { v4 as uuidv4 } from "uuid";
@@ -121,7 +120,9 @@ export default function ProfileScreen() {
       const json = await resp.json();
       setFollowers(typeof json.followers === "number" ? json.followers : null);
       setFollowing(typeof json.following === "number" ? json.following : null);
-      setStyleScore(typeof json.style_score === "number" ? json.style_score : null);
+      setStyleScore(
+        typeof json.style_score === "number" ? json.style_score : null,
+      );
     } catch (err) {
       console.warn("profile stats fetch error:", err);
       // leave defaults/nulls – UI will still show something
@@ -465,9 +466,7 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Top Bar */}
         <View style={styles.topBar}>
-          
           <Text style={styles.topBarHandle}>{userHandle}</Text>
-          
         </View>
 
         {/* Avatar */}
@@ -498,11 +497,8 @@ export default function ProfileScreen() {
             <TouchableOpacity style={styles.editBtn} onPress={openEditModal}>
               <Text style={styles.editBtnText}>Edit Profile</Text>
             </TouchableOpacity>
-            
           </View>
         </View>
-
-        
 
         {/* Tabs */}
         <View style={styles.tabs}>
@@ -581,9 +577,13 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             ) : posts.length === 0 ? (
-              <View style={{ paddingVertical: 60, alignItems: "center", gap: 8 }}>
+              <View
+                style={{ paddingVertical: 60, alignItems: "center", gap: 8 }}
+              >
                 <Text style={{ fontSize: 40 }}>📷</Text>
-                <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>
+                <Text
+                  style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}
+                >
                   No posts yet
                 </Text>
                 <Text
@@ -600,7 +600,10 @@ export default function ProfileScreen() {
             ) : (
               posts.map((post) => (
                 <TouchableOpacity key={post.id} style={styles.postItem}>
-                  <Image source={{ uri: post.image_url }} style={styles.postImage} />
+                  <Image
+                    source={{ uri: post.image_url }}
+                    style={styles.postImage}
+                  />
                 </TouchableOpacity>
               ))
             )}

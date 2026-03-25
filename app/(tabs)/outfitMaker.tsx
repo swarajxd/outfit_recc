@@ -1,6 +1,6 @@
 import { useUser } from "@clerk/clerk-expo";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
     ActivityIndicator,
@@ -14,11 +14,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-    forceRegenerateOutfit,
-    getVectorBasedOutfit,
+    buildWardrobeFromItems,
+    GeneratedOutfit,
+    getVectorBasedOutfits,
 } from "../utils/outfitEngine";
 
-// ─── Design Tokens (Cupertino Noir / Stitch) ────────────────────────────────
+// ─── Design Tokens ───────────────────────────────────────────────────────────
 const SURFACE = "#131313";
 const SURFACE_LOW = "#1B1B1B";
 const SURFACE_CONTAINER = "#1F1F1F";
@@ -29,49 +30,20 @@ const PRIMARY_CONTAINER = "#FF5625";
 const PRIMARY_LIGHT = "#FFB5A0";
 const ON_SURFACE = "#E2E2E2";
 const ON_SURFACE_DIM = "rgba(226,226,226,0.4)";
-const ON_SURFACE_MID = "rgba(226,226,226,0.6)";
 
-type Outfit = {
-  top?: any;
-  bottom?: any;
-  footwear?: any;
-  outerwear?: any;
-  accessory?: any;
-  score?: number;
-  reasons?: string[];
-};
-
-// ─── Occasion / Weather / Style config ─────────────────────────────────────
-const CONFIG_SECTIONS = [
-  {
-    key: "occasion",
-    label: "Occasion",
-    icon: "📅",
-    options: ["Casual", "Formal", "Party", "Gym"],
-  },
-  {
-    key: "weather",
-    label: "Climate",
-    icon: "🌡️",
-    options: ["Hot", "Moderate", "Cold", "Rainy"],
-  },
-  {
-    key: "style",
-    label: "Style",
-    icon: "✦",
-    options: ["Minimal", "Trendy", "Sporty", "Streetwear"],
-  },
+const QUICK_PROMPTS = [
+  "Casual summer day",
+  "Date night",
+  "Smart office",
+  "Weekend brunch",
+  "All black",
 ];
 
 export default function OutfitMaker() {
-  const router = useRouter();
-  const { user } = useUser();
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
   const { wardrobe } = useLocalSearchParams();
 
-  // ── Convert raw items array → Wardrobe shape ─────────────────────────────
-  // The server stores filenames like tshirt_0.png → category "tshirt".
-  // We expand the mapping so ALL real images appear in the generated outfit.
   const parsedWardrobe = useMemo(() => {
     if (!wardrobe) return null;
     let raw: any[];
@@ -80,246 +52,69 @@ export default function OutfitMaker() {
     } catch {
       return null;
     }
-    if (!Array.isArray(raw)) return raw; // already a Wardrobe object (fallback)
-
-    const w: any = {
-      tops: [],
-      bottoms: [],
-      footwear: [],
-      accessories: [],
-      outerwear: [],
-    };
-
-    raw.forEach((item) => {
-      const cat = (item.category || "").toLowerCase();
-      const piece = {
-        ...item,
-        name: item.category,
-        emoji: "👕",
-        color: "unknown",
-      };
-
-      if (
-        [
-          "shirt",
-          "tshirt",
-          "t-shirt",
-          "top",
-          "polo",
-          "blouse",
-          "sweater",
-          "hoodie",
-          "knit",
-          "pullover",
-        ].some((k) => cat.includes(k))
-      ) {
-        w.tops.push(piece);
-      } else if (
-        [
-          "pant",
-          "jean",
-          "trouser",
-          "bottom",
-          "short",
-          "chino",
-          "jogger",
-          "slack",
-          "skirt",
-        ].some((k) => cat.includes(k))
-      ) {
-        w.bottoms.push({
-          ...piece,
-          bottomType: cat.includes("short")
-            ? "shorts"
-            : cat.includes("jogger")
-              ? "joggers"
-              : "jeans",
-        });
-      } else if (
-        [
-          "shoe",
-          "sneaker",
-          "boot",
-          "sandal",
-          "loafer",
-          "oxford",
-          "brogue",
-          "slip",
-        ].some((k) => cat.includes(k))
-      ) {
-        w.footwear.push({
-          ...piece,
-          footwearType: cat.includes("boot")
-            ? "boots"
-            : cat.includes("loafer")
-              ? "loafers"
-              : "sneakers",
-        });
-      } else if (
-        ["jacket", "coat", "blazer", "outerwear", "overcoat", "cardigan"].some(
-          (k) => cat.includes(k),
-        )
-      ) {
-        w.outerwear.push(piece);
-      } else if (
-        [
-          "accessory",
-          "cap",
-          "hat",
-          "bag",
-          "belt",
-          "watch",
-          "sock",
-          "scarf",
-          "glove",
-        ].some((k) => cat.includes(k))
-      ) {
-        w.accessories.push(piece);
-      } else {
-        // Unknown category — put in tops as best guess so wardrobe isn't empty
-        w.tops.push(piece);
-      }
-    });
-    return w;
+    // Already a Wardrobe object (not a flat array)
+    if (!Array.isArray(raw)) return raw;
+    return buildWardrobeFromItems(raw);
   }, [wardrobe]);
 
   const [prompt, setPrompt] = useState("");
-  const [message, setMessage] = useState("");
+  const [outfits, setOutfits] = useState<GeneratedOutfit[]>([]);
   const [loading, setLoading] = useState(false);
-  const [answers, setAnswers] = useState({
-    occasion: "",
-    weather: "",
-    style: "",
-  });
-  const [outfit, setOutfit] = useState<Outfit | null>(null);
+  const [error, setError] = useState("");
 
-  const selectOption = (question: string, value: string) => {
-    setAnswers({ ...answers, [question]: value });
-  };
+  const generate = async (text?: string) => {
+    const input = (text ?? prompt).trim();
+    if (!input) return;
+    if (!user?.id) {
+      setError("Please sign in to generate outfits.");
+      return;
+    }
 
-  const generateOutfit = async () => {
     setLoading(true);
+    setError("");
+    setOutfits([]);
+
     try {
-      // 1. Build a combined query from prompt + answers
-      const parts = [];
-      if (prompt) parts.push(prompt);
-      if (answers.style) parts.push(`${answers.style} style`);
-      if (answers.occasion) parts.push(`for ${answers.occasion}`);
-      if (answers.weather) parts.push(`in ${answers.weather} weather`);
-
-      const fullQuery = parts.join(" ") || "casual outfit";
-
-      // 2. Try vector-based generation if user is logged in
-      if (user?.id) {
-        try {
-          console.log("Attempting vector recommendation for:", fullQuery);
-          const vectorOutfit = await getVectorBasedOutfit(user.id, fullQuery);
-          setOutfit(vectorOutfit);
-          setLoading(false);
-          setMessage("");
-          return;
-        } catch (vErr) {
-          console.warn(
-            "Vector recommendation failed, falling back to rules:",
-            vErr,
-          );
-        }
-      }
-
-      // 3. Fallback to rule-based generation
-      if (!parsedWardrobe) {
-        console.log("No wardrobe found for fallback");
-        setLoading(false);
-        return;
-      }
-
-      let filteredWardrobe = { ...parsedWardrobe };
-      let missingItems = false;
-
-      if (filteredWardrobe.tops.length === 0) missingItems = true;
-      if (filteredWardrobe.bottoms.length === 0) missingItems = true;
-      if (filteredWardrobe.footwear.length === 0) missingItems = true;
-
-      if (missingItems) {
-        setMessage(
-          "You don't have items exactly matching this request in your wardrobe. Showing the closest outfit instead.",
-        );
-      } else {
-        setMessage("");
-      }
-
-      const promptLower = prompt.toLowerCase();
-      const inferredAnswers = { ...answers };
-
-      if (promptLower.includes("wedding") || promptLower.includes("formal")) {
-        inferredAnswers.occasion = "Formal";
-      } else if (
-        promptLower.includes("gym") ||
-        promptLower.includes("workout")
-      ) {
-        inferredAnswers.occasion = "Gym";
-      }
-
-      if (promptLower.includes("winter") || promptLower.includes("cold")) {
-        inferredAnswers.weather = "Cold";
-      } else if (
-        promptLower.includes("summer") ||
-        promptLower.includes("hot")
-      ) {
-        inferredAnswers.weather = "Hot";
-      }
-
-      if (
-        inferredAnswers.occasion !== answers.occasion ||
-        inferredAnswers.weather !== answers.weather
-      ) {
-        setAnswers(inferredAnswers);
-      }
-
-      if (inferredAnswers.weather === "Hot") {
-        filteredWardrobe.outerwear = [];
-      } else if (inferredAnswers.weather === "Cold") {
-        if (parsedWardrobe.outerwear.length === 0) {
-          console.log("No jackets available");
-        }
-      }
-
-      if (inferredAnswers.occasion === "Formal") {
-        const formalTops = parsedWardrobe.tops.filter(
-          (item: any) =>
-            item.name.toLowerCase().includes("shirt") ||
-            item.name.toLowerCase().includes("blazer"),
-        );
-        if (formalTops.length > 0) {
-          filteredWardrobe.tops = formalTops;
-        }
-      } else if (inferredAnswers.occasion === "Gym") {
-        filteredWardrobe.bottoms = parsedWardrobe.bottoms.filter(
-          (item: any) =>
-            item.name.toLowerCase().includes("short") ||
-            item.name.toLowerCase().includes("jogger"),
-        );
-      }
-
-      if (answers.style === "Minimal") {
-        filteredWardrobe.accessories = [];
-      }
-
-      const result = await forceRegenerateOutfit(filteredWardrobe);
-      setOutfit(result);
-    } catch (err) {
-      console.log("Error generating outfit", err);
+      console.log("Attempting vector recommendation for:", input);
+      const results = await getVectorBasedOutfits(user.id, input);
+      // Backend returns top3 outfits
+      setOutfits(results);
+    } catch (e: any) {
+      console.error("Vector recommendation error:", e);
+      setError(e.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const renderResultItem = (item: any, label: string) => {
+  const useQuickPrompt = (text: string) => {
+    setPrompt(text);
+    generate(text);
+  };
+
+  // ─── Sub-components ────────────────────────────────────────────────────────
+
+  const ScoreBar = ({ value, label }: { value: number; label: string }) => (
+    <View style={styles.scoreBarWrap}>
+      <Text style={styles.scoreBarLabel}>{label}</Text>
+      <View style={styles.scoreTrack}>
+        <View
+          style={[
+            styles.scoreFill,
+            { width: `${Math.round(value * 100)}%` as any },
+          ]}
+        />
+      </View>
+      <Text style={styles.scoreBarValue}>{Math.round(value * 100)}</Text>
+    </View>
+  );
+
+  const OutfitItem = ({ item, label }: { item: any; label: string }) => {
     const hasImage =
       item.image && typeof item.image === "string" && item.image.length > 4;
     return (
-      <View key={label} style={styles.resultItem}>
-        <View style={styles.resultImageWrap}>
+      <View style={styles.outfitItem}>
+        <View style={styles.outfitImageWrap}>
           {hasImage ? (
             <Image
               source={{ uri: item.image }}
@@ -327,24 +122,98 @@ export default function OutfitMaker() {
               resizeMode="cover"
             />
           ) : (
-            <Text style={styles.resultEmoji}>{item.emoji || "👕"}</Text>
+            <Text style={styles.outfitEmoji}>{item.emoji || "👕"}</Text>
           )}
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.resultLabel}>{label.toUpperCase()}</Text>
-          <Text style={styles.resultName}>{item.name}</Text>
+          <Text style={styles.outfitItemLabel}>{label.toUpperCase()}</Text>
+          <Text style={styles.outfitItemName}>{item.name}</Text>
+          {item.color && item.color !== "unknown" && (
+            <Text style={styles.outfitItemColor}>{item.color}</Text>
+          )}
         </View>
       </View>
     );
   };
+
+  const OutfitCard = ({
+    outfit,
+    rank,
+  }: {
+    outfit: GeneratedOutfit;
+    rank: number;
+  }) => {
+    const rankLabels = ["Best Match", "Strong Alternative", "Solid Choice"];
+    const pieces = [
+      outfit.top && { item: outfit.top, label: "Top" },
+      outfit.bottom && { item: outfit.bottom, label: "Bottom" },
+      outfit.footwear && { item: outfit.footwear, label: "Footwear" },
+      outfit.outerwear && { item: outfit.outerwear, label: "Outerwear" },
+      outfit.accessory && { item: outfit.accessory, label: "Accessory" },
+    ].filter(Boolean) as { item: any; label: string }[];
+
+    const totalScore =
+      outfit.score !== undefined ? Math.round(outfit.score * 100) : 0;
+
+    return (
+      <View style={[styles.outfitCard, rank === 1 && styles.outfitCardBest]}>
+        {/* Card header */}
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderLeft}>
+            <View
+              style={[styles.rankBadge, rank === 1 && styles.rankBadgeBest]}
+            >
+              <Text
+                style={[
+                  styles.rankBadgeText,
+                  rank === 1 && styles.rankBadgeTextBest,
+                ]}
+              >
+                {rank}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.rankLabel}>{rankLabels[rank - 1]}</Text>
+              <Text style={styles.pieceCount}>{pieces.length} pieces</Text>
+            </View>
+          </View>
+          <View style={styles.totalScoreWrap}>
+            <Text style={styles.totalScoreValue}>{totalScore}</Text>
+            <Text style={styles.totalScoreLabel}>score</Text>
+          </View>
+        </View>
+
+        {/* Items */}
+        <View style={styles.itemsSection}>
+          {pieces.map(({ item, label }) => (
+            <OutfitItem key={label} item={item} label={label} />
+          ))}
+        </View>
+
+        {/* Reasons */}
+        {outfit.reasons && outfit.reasons.length > 0 && (
+          <View style={styles.reasonsSection}>
+            {outfit.reasons.map((r: string, i: number) => (
+              <View key={i} style={styles.reasonTag}>
+                <Text style={styles.reasonText}>{r}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* ── HERO HEADER ─────────────────────────────────────────────── */}
+        {/* Hero */}
         <View style={styles.hero}>
           <Text style={styles.overline}>AI STYLE CONCIERGE</Text>
           <Text style={styles.heroTitle}>
@@ -353,7 +222,7 @@ export default function OutfitMaker() {
           </Text>
         </View>
 
-        {/* ── VIBE INPUT ──────────────────────────────────────────────── */}
+        {/* Prompt input */}
         <View style={styles.inputRow}>
           <TextInput
             placeholder="Describe your vibe..."
@@ -361,8 +230,11 @@ export default function OutfitMaker() {
             style={styles.input}
             value={prompt}
             onChangeText={setPrompt}
+            onSubmitEditing={() => generate()}
+            returnKeyType="go"
+            multiline={false}
           />
-          <TouchableOpacity onPress={generateOutfit} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => generate()} activeOpacity={0.85}>
             <LinearGradient
               colors={[PRIMARY_CONTAINER, PRIMARY_LIGHT]}
               start={{ x: 0, y: 0 }}
@@ -374,118 +246,51 @@ export default function OutfitMaker() {
           </TouchableOpacity>
         </View>
 
-        {/* ── CONFIG BENTO GRID ────────────────────────────────────────── */}
-        <View style={styles.bentoRow}>
-          {CONFIG_SECTIONS.map((section) => (
-            <View key={section.key} style={styles.bentoCard}>
-              <View style={styles.bentoHeader}>
-                <Text style={styles.bentoIcon}>{section.icon}</Text>
-                <Text style={styles.bentoLabel}>{section.label}</Text>
-              </View>
-              <View style={styles.pillarOptions}>
-                {section.options.map((opt) => {
-                  const isSelected =
-                    answers[section.key as keyof typeof answers] === opt;
-                  return (
-                    <TouchableOpacity
-                      key={opt}
-                      style={[
-                        styles.pillOption,
-                        isSelected && styles.pillSelected,
-                      ]}
-                      onPress={() => selectOption(section.key, opt)}
-                      activeOpacity={0.75}
-                    >
-                      <Text
-                        style={[
-                          styles.pillText,
-                          isSelected && styles.pillTextSelected,
-                        ]}
-                      >
-                        {opt}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* ── CTA BUTTON ─────────────────────────────────────────────── */}
-        <View style={styles.ctaWrap}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={generateOutfit}
-            disabled={loading}
-          >
-            <LinearGradient
-              colors={[PRIMARY, PRIMARY_CONTAINER]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.ctaBtn}
+        {/* Quick prompts */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.quickPromptRow}
+        >
+          {QUICK_PROMPTS.map((p) => (
+            <TouchableOpacity
+              key={p}
+              style={styles.quickChip}
+              onPress={() => useQuickPrompt(p)}
+              activeOpacity={0.7}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.ctaText}>Generate Outfit</Text>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+              <Text style={styles.quickChipText}>{p}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-        {/* ── WARNING ─────────────────────────────────────────────────── */}
-        {message !== "" && (
-          <View style={styles.warningBox}>
-            <Text style={styles.warningText}>⚡ {message}</Text>
+        {/* Loading */}
+        {loading && (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color={PRIMARY} size="small" />
+            <Text style={styles.loadingText}>Scoring your wardrobe...</Text>
           </View>
         )}
 
-        {/* ── RESULTS ─────────────────────────────────────────────────── */}
-        {outfit && (
-          <View style={styles.resultSection}>
-            <View style={styles.resultHeaderRow}>
-              <View>
-                <Text style={styles.resultHeadline}>Your Outfit</Text>
-                {outfit.score !== undefined && (
-                  <Text style={styles.resultScore}>
-                    {Math.round(outfit.score * 100)}% Match
-                  </Text>
-                )}
-              </View>
-              <Text style={styles.resultCount}>
-                {
-                  [
-                    outfit.top,
-                    outfit.bottom,
-                    outfit.footwear,
-                    outfit.outerwear,
-                    outfit.accessory,
-                  ].filter(Boolean).length
-                }{" "}
-                pieces
+        {/* Error */}
+        {error !== "" && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>⚡ {error}</Text>
+          </View>
+        )}
+
+        {/* Results */}
+        {outfits.length > 0 && (
+          <View style={styles.resultsWrap}>
+            <View style={styles.resultsHeader}>
+              <Text style={styles.resultsHeadline}>Curated Looks</Text>
+              <Text style={styles.resultsSubtitle}>
+                {outfits.length} outfits ranked
               </Text>
             </View>
-
-            {outfit.reasons && outfit.reasons.length > 0 && (
-              <View style={styles.reasonsBox}>
-                {outfit.reasons.map((r, i) => (
-                  <Text key={i} style={styles.reasonText}>
-                    • {r}
-                  </Text>
-                ))}
-              </View>
-            )}
-
-            <View style={styles.resultCard}>
-              {outfit.top && renderResultItem(outfit.top, "Top")}
-              {outfit.bottom && renderResultItem(outfit.bottom, "Bottom")}
-              {outfit.footwear && renderResultItem(outfit.footwear, "Footwear")}
-              {outfit.accessory &&
-                renderResultItem(outfit.accessory, "Accessory")}
-              {outfit.outerwear &&
-                renderResultItem(outfit.outerwear, "Outerwear")}
-            </View>
+            {outfits.map((o, i) => (
+              <OutfitCard key={i} outfit={o} rank={i + 1} />
+            ))}
           </View>
         )}
       </ScrollView>
@@ -494,17 +299,10 @@ export default function OutfitMaker() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: SURFACE,
-  },
+  container: { flex: 1, backgroundColor: SURFACE },
 
-  // ── Hero ────────────────────────────────────────────────────────────────
-  hero: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 32,
-  },
+  // Hero
+  hero: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28 },
   overline: {
     color: PRIMARY,
     fontSize: 10,
@@ -519,13 +317,9 @@ const styles = StyleSheet.create({
     letterSpacing: -1.5,
     lineHeight: 48,
   },
-  heroItalic: {
-    fontWeight: "200",
-    color: ON_SURFACE_DIM,
-    fontStyle: "italic",
-  },
+  heroItalic: { fontWeight: "200", color: ON_SURFACE_DIM, fontStyle: "italic" },
 
-  // ── Input ───────────────────────────────────────────────────────────────
+  // Input
   inputRow: {
     marginHorizontal: 24,
     flexDirection: "row",
@@ -534,7 +328,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 6,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   input: {
     flex: 1,
@@ -551,179 +345,178 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  sendIcon: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "700",
-  },
+  sendIcon: { color: "#fff", fontSize: 18, fontWeight: "700" },
 
-  // ── Bento Config Grid ────────────────────────────────────────────────────
-  bentoRow: {
-    flexDirection: "row",
-    marginHorizontal: 24,
-    gap: 10,
-    marginBottom: 28,
-  },
-  bentoCard: {
-    flex: 1,
-    backgroundColor: SURFACE_LOW,
-    borderRadius: 20,
-    padding: 14,
-  },
-  bentoHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 14,
-  },
-  bentoIcon: {
-    fontSize: 14,
-  },
-  bentoLabel: {
-    color: ON_SURFACE_DIM,
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
-  pillarOptions: {
-    gap: 8,
-  },
-  pillOption: {
+  // Quick prompts
+  quickPromptRow: { paddingHorizontal: 24, gap: 8, marginBottom: 28 },
+  quickChip: {
     backgroundColor: SURFACE_CONTAINER,
     borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: "center",
-  },
-  pillSelected: {
-    backgroundColor: "transparent",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: `${PRIMARY}60`,
+    borderColor: "rgba(255,69,0,0.15)",
   },
-  pillText: {
-    color: ON_SURFACE_DIM,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  pillTextSelected: {
-    color: PRIMARY_LIGHT,
-  },
+  quickChipText: { color: ON_SURFACE_DIM, fontSize: 12, fontWeight: "500" },
 
-  // ── CTA ─────────────────────────────────────────────────────────────────
-  ctaWrap: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    alignItems: "center",
-  },
-  ctaBtn: {
-    paddingHorizontal: 56,
-    paddingVertical: 18,
-    borderRadius: 999,
-  },
-  ctaText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 15,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
+  // Loading
+  loadingWrap: { alignItems: "center", paddingVertical: 40, gap: 12 },
+  loadingText: { color: ON_SURFACE_DIM, fontSize: 13 },
 
-  // ── Warning ─────────────────────────────────────────────────────────────
-  warningBox: {
+  // Error
+  errorBox: {
     marginHorizontal: 24,
     marginBottom: 16,
     backgroundColor: "rgba(255,69,0,0.12)",
     borderRadius: 16,
     padding: 16,
   },
-  warningText: {
+  errorText: {
     color: PRIMARY_LIGHT,
     fontWeight: "600",
     fontSize: 13,
     lineHeight: 20,
   },
 
-  // ── Result Section ───────────────────────────────────────────────────────
-  resultSection: {
-    marginHorizontal: 24,
-  },
-  resultHeaderRow: {
+  // Results
+  resultsWrap: { paddingHorizontal: 24, gap: 16 },
+  resultsHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(93,64,56,0.15)",
+    marginBottom: 4,
   },
-  resultHeadline: {
+  resultsHeadline: {
     color: ON_SURFACE,
     fontSize: 22,
     fontWeight: "700",
     letterSpacing: -0.5,
   },
-  resultScore: {
-    color: PRIMARY_LIGHT,
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  resultCount: {
-    color: ON_SURFACE_DIM,
-    fontSize: 12,
-  },
-  reasonsBox: {
-    backgroundColor: SURFACE_LOWEST,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    gap: 6,
-  },
-  reasonText: {
-    color: ON_SURFACE_MID,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  resultCard: {
+  resultsSubtitle: { color: ON_SURFACE_DIM, fontSize: 12 },
+
+  // Outfit card
+  outfitCard: {
     backgroundColor: SURFACE_LOW,
     borderRadius: 24,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.04)",
   },
-  resultItem: {
+  outfitCardBest: {
+    borderColor: `${PRIMARY}40`,
+  },
+
+  // Card header
+  cardHeader: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     padding: 16,
-    gap: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(93,64,56,0.1)",
+    borderBottomColor: "rgba(255,255,255,0.05)",
   },
-  resultImageWrap: {
-    width: 64,
-    height: 64,
+  cardHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  rankBadge: {
+    width: 28,
+    height: 28,
     borderRadius: 14,
+    backgroundColor: SURFACE_HIGH,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rankBadgeBest: { backgroundColor: PRIMARY },
+  rankBadgeText: { color: ON_SURFACE_DIM, fontSize: 12, fontWeight: "700" },
+  rankBadgeTextBest: { color: "#fff" },
+  rankLabel: { color: ON_SURFACE, fontSize: 14, fontWeight: "600" },
+  pieceCount: { color: ON_SURFACE_DIM, fontSize: 11, marginTop: 1 },
+  totalScoreWrap: { alignItems: "flex-end" },
+  totalScoreValue: {
+    color: ON_SURFACE,
+    fontSize: 22,
+    fontWeight: "700",
+    letterSpacing: -1,
+  },
+  totalScoreLabel: {
+    color: ON_SURFACE_DIM,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+
+  // Items
+  itemsSection: {},
+  outfitItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    gap: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.04)",
+  },
+  outfitImageWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
     backgroundColor: SURFACE_HIGH,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
-  resultImage: {
-    width: "100%",
-    height: "100%",
-  },
-  resultEmoji: {
-    fontSize: 28,
-  },
-  resultLabel: {
+  outfitEmoji: { fontSize: 26 },
+  outfitItemLabel: {
     color: PRIMARY,
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 2.5,
-    marginBottom: 4,
+    marginBottom: 3,
   },
-  resultName: {
-    color: ON_SURFACE,
-    fontSize: 14,
-    fontWeight: "500",
+  outfitItemName: { color: ON_SURFACE, fontSize: 13, fontWeight: "500" },
+  outfitItemColor: {
+    color: ON_SURFACE_DIM,
+    fontSize: 11,
+    marginTop: 2,
+    textTransform: "capitalize",
   },
+
+  // Score bars
+  scoresSection: {
+    padding: 14,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  scoreBarWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
+  scoreBarLabel: { color: ON_SURFACE_DIM, fontSize: 11, width: 54 },
+  scoreTrack: {
+    flex: 1,
+    height: 3,
+    backgroundColor: SURFACE_HIGH,
+    borderRadius: 99,
+    overflow: "hidden",
+  },
+  scoreFill: { height: "100%", backgroundColor: PRIMARY, borderRadius: 99 },
+  scoreBarValue: {
+    color: ON_SURFACE_DIM,
+    fontSize: 11,
+    width: 24,
+    textAlign: "right",
+  },
+
+  // Reasons
+  reasonsSection: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    padding: 14,
+    paddingTop: 0,
+  },
+  reasonTag: {
+    backgroundColor: "rgba(255,69,0,0.08)",
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,69,0,0.15)",
+  },
+  reasonText: { color: PRIMARY_LIGHT, fontSize: 11 },
 });

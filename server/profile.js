@@ -8,7 +8,6 @@ const { createClient } = require("@supabase/supabase-js");
 const router = express.Router();
 
 // Supabase admin client (server-side only; requires service role key).
-// env vars are loaded by server/index.js via dotenv.
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -16,14 +15,12 @@ const supabaseAdmin = createClient(
 
 const OUTFIT_PORT = parseInt(process.env.OUTFIT_PORT || "8000", 10);
 const OUTFIT_API_URL = `http://127.0.0.1:${OUTFIT_PORT}`;
-
-// Base directory for the outfit_model — used to rewrite absolute paths to /static URLs
 const OUTFIT_MODEL_DIR = path.join(__dirname, "outfit_model");
 
-/**
- * Fetch with exponential backoff retry.
- * Retries on ECONNREFUSED (Python API still booting) and 5xx errors.
- */
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 async function fetchWithRetry(
   url,
   options = {},
@@ -33,7 +30,6 @@ async function fetchWithRetry(
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url, options);
-      // Retry on server errors too (5xx), but not on 4xx
       if (res.status >= 500 && attempt < retries) {
         const delay = baseDelayMs * Math.pow(1.5, attempt);
         console.warn(
@@ -59,11 +55,6 @@ async function fetchWithRetry(
   }
 }
 
-/**
- * Recursively walk a JSON object and rewrite image URLs that point to the
- * Python server (port 8000) so they point to the Node server instead.
- * Also converts any remaining absolute file-system paths into /static/... URLs.
- */
 function rewriteImageUrls(obj, nodeBaseUrl) {
   if (!obj || typeof obj !== "object") return obj;
   if (Array.isArray(obj)) {
@@ -76,19 +67,22 @@ function rewriteImageUrls(obj, nodeBaseUrl) {
       typeof val === "string" &&
       (key === "image" || key === "image_url" || key.endsWith("_url"))
     ) {
-      // Case 1: Python-generated http URL — swap host:port to Node server
-      const pyStaticMatch = val.match(/^https?:\/\/[^/]+:\d+(\/static\/.+)$/);
+      // 1. If it's a localhost/127.0.0.1 Python static URL, rewrite it to use the current Node base URL
+      const pyStaticMatch = val.match(
+        /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+(\/static\/.+)$/,
+      );
       if (pyStaticMatch) {
         obj[key] = `${nodeBaseUrl}${pyStaticMatch[1]}`;
         continue;
       }
-      // Case 2: Absolute file-system path — convert to /static/... relative to OUTFIT_MODEL_DIR
+
+      // 2. If it's an absolute path on disk, convert it to a /static/ URL
       if (val.startsWith("/") || (val.length > 2 && val[1] === ":")) {
         const normalized = val.replace(/\\/g, "/");
         const idx = normalized.indexOf("/outfit_model/");
         if (idx !== -1) {
-          const rel = normalized.substring(idx + "/outfit_model/".length);
-          obj[key] = `${nodeBaseUrl}/static/${rel}`;
+          obj[key] =
+            `${nodeBaseUrl}/static/${normalized.substring(idx + "/outfit_model/".length)}`;
           continue;
         }
       }
@@ -99,13 +93,11 @@ function rewriteImageUrls(obj, nodeBaseUrl) {
   return obj;
 }
 
-// Multer — memory storage so we can forward the buffer to the Python API
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
 });
 
-// Helper: pipe a FormData stream into a Buffer so Content-Length is exact
 function formDataToBuffer(form) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -120,13 +112,42 @@ function formDataToBuffer(form) {
   });
 }
 
-// ── POST /api/profile/upload-wardrobe ────────────────────────────────────
-// Accepts an image + user_id, forwards to the Python pipeline, returns job_id
+const bucketFor = (cat) => {
+  const c = String(cat || "").toLowerCase();
+  if (
+    [
+      "tshirt",
+      "shirt",
+      "top",
+      "dress",
+      "sweater",
+      "jacket",
+      "coat",
+      "hoodie",
+      "blouse",
+    ].includes(c)
+  )
+    return "tshirts";
+  if (["pants", "jeans", "trouser", "trousers", "shorts", "skirt"].includes(c))
+    return "jeans";
+  if (["shoes", "shoe", "sneaker", "sneakers", "boot", "boots"].includes(c))
+    return "shoes";
+  if (c === "watch") return "watches";
+  if (["cap", "hat"].includes(c)) return "caps";
+  if (c === "bag") return "bags";
+  if (c === "belt") return "caps";
+  return "tshirts";
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/profile/upload-wardrobe
+// ---------------------------------------------------------------------------
 router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "missing image file" });
 
     const userId = req.body.user_id || "default_user";
+    const useImagen = req.body.use_imagen || "false";
 
     const form = new FormData();
     form.append("file", req.file.buffer, {
@@ -134,6 +155,7 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
       contentType: req.file.mimetype || "image/jpeg",
     });
     form.append("user_id", userId);
+    form.append("use_imagen", useImagen);
 
     const headers = form.getHeaders();
     const body = await formDataToBuffer(form);
@@ -144,11 +166,10 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
       body,
       headers,
     });
-
+    console.log(`[wardrobe] Python API response status: ${response.status}`);
     const result = await response.json();
-    if (!response.ok) {
-      return res.status(response.status).json(result);
-    }
+    console.log(`[wardrobe] Python API result:`, result);
+    if (!response.ok) return res.status(response.status).json(result);
     res.json(result);
   } catch (err) {
     console.error("upload-wardrobe error", err);
@@ -156,8 +177,9 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
   }
 });
 
-// ── GET /api/profile/job/:jobId ──────────────────────────────────────────
-// Poll the processing status of an upload job
+// ---------------------------------------------------------------------------
+// GET /api/profile/job/:jobId
+// ---------------------------------------------------------------------------
 router.get("/job/:jobId", async (req, res) => {
   try {
     const { jobId } = req.params;
@@ -165,11 +187,8 @@ router.get("/job/:jobId", async (req, res) => {
       `${OUTFIT_API_URL}/job/${encodeURIComponent(jobId)}`,
     );
     const result = await response.json();
-
-    // Rewrite any image URLs in the completed results
     const nodeBase = `${req.protocol}://${req.get("host")}`;
     rewriteImageUrls(result, nodeBase);
-
     res.status(response.status).json(result);
   } catch (err) {
     console.error("job-status error", err);
@@ -177,58 +196,44 @@ router.get("/job/:jobId", async (req, res) => {
   }
 });
 
-// ── GET /api/profile/wardrobe/:userId ────────────────────────────────────
-// Fetch the full wardrobe for a user (segmented images, attributes, etc.)
+// ---------------------------------------------------------------------------
+// GET /api/profile/wardrobe/:userId
+// ---------------------------------------------------------------------------
 router.get("/wardrobe/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Fetch wardrobe from Supabase and return in the same shape the
-    // frontend expects: { success, wardrobe: {tshirts, jeans, ... } }
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from("wardrobe_items")
       .select("item_id,category,image_url,attributes,created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    if (error) {
+    if (error)
       return res
         .status(500)
         .json({ success: false, error: error.message || String(error) });
+
+    // If Supabase is empty, try to trigger a sync from local JSON (best effort)
+    if (!data || data.length === 0) {
+      try {
+        const pySyncUrl = `${OUTFIT_API_URL}/sync-wardrobe?user_id=${encodeURIComponent(userId)}`;
+        const pyRes = await fetch(pySyncUrl, { method: "POST" });
+        if (pyRes.ok) {
+          // Re-fetch from Supabase after sync
+          const { data: newData, error: newError } = await supabaseAdmin
+            .from("wardrobe_items")
+            .select("item_id,category,image_url,attributes,created_at")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false });
+          if (!newError && newData) data = newData;
+        }
+      } catch (e) {
+        console.warn(`[wardrobe] auto-sync failed for ${userId}:`, e.message);
+      }
     }
 
     const items = Array.isArray(data) ? data : [];
-
-    // Map vectors categories to DigitalWardrobe bucket names
-    const bucketFor = (cat) => {
-      const c = String(cat || "").toLowerCase();
-      if (
-        [
-          "tshirt",
-          "shirt",
-          "top",
-          "dress",
-          "sweater",
-          "jacket",
-          "coat",
-          "hoodie",
-          "blouse",
-        ].includes(c)
-      )
-        return "tshirts";
-      if (
-        ["pants", "jeans", "trouser", "trousers", "shorts", "skirt"].includes(c)
-      )
-        return "jeans";
-      if (["shoes", "shoe", "sneaker", "sneakers", "boot", "boots"].includes(c))
-        return "shoes";
-      if (c === "watch") return "watches";
-      if (["cap", "hat"].includes(c)) return "caps";
-      if (c === "bag") return "bags";
-      if (c === "belt") return "caps";
-      return "tshirts";
-    };
-
     const wardrobe = {
       tshirts: [],
       jeans: [],
@@ -250,7 +255,6 @@ router.get("/wardrobe/:userId", async (req, res) => {
         (typeof attrs.image === "string" ? attrs.image : "") ||
         "";
 
-      // Keep attributes.image aligned with what the UI renders
       if (finalImage) {
         attrs.image = finalImage;
         attrs.image_url = imageUrl;
@@ -267,11 +271,8 @@ router.get("/wardrobe/:userId", async (req, res) => {
       });
     }
 
-    // Rewrite any remaining local filesystem paths to /static/... URLs
-    // (Cloudinary URLs remain untouched since they don't match the /static regex).
     const nodeBase = `${req.protocol}://${req.get("host")}`;
     rewriteImageUrls({ wardrobe }, nodeBase);
-
     res.status(200).json({ success: true, wardrobe });
   } catch (err) {
     console.error("wardrobe-fetch error", err);
@@ -279,35 +280,129 @@ router.get("/wardrobe/:userId", async (req, res) => {
   }
 });
 
-// ── GET /api/profile/segmented/:userId ────────────────────────────────────
-// Return all segmented images directly from uploads/<userId>_segmented/
+// ---------------------------------------------------------------------------
+// DELETE /api/profile/wardrobe/:userId/item/:itemId
+// Removes a single item from Supabase and cleans up the vector file.
+// ---------------------------------------------------------------------------
+router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
+  try {
+    const { userId, itemId } = req.params;
+
+    if (!userId || !itemId) {
+      return res
+        .status(400)
+        .json({ success: false, error: "missing userId or itemId" });
+    }
+
+    // ── 1. Fetch the item so we know the image_url before deleting ─────────
+    const { data: existing, error: fetchErr } = await supabaseAdmin
+      .from("wardrobe_items")
+      .select("item_id, image_url, attributes")
+      .eq("user_id", userId)
+      .eq("item_id", itemId)
+      .single();
+
+    if (fetchErr || !existing) {
+      return res.status(404).json({ success: false, error: "item not found" });
+    }
+
+    const imageUrl =
+      existing.image_url ||
+      (existing.attributes && existing.attributes.image) ||
+      null;
+
+    // ── 2. Delete from Supabase ────────────────────────────────────────────
+    const { error: deleteErr } = await supabaseAdmin
+      .from("wardrobe_items")
+      .delete()
+      .eq("user_id", userId)
+      .eq("item_id", itemId);
+
+    if (deleteErr) {
+      console.error("supabase delete error", deleteErr);
+      return res.status(500).json({
+        success: false,
+        error: deleteErr.message || String(deleteErr),
+      });
+    }
+
+    // ── 3. Delete image file from disk (best-effort, local paths only) ─────
+    // Cloudinary / external URLs are skipped — only local /static/... paths
+    if (imageUrl && !imageUrl.startsWith("http")) {
+      try {
+        let absPath = imageUrl;
+        // Convert /static/... URL to absolute path
+        const staticMatch = imageUrl.match(/\/static\/(.+)$/);
+        if (staticMatch) absPath = path.join(OUTFIT_MODEL_DIR, staticMatch[1]);
+        if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+      } catch (e) {
+        console.warn("could not delete image file (non-fatal):", e.message);
+      }
+    }
+
+    // ── 4. Remove from vector file (best-effort) ───────────────────────────
+    // This prevents the deleted item from ghost-matching future uploads.
+    const vectorPath = path.join(
+      OUTFIT_MODEL_DIR,
+      "..",
+      "wardrobe_vectors",
+      `${userId}.json`,
+    );
+    if (fs.existsSync(vectorPath)) {
+      try {
+        const vectors = JSON.parse(fs.readFileSync(vectorPath, "utf8")) || [];
+        const filename = imageUrl
+          ? path.basename(imageUrl.replace(/\\/g, "/"))
+          : null;
+        const filtered = filename
+          ? vectors.filter(
+              (v) =>
+                !String(v.image_path || "")
+                  .replace(/\\/g, "/")
+                  .endsWith(filename),
+            )
+          : vectors;
+        fs.writeFileSync(vectorPath, JSON.stringify(filtered, null, 2), "utf8");
+      } catch (e) {
+        console.warn("could not update vector file (non-fatal):", e.message);
+      }
+    }
+
+    console.log(`[wardrobe] deleted item ${itemId} for user ${userId}`);
+    res.json({ success: true, deleted: itemId });
+  } catch (err) {
+    console.error("delete-item error", err);
+    res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/profile/segmented/:userId
+// ---------------------------------------------------------------------------
 router.get("/segmented/:userId", (req, res) => {
   try {
     const { userId } = req.params;
-    // Sanitise: only allow alphanumeric, underscore, hyphen
-    if (!/^[\w-]+$/.test(userId)) {
+    if (!/^[\w-]+$/.test(userId))
       return res.status(400).json({ error: "invalid user id" });
-    }
+
     const segDir = path.join(
       OUTFIT_MODEL_DIR,
       "uploads",
       `${userId}_segmented`,
     );
-    if (!fs.existsSync(segDir)) {
-      return res.json({ success: true, items: [] });
-    }
+    if (!fs.existsSync(segDir)) return res.json({ success: true, items: [] });
+
     const files = fs
       .readdirSync(segDir)
       .filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
     const nodeBase = `${req.protocol}://${req.get("host")}`;
     const items = files.map((file) => {
-      const name = path.parse(file).name; // e.g. "tshirt_0"
+      const name = path.parse(file).name;
       const parts = name.match(/^(.+?)_(\d+)$/);
-      const category = parts ? parts[1] : name;
       return {
         id: name,
         image: `${nodeBase}/static/uploads/${userId}_segmented/${file}`,
-        category,
+        category: parts ? parts[1] : name,
         filename: file,
       };
     });
@@ -318,8 +413,9 @@ router.get("/segmented/:userId", (req, res) => {
   }
 });
 
-// ── GET /api/profile/wardrobe/:userId/summary ────────────────────────────
-// Quick stats: item counts per category
+// ---------------------------------------------------------------------------
+// GET /api/profile/wardrobe/:userId/summary
+// ---------------------------------------------------------------------------
 router.get("/wardrobe/:userId/summary", async (req, res) => {
   try {
     const { userId } = req.params;

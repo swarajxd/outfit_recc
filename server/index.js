@@ -11,6 +11,7 @@ const cloudinary = require("cloudinary").v2;
 const { createClient } = require("@supabase/supabase-js");
 const profileRouter = require("./profile");
 
+const PORT = process.env.PORT || 4000;
 const app = express();
 
 // Outfit model: run from server's outfit_model directory
@@ -55,7 +56,31 @@ app.get("/api/profile/posts", async (req, res) => {
       return res.status(500).json({ error: error.message || error });
     }
 
-    res.json({ posts: data });
+    // Rewrite URLs
+    const nodeBase = `${req.protocol}://${req.get("host")}`;
+    const posts = (data || []).map((p) => {
+      const rawImg = p.image_url || p.image_path;
+      // Handle both Cloudinary (starts with http) and local /static/ paths
+      if (
+        rawImg &&
+        rawImg.match(
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+        )
+      ) {
+        const fixedImg = rawImg.replace(
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+          `${nodeBase}/static/`,
+        );
+        p.image_url = fixedImg;
+        p.image_path = fixedImg;
+      } else if (rawImg) {
+        p.image_url = rawImg;
+        p.image_path = rawImg;
+      }
+      return p;
+    });
+
+    res.json({ posts: posts });
   } catch (err) {
     console.error("profile posts endpoint error", err);
     res.status(500).json({ error: String(err) });
@@ -123,13 +148,42 @@ async function startOutfitModel() {
     return;
   }
 
-  const venvPython = path.join(__dirname, "outfit_model/venv/bin/python");
-  const python = fs.existsSync(venvPython) ? venvPython : "python3";
-  if (!fs.existsSync(venvPython)) {
+  // Resolve Python: prefer PYTHON_PATH env var, then platform-specific venv path,
+  // then fall back to the other platform's path (for flexibility),
+  // and finally fall back to bare "python" or "python3".
+  const envPython = process.env.PYTHON_PATH;
+  const venvPythonUnix = path.join(
+    __dirname,
+    "outfit_model",
+    "venv",
+    "bin",
+    "python",
+  );
+  const venvPythonWin = path.join(
+    __dirname,
+    "outfit_model",
+    "venv",
+    "Scripts",
+    "python.exe",
+  );
+
+  let python;
+  if (envPython && fs.existsSync(envPython)) {
+    python = envPython;
+  } else if (process.platform === "win32") {
+    if (fs.existsSync(venvPythonWin)) python = venvPythonWin;
+    else if (fs.existsSync(venvPythonUnix)) python = venvPythonUnix;
+  } else {
+    if (fs.existsSync(venvPythonUnix)) python = venvPythonUnix;
+    else if (fs.existsSync(venvPythonWin)) python = venvPythonWin;
+  }
+
+  if (!python) {
+    python = process.platform === "win32" ? "python" : "python3";
     console.warn(
-      "[outfit] venv python not found at",
-      venvPython,
-      "- falling back to python3 on PATH",
+      "[outfit] No venv python found — falling back to",
+      python,
+      "on PATH",
     );
   }
   const depsPath = path.join(REPO_OUTFIT, "deps");
@@ -345,11 +399,26 @@ app.get("/api/for-you", async (req, res) => {
       return res.status(500).json({ error: error.message || error });
     }
 
-    // Rewrite any local Python URLs to Node /static URLs
+    // Rewrite URLs
     const nodeBase = `${req.protocol}://${req.get("host")}`;
     const posts = (data || []).map((p) => {
-      if (p.image_url && p.image_url.includes(":8000/static/")) {
-        p.image_url = p.image_url.replace(/:\d+\/static\//, `:${PORT}/static/`);
+      const rawImg = p.image_url || p.image_path;
+      // Handle both Cloudinary (starts with http) and local /static/ paths
+      if (
+        rawImg &&
+        rawImg.match(
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+        )
+      ) {
+        const fixedImg = rawImg.replace(
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+          `${nodeBase}/static/`,
+        );
+        p.image_url = fixedImg;
+        p.image_path = fixedImg;
+      } else if (rawImg) {
+        p.image_url = rawImg;
+        p.image_path = rawImg;
       }
       return p;
     });
@@ -424,16 +493,26 @@ app.get("/api/recommend-outfit", async (req, res) => {
       return res.status(pyResponse.status).json({ error: errText });
     }
 
+    const nodeBase = `${req.protocol}://${req.get("host")}`;
     const result = await pyResponse.json();
 
-    // Rewrite image paths to Node /static URLs if they point to port 8000
+    // Rewrite image paths to Node /static URLs if they point to localhost/127.0.0.1
     if (result.outfits && Array.isArray(result.outfits)) {
       result.outfits.forEach((o) => {
         const outfit = o.outfit || {};
         ["top", "bottom", "shoes"].forEach((key) => {
           const it = outfit[key];
-          if (it && it.image && it.image.includes(":8000/static/")) {
-            it.image = it.image.replace(/:\d+\/static\//, `:${PORT}/static/`);
+          if (
+            it &&
+            it.image &&
+            it.image.match(
+              /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+            )
+          ) {
+            it.image = it.image.replace(
+              /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+              `${nodeBase}/static/`,
+            );
           }
         });
       });
@@ -446,7 +525,6 @@ app.get("/api/recommend-outfit", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT;
 // Start outfit model then listen
 (async () => {
   await startOutfitModel();
