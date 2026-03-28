@@ -1,7 +1,6 @@
 
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { BlurView } from 'expo-blur';
-import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -10,8 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 import {
-  Animated,
   ActivityIndicator,
+  Animated,
   Dimensions,
   Image,
   Platform,
@@ -24,6 +23,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SERVER_BASE } from "../utils/config";
 import {
   FALLBACK_WARDROBE,
   GeneratedOutfit,
@@ -31,7 +31,6 @@ import {
   forceRegenerateOutfit,
   getOrCreateDailyOutfit,
 } from "../utils/outfitEngine";
-import { SERVER_BASE } from "../utils/config";
 
 AsyncStorage.removeItem("fitsense_daily_outfit");
 
@@ -285,7 +284,11 @@ function OutfitItemRow({
   );
 }
 
-// ─── Today's Outfit Card ──────────────────────────────────────────────────────
+// ─── Day Outfit Card ─────────────────────────────────────────────────────────
+const DAY_CARD_W = 150;
+const DAY_HALF   = Math.floor(DAY_CARD_W / 2);
+const DAY_IMG_H  = 120;
+
 function DayOutfitCard({
   label,
   date,
@@ -299,39 +302,60 @@ function DayOutfitCard({
 }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-<View style={styles.dayCard}>
+      <View style={styles.dayCard}>
 
-  {outfit ? (
-    <View style={styles.outfitStack}>
-      {outfit.top && (
-        <Image source={{ uri: outfit.top.image }} style={styles.outfitImage}/>
-      )}
+        {/* Split-panel image area */}
+        {outfit ? (
+          <View style={styles.dayPanels}>
 
-      {outfit.bottom && (
-        <Image source={{ uri: outfit.bottom.image }} style={styles.outfitImage}/>
-      )}
+            {/* LEFT — Top */}
+            <View style={styles.dayPanelLeft}>
+              {outfit.top?.image ? (
+                <Image
+                  source={{ uri: outfit.top.image }}
+                  style={styles.dayPanelImg}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={styles.dayEmoji}>👕</Text>
+              )}
+              <View style={styles.dayPanelLabel}>
+                <Text style={styles.dayPanelLabelTxt}>TOP</Text>
+              </View>
+            </View>
 
-      {outfit.footwear && (
-        <Image source={{ uri: outfit.footwear.image }} style={styles.outfitImage}/>
-      )}
+            <View style={styles.dayDivider} />
 
-      {outfit.outerwear && (
-        <Image source={{ uri: outfit.outerwear.image }} style={styles.outfitImage}/>
-      )}
+            {/* RIGHT — Bottom */}
+            <View style={styles.dayPanelRight}>
+              {outfit.bottom?.image ? (
+                <Image
+                  source={{ uri: outfit.bottom.image }}
+                  style={styles.dayPanelImg}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={styles.dayEmoji}>👖</Text>
+              )}
+              <View style={styles.dayPanelLabel}>
+                <Text style={styles.dayPanelLabelTxt}>BOT</Text>
+              </View>
+            </View>
 
-      {outfit.accessory && (
-        <Image source={{ uri: outfit.accessory.image }} style={styles.outfitImage}/>
-      )}
-    </View>
-  ) : (
-    <View style={styles.addCircle}>
-      <Text style={styles.addPlus}>+</Text>
-    </View>
-  )}
+          </View>
+        ) : (
+          <View style={styles.dayEmpty}>
+            <Text style={styles.dayPlus}>+</Text>
+          </View>
+        )}
 
-  <Text style={styles.dayLabel}>{label}, {date}</Text>
+        {/* Day label strip */}
+        <View style={styles.dayLabelStrip}>
+          <Text style={styles.dayLabel}>{label}</Text>
+          <Text style={styles.dayDate}>{date}</Text>
+        </View>
 
-</View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -634,7 +658,7 @@ useEffect(() => {
     }
     return FALLBACK_WARDROBE;
   }, [items]);
-  console.log("WARDROBE AFTER BUILD:", userWardrobe);
+ 
   // Load or generate today's outfit on mount
   useEffect(() => {
     if (!items || items.length === 0) return;
@@ -643,12 +667,11 @@ useEffect(() => {
     setOutfitLoading(true);
 
     const wardrobe = buildWardrobeFromItems(items);
-    console.log("ITEMS FROM API:", items);
-    console.log("BUILT WARDROBE:", wardrobe);
+    
 
     getOrCreateDailyOutfit(wardrobe, user?.id || undefined)
       .then((o) => {
-        console.log("GENERATED OUTFIT:", o);
+        
         if (!cancelled) {
           setOutfit(o);
           setOutfitLoading(false);
@@ -673,7 +696,7 @@ useEffect(() => {
       .catch(() => setOutfitLoading(false));
   };
 
-  console.log("WARDROBE ITEMS", items);
+
     if (!isLoaded) {
     return null;
   }
@@ -839,24 +862,7 @@ useEffect(() => {
   </ScrollView>
 </View>
 
-        {/* ── Week Strip ── */}
-        <View style={styles.sectionPad}>
-          <Text style={styles.sectionLabelSmall}>This Week</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.weekRow}
-          >
-            {weekDates.map((d) => (
-              <WeekDayChip
-                key={d.label}
-                label={d.label}
-                date={d.date}
-                isToday={d.isToday}
-              />
-            ))}
-          </ScrollView>
-        </View>
+       
 
         {/* ── Feed ── */}
         <View style={styles.sectionPad}>
@@ -1295,19 +1301,78 @@ const styles = StyleSheet.create({
   actionBtn: { padding: 2 },
   caption: { color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 20, fontWeight: '400' },
 
+  // ── Day Card — split panel ─────────────────────────────────────────────────
   dayCard: {
-  width: 90,
-  height: 140,
-  borderRadius: 20,
-  backgroundColor: "#111",
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.08)",
-  alignItems: "center",
-  justifyContent: "space-between",
-  paddingVertical: 14,
-},
+    width: DAY_CARD_W,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
 
-dayLabel: {
+  dayPanels: {
+    flexDirection: "row",
+    height: DAY_IMG_H,
+    overflow: "hidden",
+  },
+  dayPanelLeft: {
+    width: DAY_HALF,
+    height: DAY_IMG_H,
+    backgroundColor: "#EDE8E2",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  dayPanelRight: {
+    width: DAY_HALF,
+    height: DAY_IMG_H,
+    backgroundColor: "#E8E3DC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  dayPanelImg: {
+    width: DAY_HALF,
+    height: DAY_IMG_H - 18,
+  },
+  dayPanelLabel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0, right: 0,
+    height: 16,
+    backgroundColor: "rgba(235,230,222,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayPanelLabelTxt: {
+    fontSize: 7,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    color: "#7A6A5A",
+  },
+  dayDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: DAY_IMG_H,
+    backgroundColor: "#C8BFB5",
+  },
+  dayEmpty: {
+    height: DAY_IMG_H,
+    backgroundColor: "#1A1A1A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayEmoji: { fontSize: 28 },
+  dayPlus: { color: PRIMARY, fontSize: 28, fontWeight: "700" },
+
+  dayLabelStrip: {
+    backgroundColor: "#111",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   color: "rgba(255,255,255,0.6)",
   fontSize: 12,
   fontWeight: "600",

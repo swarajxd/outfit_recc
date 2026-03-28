@@ -3,231 +3,264 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-    buildWardrobeFromItems,
-    GeneratedOutfit,
-    getVectorBasedOutfits,
+  buildWardrobeFromItems,
+  GeneratedOutfit,
+  getVectorBasedOutfits,
 } from "../utils/outfitEngine";
 
-// ─── Design Tokens ───────────────────────────────────────────────────────────
-const SURFACE = "#131313";
-const SURFACE_LOW = "#1B1B1B";
-const SURFACE_CONTAINER = "#1F1F1F";
-const SURFACE_HIGH = "#2A2A2A";
-const SURFACE_LOWEST = "#0E0E0E";
-const PRIMARY = "#FF4500";
-const PRIMARY_CONTAINER = "#FF5625";
-const PRIMARY_LIGHT = "#FFB5A0";
-const ON_SURFACE = "#E2E2E2";
-const ON_SURFACE_DIM = "rgba(226,226,226,0.4)";
+// ── Tokens ──────────────────────────────────────────────────────────────────
+const SURFACE    = "#0F0F0F";
+const SURFACE_LOW= "#161616";
+const SURF_CONT  = "#1C1C1C";
+const SURF_HIGH  = "#242424";
+const SURF_LOW2  = "#0A0A0A";
+const PRIMARY    = "#FF4500";
+const PRI_DIM    = "rgba(255,69,0,0.15)";
+const PRI_CONT   = "#FF5625";
+const PRI_LIGHT  = "#FFB5A0";
+const ON_SURF    = "#EFEFEF";
+const ON_SURF_DIM= "rgba(239,239,239,0.4)";
+
+const W          = Dimensions.get("window").width;
+const CARD_W     = W - 40;           // results paddingHorizontal: 20
+const HALF_W     = Math.floor(CARD_W / 2);
+const PANEL_H    = 250;              // main row (top + bottom)
+const PANEL_H2   = 180;              // secondary row (accessory + footwear)
 
 const QUICK_PROMPTS = [
-  "Casual summer day",
-  "Date night",
-  "Smart office",
-  "Weekend brunch",
-  "All black",
+  "Casual summer day", "Date night",
+  "Smart office", "Weekend brunch", "All black",
 ];
 
-export default function OutfitMaker() {
-  const insets = useSafeAreaInsets();
-  const { user } = useUser();
-  const { wardrobe } = useLocalSearchParams();
+// ── OutfitCard ───────────────────────────────────────────────────────────────
+function OutfitCard({ outfit, rank }: { outfit: GeneratedOutfit; rank: number }) {
+  const LABELS = ["Best Match", "Strong Pick", "Solid Look"];
+  const isBest = rank === 1;
+  const score  = outfit.score !== undefined ? Math.round(outfit.score * 100) : null;
 
-  const parsedWardrobe = useMemo(() => {
-    if (!wardrobe) return null;
-    let raw: any[];
-    try {
-      raw = JSON.parse(wardrobe as string);
-    } catch {
-      return null;
-    }
-    // Already a Wardrobe object (not a flat array)
-    if (!Array.isArray(raw)) return raw;
-    return buildWardrobeFromItems(raw);
-  }, [wardrobe]);
+  const topName    = outfit.top?.name       ?? null;
+  const bottomName = outfit.bottom?.name    ?? null;
+  const accName    = outfit.accessory?.name ?? null;
+  const fwName     = outfit.footwear?.name  ?? null;
 
-  const [prompt, setPrompt] = useState("");
-  const [outfits, setOutfits] = useState<GeneratedOutfit[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const hasAcc = outfit.accessory?.image || outfit.accessory;
+  const hasFw  = outfit.footwear?.image  || outfit.footwear;
+  const hasRow2 = hasAcc || hasFw;
 
-  const generate = async (text?: string) => {
-    const input = (text ?? prompt).trim();
-    if (!input) return;
-    if (!user?.id) {
-      setError("Please sign in to generate outfits.");
-      return;
-    }
+  return (
+    <View style={[s.card, isBest && s.cardBest]}>
 
-    setLoading(true);
-    setError("");
-    setOutfits([]);
+      {/* ── Split-panel image collage ── */}
+      <View style={s.panels}>
 
-    try {
-      console.log("Attempting vector recommendation for:", input);
-      const results = await getVectorBasedOutfits(user.id, input);
-      // Backend returns top3 outfits
-      setOutfits(results);
-    } catch (e: any) {
-      console.error("Vector recommendation error:", e);
-      setError(e.message || "Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const useQuickPrompt = (text: string) => {
-    setPrompt(text);
-    generate(text);
-  };
-
-  // ─── Sub-components ────────────────────────────────────────────────────────
-
-  const ScoreBar = ({ value, label }: { value: number; label: string }) => (
-    <View style={styles.scoreBarWrap}>
-      <Text style={styles.scoreBarLabel}>{label}</Text>
-      <View style={styles.scoreTrack}>
-        <View
-          style={[
-            styles.scoreFill,
-            { width: `${Math.round(value * 100)}%` as any },
-          ]}
-        />
-      </View>
-      <Text style={styles.scoreBarValue}>{Math.round(value * 100)}</Text>
-    </View>
-  );
-
-  const OutfitItem = ({ item, label }: { item: any; label: string }) => {
-    const hasImage =
-      item.image && typeof item.image === "string" && item.image.length > 4;
-    return (
-      <View style={styles.outfitItem}>
-        <View style={styles.outfitImageWrap}>
-          {hasImage ? (
+        {/* LEFT — Top garment */}
+        <View style={s.panelLeft}>
+          {outfit.top?.image ? (
             <Image
-              source={{ uri: item.image }}
-              style={StyleSheet.absoluteFillObject}
-              resizeMode="cover"
+              source={{ uri: outfit.top.image }}
+              style={s.panelImg}
+              resizeMode="contain"
             />
           ) : (
-            <Text style={styles.outfitEmoji}>{item.emoji || "👕"}</Text>
+            <Text style={s.panelEmoji}>👕</Text>
           )}
+          <View style={s.panelLabel}>
+            <Text style={s.panelLabelTxt}>TOP</Text>
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.outfitItemLabel}>{label.toUpperCase()}</Text>
-          <Text style={styles.outfitItemName}>{item.name}</Text>
-          {item.color && item.color !== "unknown" && (
-            <Text style={styles.outfitItemColor}>{item.color}</Text>
+
+        {/* Centre divider */}
+        <View style={s.divider} />
+
+        {/* RIGHT — Bottom garment */}
+        <View style={s.panelRight}>
+          {outfit.bottom?.image ? (
+            <Image
+              source={{ uri: outfit.bottom.image }}
+              style={s.panelImg}
+              resizeMode="contain"
+            />
+          ) : (
+            <Text style={s.panelEmoji}>👖</Text>
           )}
+          <View style={s.panelLabel}>
+            <Text style={s.panelLabelTxt}>BOTTOM</Text>
+          </View>
         </View>
+
+        {/* Rank badge — top-left floating over panels */}
+        <View style={[s.rankBadge, isBest && s.rankBadgeBest]}>
+          <Text style={[s.rankTxt, isBest && s.rankTxtBest]}>
+            {LABELS[rank - 1] ?? `Look ${rank}`}
+          </Text>
+        </View>
+
+        {/* Score badge — top-right floating over panels */}
+        {score !== null && (
+          <View style={[s.scoreBadge, isBest && s.scoreBadgeBest]}>
+            <Text style={[s.scoreNum, isBest && s.scoreNumBest]}>{score}</Text>
+            <Text style={[s.scorePts, isBest && s.scorePtsBest]}>pts</Text>
+          </View>
+        )}
       </View>
-    );
-  };
 
-  const OutfitCard = ({
-    outfit,
-    rank,
-  }: {
-    outfit: GeneratedOutfit;
-    rank: number;
-  }) => {
-    const rankLabels = ["Best Match", "Strong Alternative", "Solid Choice"];
-    const pieces = [
-      outfit.top && { item: outfit.top, label: "Top" },
-      outfit.bottom && { item: outfit.bottom, label: "Bottom" },
-      outfit.footwear && { item: outfit.footwear, label: "Footwear" },
-      outfit.outerwear && { item: outfit.outerwear, label: "Outerwear" },
-      outfit.accessory && { item: outfit.accessory, label: "Accessory" },
-    ].filter(Boolean) as { item: any; label: string }[];
-
-    const totalScore =
-      outfit.score !== undefined ? Math.round(outfit.score * 100) : 0;
-
-    return (
-      <View style={[styles.outfitCard, rank === 1 && styles.outfitCardBest]}>
-        {/* Card header */}
-        <View style={styles.cardHeader}>
-          <View style={styles.cardHeaderLeft}>
-            <View
-              style={[styles.rankBadge, rank === 1 && styles.rankBadgeBest]}
-            >
-              <Text
-                style={[
-                  styles.rankBadgeText,
-                  rank === 1 && styles.rankBadgeTextBest,
-                ]}
-              >
-                {rank}
-              </Text>
-            </View>
-            <View>
-              <Text style={styles.rankLabel}>{rankLabels[rank - 1]}</Text>
-              <Text style={styles.pieceCount}>{pieces.length} pieces</Text>
+      {/* ── Second row: Accessory + Footwear ── */}
+      {hasRow2 && (
+        <View style={s.panels2}>
+          {/* LEFT — Accessory */}
+          <View style={s.panel2Cell}>
+            {outfit.accessory?.image ? (
+              <Image
+                source={{ uri: outfit.accessory.image }}
+                style={s.panelImg2}
+                resizeMode="contain"
+              />
+            ) : outfit.accessory ? (
+              <Text style={s.panelEmoji}>👜</Text>
+            ) : (
+              <View style={s.panelEmpty} />
+            )}
+            <View style={s.panelLabel}>
+              <Text style={s.panelLabelTxt}>ACCESSORY</Text>
             </View>
           </View>
-          <View style={styles.totalScoreWrap}>
-            <Text style={styles.totalScoreValue}>{totalScore}</Text>
-            <Text style={styles.totalScoreLabel}>score</Text>
+
+          <View style={s.divider} />
+
+          {/* RIGHT — Footwear */}
+          <View style={[s.panel2Cell, { backgroundColor: "#E8E3DC" }]}>
+            {outfit.footwear?.image ? (
+              <Image
+                source={{ uri: outfit.footwear.image }}
+                style={s.panelImg2}
+                resizeMode="contain"
+              />
+            ) : outfit.footwear ? (
+              <Text style={s.panelEmoji}>👟</Text>
+            ) : (
+              <View style={s.panelEmpty} />
+            )}
+            <View style={s.panelLabel}>
+              <Text style={s.panelLabelTxt}>FOOTWEAR</Text>
+            </View>
           </View>
         </View>
+      )}
 
-        {/* Items */}
-        <View style={styles.itemsSection}>
-          {pieces.map(({ item, label }) => (
-            <OutfitItem key={label} item={item} label={label} />
-          ))}
+      {/* ── Footer ── */}
+      <View style={s.footer}>
+        {/* Item names */}
+        <View style={s.names}>
+          {topName && (
+            <View style={s.nameRow}>
+              <Text style={s.nameCat}>TOP</Text>
+              <Text style={s.nameVal} numberOfLines={1}>{topName}</Text>
+            </View>
+          )}
+          {bottomName && (
+            <View style={s.nameRow}>
+              <Text style={s.nameCat}>BOTTOM</Text>
+              <Text style={s.nameVal} numberOfLines={1}>{bottomName}</Text>
+            </View>
+          )}
+          {accName && (
+            <View style={s.nameRow}>
+              <Text style={s.nameCat}>BAG</Text>
+              <Text style={s.nameVal} numberOfLines={1}>{accName}</Text>
+            </View>
+          )}
+          {fwName && (
+            <View style={s.nameRow}>
+              <Text style={s.nameCat}>SHOES</Text>
+              <Text style={s.nameVal} numberOfLines={1}>{fwName}</Text>
+            </View>
+          )}
         </View>
 
-        {/* Reasons */}
-        {outfit.reasons && outfit.reasons.length > 0 && (
-          <View style={styles.reasonsSection}>
-            {outfit.reasons.map((r: string, i: number) => (
-              <View key={i} style={styles.reasonTag}>
-                <Text style={styles.reasonText}>{r}</Text>
+        {/* Reason chips */}
+        {(outfit.reasons?.length ?? 0) > 0 && (
+          <View style={s.chips}>
+            {outfit.reasons!.slice(0, 3).map((r, i) => (
+              <View key={i} style={s.chip}>
+                <Text style={s.chipTxt}>{r}</Text>
               </View>
             ))}
           </View>
         )}
       </View>
-    );
+
+    </View>
+  );
+}
+
+// ── Screen ───────────────────────────────────────────────────────────────────
+export default function OutfitMaker() {
+  const insets = useSafeAreaInsets();
+  const { user } = useUser();
+  const { wardrobe } = useLocalSearchParams();
+
+  useMemo(() => {
+    if (!wardrobe) return null;
+    let raw: any[];
+    try { raw = JSON.parse(wardrobe as string); } catch { return null; }
+    if (!Array.isArray(raw)) return raw;
+    return buildWardrobeFromItems(raw);
+  }, [wardrobe]);
+
+  const [prompt, setPrompt]   = useState("");
+  const [outfits, setOutfits] = useState<GeneratedOutfit[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
+
+  const generate = async (text?: string) => {
+    const input = (text ?? prompt).trim();
+    if (!input) return;
+    if (!user?.id) { setError("Please sign in to generate outfits."); return; }
+    setLoading(true); setError(""); setOutfits([]);
+    try {
+      const results = await getVectorBasedOutfits(user.id, input);
+      setOutfits(results);
+    } catch (e: any) {
+      setError(e.message || "Something went wrong. Please try again.");
+    } finally { setLoading(false); }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const useQuick = (t: string) => { setPrompt(t); generate(t); };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[s.screen, { paddingTop: insets.top }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
         keyboardShouldPersistTaps="handled"
       >
         {/* Hero */}
-        <View style={styles.hero}>
-          <Text style={styles.overline}>AI STYLE CONCIERGE</Text>
-          <Text style={styles.heroTitle}>
+        <View style={s.hero}>
+          <Text style={s.overline}>AI STYLE CONCIERGE</Text>
+          <Text style={s.heroTitle}>
             Define Your{"\n"}
-            <Text style={styles.heroItalic}>Aesthetic.</Text>
+            <Text style={s.heroItalic}>Aesthetic.</Text>
           </Text>
         </View>
 
-        {/* Prompt input */}
-        <View style={styles.inputRow}>
+        {/* Input bar */}
+        <View style={s.inputRow}>
           <TextInput
-            placeholder="Describe your vibe..."
-            placeholderTextColor="rgba(226,226,226,0.2)"
-            style={styles.input}
+            placeholder="Describe your vibe…"
+            placeholderTextColor="rgba(239,239,239,0.18)"
+            style={s.input}
             value={prompt}
             onChangeText={setPrompt}
             onSubmitEditing={() => generate()}
@@ -236,61 +269,47 @@ export default function OutfitMaker() {
           />
           <TouchableOpacity onPress={() => generate()} activeOpacity={0.85}>
             <LinearGradient
-              colors={[PRIMARY_CONTAINER, PRIMARY_LIGHT]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.sendBtn}
+              colors={[PRI_CONT, PRI_LIGHT]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={s.sendBtn}
             >
-              <Text style={styles.sendIcon}>✦</Text>
+              <Text style={s.sendIcon}>✦</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
 
-        {/* Quick prompts */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickPromptRow}
-        >
+        {/* Quick-prompt chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.quickRow}>
           {QUICK_PROMPTS.map((p) => (
-            <TouchableOpacity
-              key={p}
-              style={styles.quickChip}
-              onPress={() => useQuickPrompt(p)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.quickChipText}>{p}</Text>
+            <TouchableOpacity key={p} style={s.quickChip} onPress={() => useQuick(p)} activeOpacity={0.7}>
+              <Text style={s.quickTxt}>{p}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
         {/* Loading */}
         {loading && (
-          <View style={styles.loadingWrap}>
+          <View style={s.loading}>
             <ActivityIndicator color={PRIMARY} size="small" />
-            <Text style={styles.loadingText}>Scoring your wardrobe...</Text>
+            <Text style={s.loadingTxt}>Curating your looks…</Text>
           </View>
         )}
 
         {/* Error */}
         {error !== "" && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚡ {error}</Text>
+          <View style={s.errorBox}>
+            <Text style={s.errorTxt}>⚡ {error}</Text>
           </View>
         )}
 
         {/* Results */}
         {outfits.length > 0 && (
-          <View style={styles.resultsWrap}>
-            <View style={styles.resultsHeader}>
-              <Text style={styles.resultsHeadline}>Curated Looks</Text>
-              <Text style={styles.resultsSubtitle}>
-                {outfits.length} outfits ranked
-              </Text>
+          <View style={s.results}>
+            <View style={s.resultsHdr}>
+              <Text style={s.resultsTitle}>Curated Looks</Text>
+              <Text style={s.resultsSub}>{outfits.length} outfits</Text>
             </View>
-            {outfits.map((o, i) => (
-              <OutfitCard key={i} outfit={o} rank={i + 1} />
-            ))}
+            {outfits.map((o, i) => <OutfitCard key={i} outfit={o} rank={i + 1} />)}
           </View>
         )}
       </ScrollView>
@@ -298,225 +317,210 @@ export default function OutfitMaker() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: SURFACE },
+// ── Styles ───────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: SURFACE },
 
   // Hero
   hero: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28 },
-  overline: {
-    color: PRIMARY,
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 4,
-    marginBottom: 12,
-  },
-  heroTitle: {
-    fontSize: 42,
-    fontWeight: "800",
-    color: ON_SURFACE,
-    letterSpacing: -1.5,
-    lineHeight: 48,
-  },
-  heroItalic: { fontWeight: "200", color: ON_SURFACE_DIM, fontStyle: "italic" },
+  overline: { color: PRIMARY, fontSize: 10, fontWeight: "700", letterSpacing: 4, marginBottom: 12 },
+  heroTitle: { fontSize: 42, fontWeight: "800", color: ON_SURF, letterSpacing: -1.5, lineHeight: 48 },
+  heroItalic: { fontWeight: "200", color: ON_SURF_DIM, fontStyle: "italic" },
 
   // Input
   inputRow: {
-    marginHorizontal: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: SURFACE_LOWEST,
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    marginBottom: 16,
+    marginHorizontal: 24, flexDirection: "row", alignItems: "center",
+    backgroundColor: SURF_LOW2, borderRadius: 20,
+    paddingHorizontal: 20, paddingVertical: 6, marginBottom: 16,
   },
-  input: {
-    flex: 1,
-    color: ON_SURFACE,
-    fontSize: 18,
-    fontWeight: "300",
-    paddingVertical: 16,
-    paddingRight: 12,
-  },
-  sendBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  input: { flex: 1, color: ON_SURF, fontSize: 18, fontWeight: "300", paddingVertical: 16, paddingRight: 12 },
+  sendBtn: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
   sendIcon: { color: "#fff", fontSize: 18, fontWeight: "700" },
 
-  // Quick prompts
-  quickPromptRow: { paddingHorizontal: 24, gap: 8, marginBottom: 28 },
+  // Quick-prompt chips
+  quickRow: { paddingHorizontal: 24, gap: 8, marginBottom: 32 },
   quickChip: {
-    backgroundColor: SURFACE_CONTAINER,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,69,0,0.15)",
+    backgroundColor: SURF_CONT, borderRadius: 999,
+    paddingVertical: 8, paddingHorizontal: 16,
+    borderWidth: 1, borderColor: "rgba(255,69,0,0.15)",
   },
-  quickChipText: { color: ON_SURFACE_DIM, fontSize: 12, fontWeight: "500" },
+  quickTxt: { color: ON_SURF_DIM, fontSize: 12, fontWeight: "500" },
 
-  // Loading
-  loadingWrap: { alignItems: "center", paddingVertical: 40, gap: 12 },
-  loadingText: { color: ON_SURFACE_DIM, fontSize: 13 },
-
-  // Error
-  errorBox: {
-    marginHorizontal: 24,
-    marginBottom: 16,
-    backgroundColor: "rgba(255,69,0,0.12)",
-    borderRadius: 16,
-    padding: 16,
-  },
-  errorText: {
-    color: PRIMARY_LIGHT,
-    fontWeight: "600",
-    fontSize: 13,
-    lineHeight: 20,
-  },
+  // States
+  loading: { alignItems: "center", paddingVertical: 40, gap: 12 },
+  loadingTxt: { color: ON_SURF_DIM, fontSize: 13 },
+  errorBox: { marginHorizontal: 20, marginBottom: 16, backgroundColor: "rgba(255,69,0,0.1)", borderRadius: 16, padding: 16 },
+  errorTxt: { color: PRI_LIGHT, fontWeight: "600", fontSize: 13, lineHeight: 20 },
 
   // Results
-  resultsWrap: { paddingHorizontal: 24, gap: 16 },
-  resultsHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginBottom: 4,
-  },
-  resultsHeadline: {
-    color: ON_SURFACE,
-    fontSize: 22,
-    fontWeight: "700",
-    letterSpacing: -0.5,
-  },
-  resultsSubtitle: { color: ON_SURFACE_DIM, fontSize: 12 },
+  results: { paddingHorizontal: 20, gap: 18 },
+  resultsHdr: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 2 },
+  resultsTitle: { color: ON_SURF, fontSize: 22, fontWeight: "700", letterSpacing: -0.5 },
+  resultsSub: { color: ON_SURF_DIM, fontSize: 12 },
 
-  // Outfit card
-  outfitCard: {
+  // ── Card ──────────────────────────────────────────────────────────────────
+  card: {
+    width: CARD_W,
+    borderRadius: 22,
+    overflow: "hidden",
     backgroundColor: SURFACE_LOW,
-    borderRadius: 24,
-    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255,255,255,0.07)",
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
-  outfitCardBest: {
-    borderColor: `${PRIMARY}40`,
-  },
+  cardBest: { borderColor: `${PRIMARY}60` },
 
-  // Card header
-  cardHeader: {
+  // ── Split panels ───────────────────────────────────────────────────────────
+  panels: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  cardHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  rankBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: SURFACE_HIGH,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rankBadgeBest: { backgroundColor: PRIMARY },
-  rankBadgeText: { color: ON_SURFACE_DIM, fontSize: 12, fontWeight: "700" },
-  rankBadgeTextBest: { color: "#fff" },
-  rankLabel: { color: ON_SURFACE, fontSize: 14, fontWeight: "600" },
-  pieceCount: { color: ON_SURFACE_DIM, fontSize: 11, marginTop: 1 },
-  totalScoreWrap: { alignItems: "flex-end" },
-  totalScoreValue: {
-    color: ON_SURFACE,
-    fontSize: 22,
-    fontWeight: "700",
-    letterSpacing: -1,
-  },
-  totalScoreLabel: {
-    color: ON_SURFACE_DIM,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-
-  // Items
-  itemsSection: {},
-  outfitItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 14,
-    gap: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.04)",
-  },
-  outfitImageWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
-    backgroundColor: SURFACE_HIGH,
+    height: PANEL_H,
+    backgroundColor: "#F1EDE7",
+    position: "relative",
     overflow: "hidden",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#C8BFB5",
+  },
+
+  panelLeft: {
+    width: HALF_W,
+    height: PANEL_H,
+    backgroundColor: "#EDE8E2",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
-  outfitEmoji: { fontSize: 26 },
-  outfitItemLabel: {
-    color: PRIMARY,
+
+  panelRight: {
+    width: HALF_W,
+    height: PANEL_H,
+    backgroundColor: "#E8E3DC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+
+  // Second row — accessory + footwear
+  panels2: {
+    flexDirection: "row",
+    height: PANEL_H2,
+    backgroundColor: "#F1EDE7",
+    overflow: "hidden",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#C8BFB5",
+  },
+  panel2Cell: {
+    width: HALF_W,
+    height: PANEL_H2,
+    backgroundColor: "#EDE8E2",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  panelImg2: {
+    width: HALF_W,
+    height: PANEL_H2 - 26,
+  },
+  panelEmpty: { flex: 1 },
+
+  divider: {
+    width: StyleSheet.hairlineWidth,
+    height: "100%" as any,
+    backgroundColor: "#C8BFB5",
+  },
+
+  panelImg: {
+    width: HALF_W,
+    height: PANEL_H - 28,    // leave 28px for label at bottom
+  },
+
+  panelEmoji: {
+    fontSize: 64,
+    textAlign: "center",
+  },
+
+  // Category label pinned to bottom of each panel
+  panelLabel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0, right: 0,
+    height: 26,
+    backgroundColor: "rgba(235,230,222,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#C8BFB5",
+  },
+  panelLabelTxt: {
     fontSize: 9,
     fontWeight: "700",
-    letterSpacing: 2.5,
-    marginBottom: 3,
-  },
-  outfitItemName: { color: ON_SURFACE, fontSize: 13, fontWeight: "500" },
-  outfitItemColor: {
-    color: ON_SURFACE_DIM,
-    fontSize: 11,
-    marginTop: 2,
-    textTransform: "capitalize",
+    letterSpacing: 2,
+    color: "#7A6A5A",
   },
 
-  // Score bars
-  scoresSection: {
-    padding: 14,
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.05)",
-  },
-  scoreBarWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
-  scoreBarLabel: { color: ON_SURFACE_DIM, fontSize: 11, width: 54 },
-  scoreTrack: {
-    flex: 1,
-    height: 3,
-    backgroundColor: SURFACE_HIGH,
-    borderRadius: 99,
-    overflow: "hidden",
-  },
-  scoreFill: { height: "100%", backgroundColor: PRIMARY, borderRadius: 99 },
-  scoreBarValue: {
-    color: ON_SURFACE_DIM,
-    fontSize: 11,
-    width: 24,
-    textAlign: "right",
-  },
-
-  // Reasons
-  reasonsSection: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    padding: 14,
-    paddingTop: 0,
-  },
-  reasonTag: {
-    backgroundColor: "rgba(255,69,0,0.08)",
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+  // Rank badge — top-left floating over panels
+  rankBadge: {
+    position: "absolute",
+    top: 12, left: 12,
+    backgroundColor: "rgba(20,20,20,0.78)",
+    borderRadius: 20,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
     borderWidth: 1,
-    borderColor: "rgba(255,69,0,0.15)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
-  reasonText: { color: PRIMARY_LIGHT, fontSize: 11 },
+  rankBadgeBest: { backgroundColor: PRIMARY, borderColor: "transparent" },
+  rankTxt: { color: "rgba(255,255,255,0.6)", fontSize: 11, fontWeight: "700", letterSpacing: 0.3 },
+  rankTxtBest: { color: "#fff" },
+
+  // Score badge — top-right floating over panels
+  scoreBadge: {
+    position: "absolute",
+    top: 12, right: 12,
+    backgroundColor: "rgba(20,20,20,0.78)",
+    borderRadius: 14,
+    paddingHorizontal: 11, paddingVertical: 7,
+    flexDirection: "row", alignItems: "baseline", gap: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  scoreBadgeBest: { backgroundColor: PRIMARY, borderColor: "transparent" },
+  scoreNum: { color: ON_SURF, fontSize: 17, fontWeight: "800" },
+  scoreNumBest: { color: "#fff" },
+  scorePts: { color: ON_SURF_DIM, fontSize: 9, fontWeight: "600", letterSpacing: 0.5 },
+  scorePtsBest: { color: "rgba(255,255,255,0.7)" },
+
+  // ── Footer ─────────────────────────────────────────────────────────────────
+  footer: {
+    backgroundColor: SURFACE_LOW,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+
+  names: { gap: 5, marginBottom: 10 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  nameCat: {
+    width: 64,
+    fontSize: 9, fontWeight: "700",
+    color: PRIMARY, letterSpacing: 1.8,
+    textTransform: "uppercase",
+  },
+  nameVal: {
+    flex: 1,
+    fontSize: 14, fontWeight: "500",
+    color: ON_SURF,
+  },
+
+  // Reason chips
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: {
+    backgroundColor: PRI_DIM, borderRadius: 999,
+    paddingVertical: 5, paddingHorizontal: 11,
+    borderWidth: 1, borderColor: "rgba(255,69,0,0.2)",
+  },
+  chipTxt: { color: PRI_LIGHT, fontSize: 11 },
 });
