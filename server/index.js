@@ -500,16 +500,16 @@ app.get("/api/recommend-outfit", async (req, res) => {
     if (result.outfits && Array.isArray(result.outfits)) {
       result.outfits.forEach((o) => {
         const outfit = o.outfit || {};
-        ["top", "bottom", "shoes"].forEach((key) => {
+        ["top", "bottom", "shoes", "outerwear", "accessory"].forEach((key) => {
           const it = outfit[key];
           if (
             it &&
-            it.image &&
-            it.image.match(
+            it.image_path &&
+            it.image_path.match(
               /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
             )
           ) {
-            it.image = it.image.replace(
+            it.image_path = it.image_path.replace(
               /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
               `${nodeBase}/static/`,
             );
@@ -521,6 +521,78 @@ app.get("/api/recommend-outfit", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("recommend-outfit error", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ---- endpoint: recommend zara (AI Tab) ----
+// Accepts multiple files sent as `files` from frontend AI page.
+app.post("/api/recommend-zara", upload.any(), async (req, res) => {
+  try {
+    const userId =
+      req.header("x-user-id") || req.body.user_id || "zara_official";
+    const query = req.body.query || "";
+
+    const form = new FormData();
+    form.append("user_id", userId);
+    if (query) form.append("query", query);
+
+    // Support both `files` (current frontend) and legacy `file`.
+    const uploads = Array.isArray(req.files) ? req.files : [];
+    for (const f of uploads) {
+      const field = f.fieldname === "file" ? "files" : f.fieldname;
+      if (field !== "files") continue;
+      form.append("files", f.buffer, {
+        filename: f.originalname || "query.jpg",
+        contentType: f.mimetype || "image/jpeg",
+      });
+    }
+
+    const pyUrl = `${OUTFIT_API_URL}/recommend-zara`;
+    const headers = form.getHeaders();
+    const body = await formDataToBuffer(form);
+    headers["Content-Length"] = String(body.length);
+
+    const pyResponse = await fetch(pyUrl, {
+      method: "POST",
+      body,
+      headers,
+    });
+
+    if (!pyResponse.ok) {
+      const errText = await pyResponse.text();
+      console.error("recommend-zara py error", pyResponse.status, errText);
+      return res.status(pyResponse.status).json({ error: errText });
+    }
+
+    const result = await pyResponse.json();
+    const nodeBase = `${req.protocol}://${req.get("host")}`;
+
+    // Rewrite image paths to Node /static URLs
+    if (result.outfits && Array.isArray(result.outfits)) {
+      result.outfits.forEach((o) => {
+        const outfit = o.outfit || {};
+        ["top", "bottom", "shoes", "outerwear", "accessory"].forEach((key) => {
+          const it = outfit[key];
+          if (
+            it &&
+            it.image_path &&
+            it.image_path.match(
+              /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+            )
+          ) {
+            it.image_path = it.image_path.replace(
+              /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+              `${nodeBase}/static/`,
+            );
+          }
+        });
+      });
+    }
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error("recommend-zara error", err);
     res.status(500).json({ error: String(err) });
   }
 });

@@ -1,6 +1,8 @@
 import { useUser } from "@clerk/clerk-expo";
+import * as ImagePicker from "expo-image-picker";
 import React, { useRef, useState } from "react";
 import {
+    ActivityIndicator,
     Image,
     KeyboardAvoidingView,
     Platform,
@@ -12,6 +14,7 @@ import {
     View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SERVER_BASE } from "../utils/config";
 
 const PRIMARY = "#FF6B00";
 const BG = "#0a0908";
@@ -26,6 +29,9 @@ type Message = {
   content: string;
   time: string;
   outfitCard?: boolean;
+  outfitData?: any;
+  imageUris?: string[];
+  isTyping?: boolean;
 };
 
 const INITIAL_MESSAGES: Message[] = [
@@ -33,30 +39,15 @@ const INITIAL_MESSAGES: Message[] = [
     id: "1",
     role: "ai",
     content:
-      "Good morning! 🌤️ It's a crisp 62°F today. Based on your calendar, I've curated a look that blends professional with effortless urban style. How does this feel for today?",
-    time: "09:41 AM",
-    outfitCard: true,
-  },
-  {
-    id: "2",
-    role: "user",
-    content:
-      "I love the jacket, but can we try different boots? Maybe something more rugged?",
-    time: "09:43 AM",
-  },
-  {
-    id: "3",
-    role: "ai",
-    content:
-      "Absolutely! I found 3 rugged boot options in your wardrobe that pair seamlessly with the jacket. Here are my top picks 👇",
-    time: "09:44 AM",
+      "Hello! I'm Sense AI, your personal Zara Stylist. ✦\n\nI can help you find the perfect outfit from our curated Zara collection. You can type what you're looking for, or even upload a photo of a piece you love and I'll build a whole look around it!",
+    time: "Just now",
   },
 ];
 
 const QUICK_CHIPS = [
-  { icon: "✨", label: "Style these boots" },
-  { icon: "🌤️", label: "Today's forecast" },
-  { icon: "📦", label: "New arrivals" },
+  { icon: "👗", label: "Zara Party Look" },
+  { icon: "👔", label: "Smart Casual" },
+  { icon: "✨", label: "Summer Chic" },
 ];
 
 export default function AIScreen() {
@@ -64,6 +55,8 @@ export default function AIScreen() {
   const { user } = useUser();
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   // Get user avatar - prefer Cloudinary URL from metadata, fallback to Clerk imageUrl
@@ -72,39 +65,120 @@ export default function AIScreen() {
     user?.imageUrl ||
     DEFAULT_AVATAR;
 
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      const newUris = result.assets.map((a) => a.uri);
+      setSelectedImages((prev) => [...prev, ...newUris]);
+    }
+  };
+
+  const sendMessage = async (text: string, imageUris?: string[]) => {
+    if (!text.trim() && (!imageUris || imageUris.length === 0)) return;
+
     const now = new Date();
     const time = now.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
     });
 
+    const userMsgId = Date.now().toString();
     setMessages((prev) => [
       ...prev,
-      { id: Date.now().toString(), role: "user", content: text, time },
+      {
+        id: userMsgId,
+        role: "user",
+        content: text,
+        time,
+        imageUris,
+      },
     ]);
     setInput("");
+    setSelectedImages([]);
+    setIsUploading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "ai",
-          content:
-            "Great choice! Let me analyze your wardrobe and put together the perfect outfit for you. ✦",
-          time: new Date().toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        },
-      ]);
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 800);
+    // AI "Typing" indicator
+    const aiMsgId = (Date.now() + 1).toString();
+    setMessages((prev) => [
+      ...prev,
+      { id: aiMsgId, role: "ai", content: "", time, isTyping: true },
+    ]);
 
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    try {
+      const formData = new FormData();
+      formData.append("user_id", user?.id || "anonymous");
+      if (text) formData.append("query", text);
+
+      if (imageUris && imageUris.length > 0) {
+        imageUris.forEach((uri, index) => {
+          const filename = uri.split("/").pop();
+          const match = /\.(\w+)$/.exec(filename || "");
+          const type = match ? `image/${match[1]}` : `image`;
+          formData.append("files", {
+            uri: uri,
+            name: filename || `image_${index}.jpg`,
+            type,
+          } as any);
+        });
+      }
+
+      console.log(
+        "[AI] Sending request to:",
+        `${SERVER_BASE}/api/recommend-zara`,
+      );
+      const response = await fetch(`${SERVER_BASE}/api/recommend-zara`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("[AI] Server error:", response.status, errorText);
+        throw new Error(`Server responded with ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("[AI] Received result:", result.success);
+
+      if (result.success && result.outfits?.length > 0) {
+        const best = result.outfits[0];
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMsgId
+              ? {
+                  ...m,
+                  isTyping: false,
+                  content: `I've found some amazing pieces from Zara that perfectly match your style! Here's a curated look featuring ${best.reasons.length > 0 ? best.reasons[0].toLowerCase() : "the perfect blend of items"}.`,
+                  outfitCard: true,
+                  outfitData: best,
+                }
+              : m,
+          ),
+        );
+      } else {
+        throw new Error(result.error || "No matching outfits found.");
+      }
+    } catch (err: any) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === aiMsgId
+            ? {
+                ...m,
+                isTyping: false,
+                content: `I'm sorry, I couldn't find a matching outfit from the Zara dataset right now. ${err.message}`,
+              }
+            : m,
+        ),
+      );
+    } finally {
+      setIsUploading(false);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    }
   };
 
   return (
@@ -123,7 +197,7 @@ export default function AIScreen() {
             <View style={styles.pulseDot} />
             <Text style={styles.aiName}>Sense AI</Text>
           </View>
-          <Text style={styles.aiSubtitle}>ONLINE STYLIST</Text>
+          <Text style={styles.aiSubtitle}>ZARA STYLIST</Text>
         </View>
         <TouchableOpacity style={styles.headerBtn}>
           <Text style={{ color: "#fff", fontSize: 20 }}>⋮</Text>
@@ -155,9 +229,15 @@ export default function AIScreen() {
                   <Text style={styles.msgTime}>Sense AI · {msg.time}</Text>
                 </View>
                 <View style={styles.aiBubble}>
-                  <Text style={styles.aiBubbleText}>{msg.content}</Text>
+                  {msg.isTyping ? (
+                    <ActivityIndicator size="small" color={PRIMARY} />
+                  ) : (
+                    <Text style={styles.aiBubbleText}>{msg.content}</Text>
+                  )}
                 </View>
-                {msg.outfitCard && <OutfitCard />}
+                {msg.outfitCard && msg.outfitData && (
+                  <OutfitCard data={msg.outfitData} />
+                )}
               </View>
             ) : (
               <View style={styles.userBubbleWrapper}>
@@ -171,7 +251,20 @@ export default function AIScreen() {
                   />
                 </View>
                 <View style={styles.userBubble}>
-                  <Text style={styles.userBubbleText}>{msg.content}</Text>
+                  {msg.imageUris && msg.imageUris.length > 0 && (
+                    <View style={styles.userMsgImageContainer}>
+                      {msg.imageUris.map((uri, i) => (
+                        <Image
+                          key={i}
+                          source={{ uri }}
+                          style={styles.userMsgImage}
+                        />
+                      ))}
+                    </View>
+                  )}
+                  {msg.content ? (
+                    <Text style={styles.userBubbleText}>{msg.content}</Text>
+                  ) : null}
                 </View>
               </View>
             )}
@@ -181,29 +274,69 @@ export default function AIScreen() {
 
       {/* Bottom Input Area */}
       <View style={[styles.bottomArea, { paddingBottom: insets.bottom || 16 }]}>
+        {/* Selected Image Preview */}
+        {selectedImages.length > 0 && (
+          <ScrollView
+            horizontal
+            style={styles.imagePreviewList}
+            contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+            showsHorizontalScrollIndicator={false}
+          >
+            {selectedImages.map((uri, index) => (
+              <View key={index} style={styles.imagePreviewContainer}>
+                <Image source={{ uri }} style={styles.imagePreview} />
+                <TouchableOpacity
+                  style={styles.removeImageBtn}
+                  onPress={() =>
+                    setSelectedImages((prev) =>
+                      prev.filter((_, i) => i !== index),
+                    )
+                  }
+                >
+                  <Text
+                    style={{ color: "#fff", fontWeight: "bold", fontSize: 10 }}
+                  >
+                    ✕
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+
         {/* Quick Chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsRow}
-        >
-          {QUICK_CHIPS.map((chip) => (
-            <TouchableOpacity
-              key={chip.label}
-              style={styles.chip}
-              onPress={() => sendMessage(chip.label)}
-            >
-              <Text style={styles.chipIcon}>{chip.icon}</Text>
-              <Text style={styles.chipText}>{chip.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {selectedImages.length === 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsRow}
+          >
+            {QUICK_CHIPS.map((chip) => (
+              <TouchableOpacity
+                key={chip.label}
+                style={styles.chip}
+                onPress={() => sendMessage(chip.label)}
+              >
+                <Text style={styles.chipIcon}>{chip.icon}</Text>
+                <Text style={styles.chipText}>{chip.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {/* Input Row */}
         <View style={styles.inputRow}>
           <View style={styles.inputContainer}>
-            <TouchableOpacity style={styles.inputIconBtn}>
-              <Text style={{ color: "rgba(255,255,255,0.4)", fontSize: 20 }}>
+            <TouchableOpacity style={styles.inputIconBtn} onPress={pickImage}>
+              <Text
+                style={{
+                  color:
+                    selectedImages.length > 0
+                      ? PRIMARY
+                      : "rgba(255,255,255,0.4)",
+                  fontSize: 20,
+                }}
+              >
                 ⊕
               </Text>
             </TouchableOpacity>
@@ -213,7 +346,12 @@ export default function AIScreen() {
               placeholderTextColor="rgba(255,255,255,0.35)"
               value={input}
               onChangeText={setInput}
-              onSubmitEditing={() => sendMessage(input)}
+              onSubmitEditing={() =>
+                sendMessage(
+                  input,
+                  selectedImages.length > 0 ? selectedImages : undefined,
+                )
+              }
               multiline
             />
             <TouchableOpacity style={styles.inputIconBtn}>
@@ -224,11 +362,21 @@ export default function AIScreen() {
           </View>
           <TouchableOpacity
             style={styles.sendBtn}
-            onPress={() => sendMessage(input)}
+            onPress={() =>
+              sendMessage(
+                input,
+                selectedImages.length > 0 ? selectedImages : undefined,
+              )
+            }
+            disabled={isUploading}
           >
-            <Text style={{ color: "#000", fontSize: 18, fontWeight: "800" }}>
-              ↑
-            </Text>
+            {isUploading ? (
+              <ActivityIndicator size="small" color="#000" />
+            ) : (
+              <Text style={{ color: "#000", fontSize: 18, fontWeight: "800" }}>
+                ↑
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -236,39 +384,88 @@ export default function AIScreen() {
   );
 }
 
-function OutfitCard() {
+function OutfitCard({ data }: { data: any }) {
+  if (!data || !data.outfit) return null;
+  const outfit = data.outfit;
+
+  const top = outfit.top;
+  const bottom = outfit.bottom;
+  const shoes = outfit.shoes;
+  const outer = outfit.outerwear;
+  const acc = outfit.accessory;
+
+  const renderItemImage = (item: any, style: any, isMain: boolean = false) => {
+    if (!item) return null;
+    const isUserUpload = item.item_id?.toString().startsWith("user_upload_");
+    return (
+      <View style={[style, isUserUpload ? styles.userItemBorder : null]}>
+        <Image
+          source={{ uri: item.image_path }}
+          style={isMain ? styles.mainImage : styles.miniImage}
+          resizeMode="cover"
+        />
+        {isUserUpload && (
+          <View style={styles.userPieceBadge}>
+            <Text style={styles.userPieceText}>LOCKED</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Logic to determine what to show in the main 'Vibe' grid
+  // We want to prioritize showing the user's locked pieces if they exist.
+  const mainPiece1 = outer || top;
+  const mainPiece2 = bottom;
+
   return (
     <View style={styles.outfitCard}>
-      <View style={styles.outfitImageBg}>
-        <Image
-          source={{
-            uri: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=600&q=80",
-          }}
-          style={styles.outfitImage}
-        />
-        <View style={styles.outfitOverlay} />
-        <View style={styles.outfitLabel}>
-          <View>
-            <Text style={styles.outfitTitle}>Modern Urbanite</Text>
-            <Text style={styles.outfitSub}>3 items from your wardrobe</Text>
-          </View>
-          <View style={styles.matchBadge}>
-            <Text style={styles.matchBadgeText}>Match Found</Text>
+      <View style={styles.collageContainer}>
+        {/* Left Side: The "Vibe" / Main Pieces */}
+        <View style={styles.mainOutfitSection}>
+          <View style={styles.lookGrid}>
+            <View style={styles.lookColumn}>
+              {renderItemImage(mainPiece1, styles.mainItemLarge, true)}
+            </View>
+            {mainPiece2 && (
+              <View style={styles.lookColumn}>
+                {renderItemImage(mainPiece2, styles.mainItemLarge, true)}
+              </View>
+            )}
           </View>
         </View>
+
+        {/* Right Side: Details & Accessories */}
+        <View style={styles.outfitDetailsSection}>
+          <View style={styles.detailsHeader}>
+            <Text style={styles.outfitTitle}>Sense Selection</Text>
+            <View style={styles.matchBadge}>
+              <Text style={styles.matchBadgeText}>
+                {Math.round(data.score * 100)}% Match
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.miniItemsGrid}>
+            {shoes && (
+              <View style={styles.miniItemBox}>
+                {renderItemImage(shoes, styles.miniItemImageWrap)}
+                <Text style={styles.miniLabel}>Shoes</Text>
+              </View>
+            )}
+            {acc && (
+              <View style={styles.miniItemBox}>
+                {renderItemImage(acc, styles.miniItemImageWrap)}
+                <Text style={styles.miniLabel}>Accessory</Text>
+              </View>
+            )}
+          </View>
+
+          <TouchableOpacity style={styles.viewDetailsBtn}>
+            <Text style={styles.viewDetailsText}>Get the Look ✓</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.outfitItems}>
-        {[
-          "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=200&q=80",
-          "https://images.unsplash.com/photo-1562157873-818bc0726f68?w=200&q=80",
-          "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200&q=80",
-        ].map((uri, i) => (
-          <Image key={i} source={{ uri }} style={styles.outfitItemImage} />
-        ))}
-      </View>
-      <TouchableOpacity style={styles.wearBtn}>
-        <Text style={styles.wearBtnText}>Wear This ✓</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -354,21 +551,143 @@ const styles = StyleSheet.create({
     borderColor: `${PRIMARY}55`,
   },
   userBubble: {
-    backgroundColor: BG,
+    backgroundColor: PRIMARY,
     borderRadius: 18,
     borderTopRightRadius: 4,
     padding: 14,
-    borderWidth: 1,
-    borderColor: `${PRIMARY}66`,
+    shadowColor: PRIMARY,
+    shadowRadius: 4,
+    shadowOpacity: 0.2,
   },
-  userBubbleText: { color: "#e8e8e8", fontSize: 14, lineHeight: 22 },
+  userMsgImageContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 8,
+    maxWidth: 220,
+  },
+  userMsgImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+  },
+  userBubbleText: {
+    color: "#000",
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: "600",
+  },
   outfitCard: {
     backgroundColor: CHARCOAL,
-    borderRadius: 16,
+    borderRadius: 24,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-    marginTop: 8,
+    borderColor: "rgba(255,255,255,0.08)",
+    marginTop: 12,
+    width: "100%",
+  },
+  collageContainer: {
+    flexDirection: "row",
+    height: 280,
+  },
+  mainOutfitSection: {
+    flex: 1.4,
+    backgroundColor: "#121212",
+    padding: 6,
+  },
+  lookGrid: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+  },
+  lookColumn: {
+    flex: 1,
+    gap: 6,
+  },
+  mainItemLarge: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#1a1a1a",
+  },
+  mainImage: {
+    width: "100%",
+    height: "100%",
+  },
+  userItemBorder: {
+    borderWidth: 2,
+    borderColor: PRIMARY,
+  },
+  userPieceBadge: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    backgroundColor: PRIMARY,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    zIndex: 10,
+  },
+  userPieceText: {
+    color: "#000",
+    fontSize: 8,
+    fontWeight: "900",
+  },
+  outfitDetailsSection: {
+    flex: 1,
+    padding: 16,
+    justifyContent: "space-between",
+    backgroundColor: CHARCOAL,
+  },
+  detailsHeader: {
+    gap: 6,
+  },
+  outfitTitle: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  miniItemsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginVertical: 10,
+  },
+  miniItemBox: {
+    alignItems: "center",
+    gap: 4,
+  },
+  miniItemImageWrap: {
+    width: 48,
+    height: 60,
+    borderRadius: 6,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  miniImage: {
+    width: "100%",
+    height: "100%",
+  },
+  miniLabel: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 8,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  viewDetailsBtn: {
+    backgroundColor: PRIMARY,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+    shadowColor: PRIMARY,
+    shadowRadius: 8,
+    shadowOpacity: 0.3,
+  },
+  viewDetailsText: {
+    color: "#000",
+    fontSize: 13,
+    fontWeight: "800",
   },
   outfitImageBg: { height: 180, position: "relative" },
   outfitImage: { width: "100%", height: "100%", resizeMode: "cover" },
@@ -385,7 +704,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-end",
   },
-  outfitTitle: { color: "#fff", fontSize: 18, fontWeight: "800" },
   outfitSub: { color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 2 },
   matchBadge: {
     backgroundColor: `${PRIMARY}33`,
@@ -407,10 +725,20 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   outfitItemImage: {
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: 10,
-    backgroundColor: "#222",
+    width: 60,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  outfitItemWrapper: {
+    alignItems: "center",
+    gap: 4,
+  },
+  itemCategory: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   wearBtn: {
     margin: 12,
@@ -427,6 +755,35 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingHorizontal: 16,
     backgroundColor: "rgba(10,9,8,0.98)",
+  },
+  imagePreviewList: {
+    maxHeight: 80,
+    marginBottom: 10,
+  },
+  imagePreviewContainer: {
+    position: "relative",
+    width: 60,
+    height: 60,
+  },
+  imagePreview: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  removeImageBtn: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   chipsRow: { gap: 8, paddingBottom: 10 },
   chip: {

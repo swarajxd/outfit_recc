@@ -61,10 +61,9 @@ export default function WardrobeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
 
-  const [serverBase, setServerBase] = useState<string>(DEFAULT_SERVER_BASE);
+  const [serverBase, setServerBase] = useState<string>(SERVER_BASE);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [tempServerBase, setTempServerBase] =
-    useState<string>(DEFAULT_SERVER_BASE);
+  const [tempServerBase, setTempServerBase] = useState<string>(SERVER_BASE);
 
   // Upload mode picker
   const [showModePicker, setShowModePicker] = useState(false);
@@ -93,7 +92,7 @@ export default function WardrobeScreen() {
     setIsLoading(true);
     try {
       const resp = await fetch(
-        `${SERVER_BASE}/api/profile/wardrobe/${encodeURIComponent(userId)}`,
+        `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}`,
       );
       if (!resp.ok) throw new Error("Failed to fetch wardrobe");
       const json = await resp.json();
@@ -177,22 +176,41 @@ export default function WardrobeScreen() {
           style: "destructive",
           onPress: async () => {
             setIsDeleting(true);
+            console.log(`[Wardrobe] Deleting ${selectedIds.size} items...`);
             try {
-              await Promise.all(
-                Array.from(selectedIds).map((id) =>
-                  fetch(
-                    `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}/item/${encodeURIComponent(id)}`,
-                    { method: "DELETE" },
-                  ).catch((e) => console.warn(`Delete ${id} failed:`, e)),
-                ),
+              const responses = await Promise.all(
+                Array.from(selectedIds).map(async (id) => {
+                  const url = `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}/item/${encodeURIComponent(id)}`;
+                  console.log(`[Wardrobe] DELETE request to: ${url}`);
+                  try {
+                    const res = await fetch(url, { method: "DELETE" });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(
+                        errData.error ||
+                          `Failed to delete item ${id} (Status: ${res.status})`,
+                      );
+                    }
+                    return id;
+                  } catch (e) {
+                    console.warn(`[Wardrobe] Delete ${id} failed:`, e);
+                    throw e;
+                  }
+                }),
               );
-              // Optimistically remove from UI without refetch
+
+              // Optimistically remove from UI
               setItems((prev) =>
                 prev.filter((item) => !selectedIds.has(item.id)),
               );
               exitSelectionMode();
             } catch (err: any) {
-              Alert.alert("Error", err.message || "Failed to delete items");
+              Alert.alert(
+                "Delete Failed",
+                err.message || "Could not delete one or more items.",
+              );
+              // Refetch wardrobe to ensure UI is in sync with server if partial failure
+              fetchWardrobe();
             } finally {
               setIsDeleting(false);
             }
