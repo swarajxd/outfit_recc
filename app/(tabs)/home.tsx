@@ -570,8 +570,17 @@ export default function HomeScreen() {
         owner_clerk_id: String(p.owner_clerk_id ?? ""),
         tags: Array.isArray(p.tags) ? p.tags.map((t: any) => String(t)) : null,
         created_at: String(p.created_at ?? ""),
-        score: typeof p.score === "number" ? p.score : undefined,
+        score: typeof p.similarity_score === "number" ? Math.round(p.similarity_score * 100) : undefined,
+        isLiked: p.is_liked === true,
       }));
+      
+      // Update likedItems map for local heart states
+      const newLikedMap: Record<string, boolean> = {};
+      normalized.forEach(p => {
+        if (p.isLiked) newLikedMap[p.id] = true;
+      });
+      setLikedItems(newLikedMap);
+      
       setPosts(normalized);
     } catch (e) {
       console.error("fetchPosts error", e);
@@ -876,17 +885,15 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : (
-            posts.map((p) => {
+            posts.map((p: any) => {
+              const owner = p.owner_profile || {};
               const derivedItem = {
                 id: p.id,
                 image: p.image_url,
-                matchPercent: 90,
-                username:
-                  p.owner_clerk_id === user?.id
-                    ? currentUserName
-                    : p.owner_clerk_id,
-                avatar: currentUserAvatar,
-                liked: false,
+                matchPercent: typeof p.similarity_score === 'number' ? Math.round(p.similarity_score * 100) : 0,
+                username: owner.username || (p.owner_clerk_id === user?.id ? currentUserName : "Unknown"),
+                avatar: owner.profile_image_url || (p.owner_clerk_id === user?.id ? currentUserAvatar : DEFAULT_AVATAR),
+                liked: !!likedItems[p.id],
                 caption: p.caption ?? "",
                 tag: p.tags?.[0] ? `#${p.tags[0]}` : "",
               } as (typeof FEED_ITEMS)[0];
