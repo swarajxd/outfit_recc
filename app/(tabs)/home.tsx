@@ -1,4 +1,3 @@
-
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -480,27 +479,27 @@ export default function HomeScreen() {
   const [outfitLoading, setOutfitLoading] = useState(true);
   const weekDates = useMemo(() => getWeekDates(), []);
   const { user, isLoaded } = useUser();
-   const [savedOutfits, setSavedOutfits] = useState<any>({});
-   
+  const [savedOutfits, setSavedOutfits] = useState<any>({});
 
-useEffect(() => {
-  const loadSavedOutfits = async () => {
-    const outfits: any = {};
 
-    for (const d of weekDates) {
-      const key = `fitsense_outfit_${d.label}_${d.date}`;
-      const stored = await AsyncStorage.getItem(key);
+  useEffect(() => {
+    const loadSavedOutfits = async () => {
+      const outfits: any = {};
 
-      if (stored) {
-        outfits[key] = JSON.parse(stored);
+      for (const d of weekDates) {
+        const key = `fitsense_outfit_${d.label}_${d.date}`;
+        const stored = await AsyncStorage.getItem(key);
+
+        if (stored) {
+          outfits[key] = JSON.parse(stored);
+        }
       }
-    }
 
-    setSavedOutfits(outfits);
-  };
+      setSavedOutfits(outfits);
+    };
 
-  loadSavedOutfits();
-}, [weekDates]);
+    loadSavedOutfits();
+  }, [weekDates]);
 
 
   if (!isLoaded) {
@@ -652,13 +651,14 @@ useEffect(() => {
       })
       .catch(() => {});
   }, [user]);
+
   const userWardrobe = useMemo(() => {
     if (items && items.length > 0) {
       return buildWardrobeFromItems(items);
     }
     return FALLBACK_WARDROBE;
   }, [items]);
- 
+
   // Load or generate today's outfit on mount
   useEffect(() => {
     if (!items || items.length === 0) return;
@@ -667,11 +667,9 @@ useEffect(() => {
     setOutfitLoading(true);
 
     const wardrobe = buildWardrobeFromItems(items);
-    
 
     getOrCreateDailyOutfit(wardrobe, user?.id || undefined)
       .then((o) => {
-        
         if (!cancelled) {
           setOutfit(o);
           setOutfitLoading(false);
@@ -696,10 +694,6 @@ useEffect(() => {
       .catch(() => setOutfitLoading(false));
   };
 
-
-    if (!isLoaded) {
-    return null;
-  }
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
@@ -802,20 +796,20 @@ useEffect(() => {
         <View style={styles.sectionPad}>
           <Text style={styles.sectionLabel}>AI Tools</Text>
           <View style={styles.aiGrid}>
-           <AICard
-            icon="✦"
-            title="Outfit Maker"
-            subtitle="AI creates looks from your wardrobe"
-            accentColor={PRIMARY}
-            onPress={() =>
-              router.push({
-                pathname: "../outfitMaker",
-                params: {
-                  wardrobe: JSON.stringify(items),
-                },
-              })
-            }
-          />
+            <AICard
+              icon="✦"
+              title="Outfit Maker"
+              subtitle="AI creates looks from your wardrobe"
+              accentColor={PRIMARY}
+              onPress={() =>
+                router.push({
+                  pathname: "../outfitMaker",
+                  params: {
+                    wardrobe: JSON.stringify(items),
+                  },
+                })
+              }
+            />
             <AICard
               icon="◈"
               title="Fashion Chat"
@@ -825,44 +819,42 @@ useEffect(() => {
           </View>
         </View>
 
-{/* ── Weekly Planner ── */}
-<View style={styles.sectionPad}>
-  <View style={styles.sectionHeader}>
-    <Text style={styles.sectionLabel}>Your Week</Text>
-    <Text style={styles.sectionSub}>Planner</Text>
-  </View>
+        {/* ── Weekly Planner ── */}
+        <View style={styles.sectionPad}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>Your Week</Text>
+            <Text style={styles.sectionSub}>Planner</Text>
+          </View>
 
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    contentContainerStyle={{ gap: 12 }}
-  >
-{weekDates.map((d, i) => {
-  const key = `fitsense_outfit_${d.label}_${d.date}`;
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 12 }}
+          >
+            {weekDates.map((d, i) => {
+              const key = `fitsense_outfit_${d.label}_${d.date}`;
 
-  return (
-    <DayOutfitCard
-      key={i}
-      label={d.label}
-      date={d.date}
-      outfit={savedOutfits[key]}
-      onPress={() =>
-        router.push({
-          pathname: "/dailyOutfit",
-          params: {
-            wardrobe: JSON.stringify(items),
-            day: d.label,
-            date: d.date,
-          },
-        })
-      }
-    />
-  );
-})}
-  </ScrollView>
-</View>
-
-       
+              return (
+                <DayOutfitCard
+                  key={i}
+                  label={d.label}
+                  date={d.date}
+                  outfit={savedOutfits[key]}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/dailyOutfit",
+                      params: {
+                        wardrobe: JSON.stringify(items),
+                        day: d.label,
+                        date: d.date,
+                      },
+                    })
+                  }
+                />
+              );
+            })}
+          </ScrollView>
+        </View>
 
         {/* ── Feed ── */}
         <View style={styles.sectionPad}>
@@ -874,7 +866,7 @@ useEffect(() => {
           ) : postsError ? (
             <View style={{ paddingVertical: 16 }}>
               <Text style={{ color: "rgba(255,255,255,0.55)" }}>
-                Couldn’t load posts. Pull to refresh.
+                Couldn't load posts. Pull to refresh.
               </Text>
             </View>
           ) : posts.length === 0 ? (
@@ -936,7 +928,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start", // ✅ logo stays left
+    justifyContent: "flex-start",
     marginBottom: 16,
   },
   logoText: {
@@ -1299,7 +1291,12 @@ const styles = StyleSheet.create({
   username: { color: "#fff", fontSize: 14, fontWeight: "700" },
   actions: { flexDirection: "row", alignItems: "center", gap: 18 },
   actionBtn: { padding: 2 },
-  caption: { color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 20, fontWeight: '400' },
+  caption: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "400",
+  },
 
   // ── Day Card — split panel ─────────────────────────────────────────────────
   dayCard: {
@@ -1310,7 +1307,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
-
   dayPanels: {
     flexDirection: "row",
     height: DAY_IMG_H,
@@ -1339,7 +1335,8 @@ const styles = StyleSheet.create({
   dayPanelLabel: {
     position: "absolute",
     bottom: 0,
-    left: 0, right: 0,
+    left: 0,
+    right: 0,
     height: 16,
     backgroundColor: "rgba(235,230,222,0.9)",
     alignItems: "center",
@@ -1365,6 +1362,7 @@ const styles = StyleSheet.create({
   dayEmoji: { fontSize: 28 },
   dayPlus: { color: PRIMARY, fontSize: 28, fontWeight: "700" },
 
+  // ✅ FIXED: dayLabelStrip now properly closed, dayLabel is its own key
   dayLabelStrip: {
     backgroundColor: "#111",
     paddingVertical: 8,
@@ -1373,43 +1371,44 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  color: "rgba(255,255,255,0.6)",
-  fontSize: 12,
-  fontWeight: "600",
-},
+  dayLabel: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  dayDate: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
 
-dayDate: {
-  color: "#fff",
-  fontSize: 14,
-  fontWeight: "700",
-},
-
-addCircle: {
-  width: 42,
-  height: 42,
-  borderRadius: 21,
-  backgroundColor: "rgba(255,107,0,0.12)",
-  borderWidth: 1,
-  borderColor: "rgba(255,107,0,0.5)",
-  alignItems: "center",
-  justifyContent: "center",
-},
-
-addPlus: {
-  color: "#FF6B00",
-  fontSize: 24,
-  fontWeight: "700",
-},
-outfitStack: {
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 4,
-},
-outfitImage: {
+  addCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,107,0,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,107,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addPlus: {
+    color: "#FF6B00",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  outfitStack: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  outfitImage: {
     width: 40,
     height: 40,
     resizeMode: "contain",
   },
+
+  // FAB
   fab: {
     position: "absolute",
     bottom: 24,
