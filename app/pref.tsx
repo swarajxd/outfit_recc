@@ -17,6 +17,7 @@ import {
   Animated,
   Dimensions,
   FlatList,
+  ImageBackground,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -26,6 +27,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import "../assets/pref/streetwear.png";
 
 const { width: W, height: H } = Dimensions.get("window");
 const ORANGE = "#E8620A";
@@ -82,10 +84,9 @@ const ProfileCtx = createContext<{
 function useEntryAnim(delay = 0) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, {
+    Animated.timing(anim, {
       toValue: 1,
-      friction: 7,
-      tension: 80,
+      duration: 300,
       delay,
       useNativeDriver: true,
     }).start();
@@ -106,13 +107,13 @@ function useFloatAnim(distance = 8, duration = 2800) {
   return anim.interpolate({ inputRange: [0, 1], outputRange: [0, -distance] });
 }
 
+// Smooth press: quick timing down, gentle spring up
 function useSpringBounce() {
   const scale = useRef(new Animated.Value(1)).current;
   const bounce = () => {
     Animated.sequence([
-      Animated.spring(scale, { toValue: 0.94, friction: 10, tension: 300, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1.04, friction: 6, tension: 200, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1, friction: 7, tension: 150, useNativeDriver: true }),
+      Animated.timing(scale, { toValue: 0.96, duration: 80, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
     ]).start();
   };
   return { scale, bounce };
@@ -130,13 +131,13 @@ function Shell({
   const headerAnim = useEntryAnim(0);
 
   useEffect(() => {
-    Animated.timing(progressAnim, { toValue: step / total, duration: 600, useNativeDriver: false }).start();
+    Animated.timing(progressAnim, { toValue: step / total, duration: 500, useNativeDriver: false }).start();
   }, [step]);
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(continueScale, { toValue: canContinue ? 1 : 0.96, friction: 6, tension: 200, useNativeDriver: true }),
-      Animated.timing(continueOpacity, { toValue: canContinue ? 1 : 0.4, duration: 250, useNativeDriver: true }),
+      Animated.timing(continueScale, { toValue: canContinue ? 1 : 0.96, duration: 200, useNativeDriver: true }),
+      Animated.timing(continueOpacity, { toValue: canContinue ? 1 : 0.4, duration: 200, useNativeDriver: true }),
     ]).start();
   }, [canContinue]);
 
@@ -198,8 +199,8 @@ function WelcomeScreen({ onStart }: { onStart: () => void }) {
   const titleY = useFloatAnim(6, 3000);
   const glowAnim = useRef(new Animated.Value(0)).current;
   const titleAnim = useEntryAnim(200);
-  const subAnim = useEntryAnim(500);
-  const btnAnim = useEntryAnim(800);
+  const subAnim = useEntryAnim(400);
+  const btnAnim = useEntryAnim(600);
 
   useEffect(() => {
     Animated.loop(
@@ -236,17 +237,17 @@ function WelcomeScreen({ onStart }: { onStart: () => void }) {
             <Text style={ss.logoTxt}>S</Text>
           </LinearGradient>
         </Animated.View>
-        <Animated.View style={{ opacity: titleAnim, transform: [{ translateY: titleAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }, { translateY: titleY }], alignItems: "center", marginTop: 24 }}>
+        <Animated.View style={{ opacity: titleAnim, transform: [{ translateY: titleAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }, { translateY: titleY }], alignItems: "center", marginTop: 24 }}>
           <Text style={ss.welcomeTitle}>Your Personal</Text>
           <Text style={ss.welcomeTitle}>Fashion AI</Text>
           <View style={ss.accentWordBox}>
             <Text style={ss.accentWord}>{FASHION_WORDS[wordIdx]}</Text>
           </View>
         </Animated.View>
-        <Animated.Text style={[ss.welcomeSub, { opacity: subAnim, transform: [{ translateY: subAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
+        <Animated.Text style={[ss.welcomeSub, { opacity: subAnim, transform: [{ translateY: subAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }]}>
           Discover your unique style identity.{"\n"}Curated looks crafted just for you.
         </Animated.Text>
-        <Animated.View style={{ opacity: btnAnim, transform: [{ scale: btnAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }], width: "100%", paddingHorizontal: 24, marginTop: 48 }}>
+        <Animated.View style={{ opacity: btnAnim, transform: [{ scale: btnAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }], width: "100%", paddingHorizontal: 24, marginTop: 48 }}>
           <TouchableOpacity activeOpacity={0.88} onPress={onStart}>
             <LinearGradient colors={[ORANGE, "#C54D00"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={ss.startBtn}>
               <Text style={ss.startBtnTxt}>Get Started</Text>
@@ -273,17 +274,19 @@ function GenderScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
   const selected = profile.gender;
   const cardAnims = useRef(GENDERS.map(() => new Animated.Value(0))).current;
   useEffect(() => {
-    Animated.stagger(70, cardAnims.map((a) => Animated.spring(a, { toValue: 1, friction: 7, tension: 80, useNativeDriver: true }))).start();
+    Animated.stagger(60, cardAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 250, useNativeDriver: true }))).start();
   }, []);
   const selScales = useRef(GENDERS.reduce((acc, g) => { acc[g.id] = new Animated.Value(1); return acc; }, {} as Record<string, Animated.Value>)).current;
+
+  // Smooth: quick press-down then gentle spring up
   const select = (id: string) => {
     set("gender", id);
     Animated.sequence([
-      Animated.spring(selScales[id], { toValue: 0.96, friction: 10, tension: 300, useNativeDriver: true }),
-      Animated.spring(selScales[id], { toValue: 1.02, friction: 5, tension: 200, useNativeDriver: true }),
-      Animated.spring(selScales[id], { toValue: 1, friction: 7, tension: 150, useNativeDriver: true }),
+      Animated.timing(selScales[id], { toValue: 0.97, duration: 80, useNativeDriver: true }),
+      Animated.spring(selScales[id], { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
     ]).start();
   };
+
   return (
     <Shell step={step} total={total} onBack={onBack} onSkip={onSkip} onContinue={onContinue} canContinue={!!selected}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4 }}>
@@ -292,7 +295,7 @@ function GenderScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
           {GENDERS.map((g, i) => {
             const isSel = selected === g.id;
             return (
-              <Animated.View key={g.id} style={{ opacity: cardAnims[i], transform: [{ translateY: cardAnims[i].interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }, { scale: selScales[g.id] }] }}>
+              <Animated.View key={g.id} style={{ opacity: cardAnims[i], transform: [{ translateY: cardAnims[i].interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }, { scale: selScales[g.id] }] }}>
                 <TouchableOpacity activeOpacity={0.85} onPress={() => select(g.id)}>
                   <View style={[ss.pillCard, isSel && ss.pillCardSel]}>
                     {isSel && <LinearGradient colors={["rgba(232,98,10,0.10)", "rgba(232,98,10,0.04)"]} style={StyleSheet.absoluteFill} />}
@@ -320,20 +323,18 @@ function GenderScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
 }
 
 const STYLES = [
-  { id: "streetwear", label: "Streetwear", emoji: "🧢", colors: ["#1a1a2e", "#16213e"] },
-  { id: "minimal", label: "Minimal", emoji: "⬜", colors: ["#1c1c1c", "#2a2a2a"] },
-  { id: "old_money", label: "Old Money", emoji: "🏛️", colors: ["#1a1710", "#2a2518"] },
-  { id: "korean", label: "Korean Fashion", emoji: "🌸", colors: ["#1e1420", "#2a1a2e"] },
-  { id: "y2k", label: "Y2K", emoji: "💿", colors: ["#1a1030", "#2e1a40"] },
-  { id: "luxury", label: "Luxury", emoji: "✨", colors: ["#1a1508", "#2a2010"] },
-  { id: "casual", label: "Casual", emoji: "👕", colors: ["#101820", "#182030"] },
-  { id: "sporty", label: "Sporty", emoji: "⚡", colors: ["#0a1a10", "#102018"] },
-  { id: "smart_casual", label: "Smart Casual", emoji: "👔", colors: ["#14141e", "#1e1e2a"] },
-  { id: "dark_academia", label: "Dark Academia", emoji: "📚", colors: ["#100c08", "#201810"] },
-  { id: "techwear", label: "Techwear", emoji: "🤖", colors: ["#080c10", "#101418"] },
-  { id: "oversized", label: "Oversized", emoji: "🌊", colors: ["#0c1018", "#141820"] },
-  { id: "clean_boy", label: "Clean Boy", emoji: "🫧", colors: ["#0e1618", "#182022"] },
-  { id: "soft_girl", label: "Soft Girl", emoji: "🎀", colors: ["#1a1015", "#22141e"] },
+  { id: "streetwear", label: "Streetwear", image: require("../assets/streetwear.jpg"), colors: ["#1A1A1A", "#2A2A2A"] },
+  { id: "minimal", label: "Minimal", image: require("../assets/minimal.jpg"), colors: ["#202020", "#303030"] },
+  { id: "old_money", label: "Old Money", image: require("../assets/oldmoney.jpg"), colors: ["#2B2118", "#3A2C20"] },
+  { id: "korean", label: "Korean Fashion", image: require("../assets/korean.jpg"), colors: ["#1C1C1C", "#2C2C2C"] },
+  { id: "y2k", label: "Y2K", image: require("../assets/y2k.jpg"), colors: ["#181818", "#2A2A2A"] },
+  { id: "luxury", label: "Luxury", image: require("../assets/luxury.jpg"), colors: ["#251A12", "#3A281B"] },
+  { id: "casual", label: "Casual", image: require("../assets/casual.jpg"), colors: ["#1A1A1A", "#262626"] },
+  { id: "sporty", label: "Sporty", image: require("../assets/sporty.jpg"), colors: ["#1A1A1A", "#2F2F2F"] },
+  { id: "smart_casual", label: "Smart Casual", image: require("../assets/smartcasual.jpg"), colors: ["#1F1B18", "#2C2622"] },
+  { id: "dark_academia", label: "Dark Academia", image: require("../assets/darkacademia.jpg"), colors: ["#1B1714", "#2B2420"] },
+  { id: "techwear", label: "Techwear", image: require("../assets/techwear.jpg"), colors: ["#121212", "#222222"] },
+  { id: "oversized", label: "Oversized", image: require("../assets/oversized.jpg"), colors: ["#181818", "#282828"] },
 ];
 
 function StylesScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
@@ -359,18 +360,51 @@ function StylesScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
 function StyleCard({ item, isSel, onPress, index }: any) {
   const anim = useRef(new Animated.Value(0)).current;
   const { scale, bounce } = useSpringBounce();
+
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, friction: 7, tension: 80, delay: index * 50, useNativeDriver: true }).start();
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 250,
+      delay: index * 40,
+      useNativeDriver: true,
+    }).start();
   }, []);
+
   return (
-    <Animated.View style={{ flex: 1, opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }, { scale }] }}>
-      <TouchableOpacity activeOpacity={0.8} onPress={() => { bounce(); onPress(); }}>
-        <LinearGradient colors={item.colors} style={[ss.styleCard, isSel && ss.styleCardSel]}>
+    <Animated.View
+      style={{
+        flex: 1,
+        opacity: anim,
+        transform: [
+          { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
+          { scale },
+        ],
+      }}
+    >
+      <TouchableOpacity activeOpacity={0.85} onPress={() => { bounce(); onPress(); }}>
+        <View style={[ss.styleCard, isSel && ss.styleCardSel]}>
+          <ImageBackground
+            source={item.image}
+            style={[StyleSheet.absoluteFillObject, { opacity: 0.9 }]}
+            imageStyle={{ borderRadius: 18 }}
+            resizeMode="cover"
+          >
+            <LinearGradient
+              colors={["rgba(0,0,0,0.05)", "rgba(0,0,0,0.15)", "rgba(0,0,0,0.9)"]}
+              style={StyleSheet.absoluteFill}
+            />
+          </ImageBackground>
           {isSel && <View style={ss.styleCardGlow} />}
-          <Text style={ss.styleEmoji}>{item.emoji}</Text>
-          <Text style={[ss.styleLabel, isSel && { color: "#FFF" }]}>{item.label}</Text>
-          {isSel && <View style={ss.styleCheck}><Ionicons name="checkmark" size={12} color="#FFF" /></View>}
-        </LinearGradient>
+          <View style={{ marginTop: "auto" }}>
+            <Text style={ss.styleEmoji}>{item.emoji}</Text>
+            <Text style={[ss.styleLabel, isSel && { color: "#FFF" }]}>{item.label}</Text>
+          </View>
+          {isSel && (
+            <View style={ss.styleCheck}>
+              <Ionicons name="checkmark" size={12} color="#FFF" />
+            </View>
+          )}
+        </View>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -422,7 +456,7 @@ function ColorChip({ color, isSel, onPress, index }: any) {
   const { scale, bounce } = useSpringBounce();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, friction: 7, tension: 80, delay: index * 30, useNativeDriver: true }).start();
+    Animated.timing(anim, { toValue: 1, duration: 220, delay: index * 25, useNativeDriver: true }).start();
   }, []);
   return (
     <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }, { scale }] }}>
@@ -444,12 +478,42 @@ function isDark(hex: string) {
 }
 
 const FITS = [
-  { id: "oversized", label: "Oversized", desc: "Loose & relaxed", icon: "🌊", shape: [40, 70, 60, 70, 40] },
-  { id: "slim", label: "Slim Fit", desc: "Close to body", icon: "📐", shape: [30, 50, 45, 50, 30] },
-  { id: "relaxed", label: "Relaxed", desc: "Comfortable drape", icon: "☁️", shape: [36, 60, 54, 60, 36] },
-  { id: "boxy", label: "Boxy", desc: "Straight cut", icon: "▭", shape: [45, 55, 55, 55, 45] },
-  { id: "tailored", label: "Tailored", desc: "Sharp & structured", icon: "✂️", shape: [28, 52, 44, 52, 28] },
-  { id: "layered", label: "Layered", desc: "Depth & texture", icon: "📦", shape: [42, 65, 58, 65, 42] },
+  {
+    id: "oversized",
+    label: "Oversized",
+    image: require("../assets/pref/oversized.png"),
+    shape: [40, 70, 60, 70, 40],
+  },
+  {
+    id: "slim",
+    label: "Slim Fit",
+    image: require("../assets/pref/slimfit.png"),
+    shape: [30, 50, 45, 50, 30],
+  },
+  {
+    id: "relaxed",
+    label: "Relaxed",
+    image: require("../assets/pref/relaxedfit.png"),
+    shape: [36, 60, 54, 60, 36],
+  },
+  {
+    id: "boxy",
+    label: "Boxy",
+    image: require("../assets/pref/boxy.png"),
+    shape: [45, 55, 55, 55, 45],
+  },
+  {
+    id: "tailored",
+    label: "Tailored",
+    image: require("../assets/pref/tailored.png"),
+    shape: [28, 52, 44, 52, 28],
+  },
+  {
+    id: "layered",
+    label: "Layered",
+    image: require("../assets/pref/layered.png"),
+    shape: [42, 65, 58, 65, 42],
+  },
 ];
 
 function FitScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
@@ -457,7 +521,7 @@ function FitScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
   const selected = profile.fit;
   const fitAnims = useRef(FITS.map(() => new Animated.Value(0))).current;
   useEffect(() => {
-    Animated.stagger(80, fitAnims.map((a) => Animated.spring(a, { toValue: 1, friction: 7, tension: 80, useNativeDriver: true }))).start();
+    Animated.stagger(70, fitAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 250, useNativeDriver: true }))).start();
   }, []);
   return (
     <Shell step={step} total={total} onBack={onBack} onSkip={onSkip} onContinue={onContinue} canContinue={!!selected}>
@@ -467,15 +531,47 @@ function FitScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
           {FITS.map((f, i) => {
             const isSel = selected === f.id;
             return (
-              <Animated.View key={f.id} style={{ width: (W - 52) / 2, opacity: fitAnims[i], transform: [{ scale: fitAnims[i].interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }}>
+              <Animated.View key={f.id} style={{ width: (W - 52) / 2, opacity: fitAnims[i], transform: [{ scale: fitAnims[i].interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }}>
                 <TouchableOpacity activeOpacity={0.85} onPress={() => set("fit", f.id)}>
-                  <View style={[ss.fitCard, isSel && ss.fitCardSel]}>
-                    {isSel && <LinearGradient colors={[ORANGE_DIM, "transparent"]} style={StyleSheet.absoluteFill} />}
-                    <Text style={ss.fitEmoji}>{f.icon}</Text>
-                    <View style={ss.silhouetteWrap}><FitSilhouette widths={f.shape} selected={isSel} /></View>
-                    <Text style={[ss.fitName, isSel && { color: "#FFF" }]}>{f.label}</Text>
-                    <Text style={ss.fitDesc}>{f.desc}</Text>
-                  </View>
+                 
+  <View style={[ss.fitCard, isSel && ss.fitCardSel]}>
+  <ImageBackground
+    source={f.image}
+    style={StyleSheet.absoluteFillObject}
+    imageStyle={{ borderRadius: 18 }}
+    resizeMode="cover"
+  >
+    <LinearGradient
+      colors={[
+        "rgba(0,0,0,0.05)",
+        "rgba(0,0,0,0.2)",
+        "rgba(0,0,0,0.6)",
+      ]}
+      style={StyleSheet.absoluteFill}
+    />
+  </ImageBackground>
+
+  {isSel && (
+    <LinearGradient
+      colors={[ORANGE_DIM, "transparent"]}
+      style={StyleSheet.absoluteFill}
+    />
+  )}
+
+  <View style={{ flex: 1, justifyContent: "space-between" }}>
+    <Text style={ss.fitEmoji}>{f.icon}</Text>
+
+    <View>
+      <Text style={[ss.fitName, isSel && { color: "#FFF" }]}>
+        {f.label}
+      </Text>
+
+      <Text style={ss.fitDesc}>
+        {f.desc}
+      </Text>
+    </View>
+  </View>
+</View>
                 </TouchableOpacity>
               </Animated.View>
             );
@@ -531,10 +627,10 @@ function BodyCard({ item, isSel, onPress, index }: any) {
   const { scale, bounce } = useSpringBounce();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, friction: 7, tension: 80, delay: index * 40, useNativeDriver: true }).start();
+    Animated.timing(anim, { toValue: 1, duration: 230, delay: index * 35, useNativeDriver: true }).start();
   }, []);
   return (
-    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }, { scale }], width: (W - 60) / 3 }}>
+    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }, { scale }], width: (W - 60) / 3 }}>
       <TouchableOpacity activeOpacity={0.8} onPress={() => { bounce(); onPress(); }}>
         <View style={[ss.bodyCard, isSel && ss.bodyCardSel]}>
           {isSel && <LinearGradient colors={[ORANGE_DIM, "transparent"]} style={StyleSheet.absoluteFill} />}
@@ -562,13 +658,19 @@ const SKIN_TONES = [
 function SkinToneScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
   const { profile, set } = useContext(ProfileCtx);
   const selected = profile.skinTone;
-  const selectedScale = useRef(SKIN_TONES.reduce((acc, t) => { acc[t.id] = new Animated.Value(1); return acc; }, {} as Record<string, Animated.Value>)).current;
+  const selectedScale = useRef(
+    SKIN_TONES.reduce((acc, t) => { acc[t.id] = new Animated.Value(1); return acc; }, {} as Record<string, Animated.Value>)
+  ).current;
+
+  // Smooth: quick scale up then settle
   const selectTone = (id: string) => {
     set("skinTone", id);
-    Animated.spring(selectedScale[id], { toValue: 1.3, friction: 4, tension: 200, useNativeDriver: true }).start(() => {
-      Animated.spring(selectedScale[id], { toValue: 1, friction: 5, tension: 150, useNativeDriver: true }).start();
-    });
+    Animated.sequence([
+      Animated.timing(selectedScale[id], { toValue: 1.15, duration: 100, useNativeDriver: true }),
+      Animated.spring(selectedScale[id], { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
+    ]).start();
   };
+
   return (
     <Shell step={step} total={total} onBack={onBack} onSkip={onSkip} onContinue={onContinue} canContinue={!!selected}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
@@ -622,10 +724,10 @@ function HeightChip({ label, isSel, onPress, index }: any) {
   const { scale, bounce } = useSpringBounce();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, friction: 7, tension: 80, delay: index * 40, useNativeDriver: true }).start();
+    Animated.timing(anim, { toValue: 1, duration: 220, delay: index * 35, useNativeDriver: true }).start();
   }, []);
   return (
-    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }, { scale }] }}>
+    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.75, 1] }) }, { scale }] }}>
       <TouchableOpacity activeOpacity={0.8} onPress={() => { bounce(); onPress(); }}>
         <View style={[ss.heightChip, isSel && ss.heightChipSel]}>
           {isSel && <LinearGradient colors={[ORANGE, "#C54D00"]} style={StyleSheet.absoluteFill} />}
@@ -649,7 +751,7 @@ function BudgetScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
   const selected = profile.budget;
   const budgetAnims = useRef(BUDGETS.map(() => new Animated.Value(0))).current;
   useEffect(() => {
-    Animated.stagger(100, budgetAnims.map((a) => Animated.spring(a, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }))).start();
+    Animated.stagger(80, budgetAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 260, useNativeDriver: true }))).start();
   }, []);
   return (
     <Shell step={step} total={total} onBack={onBack} onSkip={onSkip} onContinue={onContinue} canContinue={!!selected}>
@@ -658,7 +760,7 @@ function BudgetScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
         {BUDGETS.map((b, i) => {
           const isSel = selected === b.id;
           return (
-            <Animated.View key={b.id} style={{ opacity: budgetAnims[i], transform: [{ translateY: budgetAnims[i].interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
+            <Animated.View key={b.id} style={{ opacity: budgetAnims[i], transform: [{ translateY: budgetAnims[i].interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] }}>
               <TouchableOpacity activeOpacity={0.85} onPress={() => set("budget", b.id)}>
                 <LinearGradient colors={b.colors as any} style={[ss.budgetCard, isSel && ss.budgetCardSel]}>
                   {isSel && <LinearGradient colors={["rgba(232,98,10,0.12)", "transparent"]} style={StyleSheet.absoluteFill} />}
@@ -707,10 +809,10 @@ function AvoidChip({ label, isSel, onPress, index }: any) {
   const { scale, bounce } = useSpringBounce();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, friction: 7, tension: 80, delay: index * 30, useNativeDriver: true }).start();
+    Animated.timing(anim, { toValue: 1, duration: 220, delay: index * 25, useNativeDriver: true }).start();
   }, []);
   return (
-    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }, { scale }] }}>
+    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.75, 1] }) }, { scale }] }}>
       <TouchableOpacity activeOpacity={0.8} onPress={() => { bounce(); onPress(); }}>
         <View style={[ss.avoidChip, isSel && ss.avoidChipSel]}>
           {isSel && <LinearGradient colors={["rgba(200,50,50,0.2)", "rgba(200,50,50,0.08)"]} style={StyleSheet.absoluteFill} />}
@@ -759,10 +861,10 @@ function OccasionCard({ item, isSel, onPress, index }: any) {
   const { scale, bounce } = useSpringBounce();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, friction: 7, tension: 80, delay: index * 40, useNativeDriver: true }).start();
+    Animated.timing(anim, { toValue: 1, duration: 230, delay: index * 35, useNativeDriver: true }).start();
   }, []);
   return (
-    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }, { scale }], width: (W - 64) / 3 }}>
+    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }, { scale }], width: (W - 64) / 3 }}>
       <TouchableOpacity activeOpacity={0.8} onPress={() => { bounce(); onPress(); }}>
         <View style={[ss.occasionCard, isSel && ss.occasionCardSel]}>
           {isSel && <LinearGradient colors={[ORANGE_DIM, "transparent"]} style={StyleSheet.absoluteFill} />}
@@ -807,10 +909,10 @@ function GoalCard({ item, isSel, onPress, index }: any) {
   const { scale, bounce } = useSpringBounce();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, friction: 7, tension: 80, delay: index * 60, useNativeDriver: true }).start();
+    Animated.timing(anim, { toValue: 1, duration: 250, delay: index * 50, useNativeDriver: true }).start();
   }, []);
   return (
-    <Animated.View style={{ opacity: anim, transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }, { scale }] }}>
+    <Animated.View style={{ opacity: anim, transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }, { scale }] }}>
       <TouchableOpacity activeOpacity={0.85} onPress={() => { bounce(); onPress(); }}>
         <View style={[ss.goalCard, isSel && ss.goalCardSel]}>
           {isSel && <LinearGradient colors={["rgba(232,98,10,0.12)", "rgba(232,98,10,0.04)"]} style={StyleSheet.absoluteFill} />}
@@ -831,7 +933,7 @@ function GoalCard({ item, isSel, onPress, index }: any) {
 function SummaryScreen({ step, total, onBack, onSkip, onFinish }: StepProps & { onFinish: () => void }) {
   const { profile } = useContext(ProfileCtx);
   const titleAnim = useEntryAnim(200);
-  const subAnim = useEntryAnim(500);
+  const subAnim = useEntryAnim(400);
   const float = useFloatAnim(6, 3000);
   const summaryItems = [
     { label: "Gender Expression", value: profile.gender?.replace("_", " ") || "—", icon: "👤" },
@@ -851,7 +953,7 @@ function SummaryScreen({ step, total, onBack, onSkip, onFinish }: StepProps & { 
         <LinearGradient colors={["rgba(232,98,10,0.3)", "transparent"]} style={{ width: 300, height: 300, borderRadius: 150 }} />
       </View>
       <SafeAreaView style={ss.safeArea}>
-        <Animated.View style={[{ alignItems: "center", paddingTop: 16, opacity: titleAnim, transform: [{ translateY: titleAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }, { translateY: float }] }]}>
+        <Animated.View style={[{ alignItems: "center", paddingTop: 16, opacity: titleAnim, transform: [{ translateY: titleAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }, { translateY: float }] }]}>
           <View style={ss.summaryBadge}><Text style={ss.summaryBadgeTxt}>✓ PROFILE COMPLETE</Text></View>
           <Text style={ss.summaryTitle}>Your Style Profile{"\n"}is Ready</Text>
           <Text style={ss.summarySub}>We'll now personalize every recommendation for you.</Text>
@@ -877,10 +979,10 @@ function SummaryScreen({ step, total, onBack, onSkip, onFinish }: StepProps & { 
 function SummaryCard({ item, index }: any) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, friction: 7, tension: 80, delay: 300 + index * 80, useNativeDriver: true }).start();
+    Animated.timing(anim, { toValue: 1, duration: 260, delay: 200 + index * 60, useNativeDriver: true }).start();
   }, []);
   return (
-    <Animated.View style={{ opacity: anim, transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
+    <Animated.View style={{ opacity: anim, transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] }}>
       <BlurView intensity={12} tint="dark" style={ss.summaryCard}>
         <LinearGradient colors={["rgba(40,40,40,0.6)", "rgba(20,20,20,0.6)"]} style={StyleSheet.absoluteFill} />
         <Text style={{ fontSize: 18, marginRight: 12 }}>{item.icon}</Text>
@@ -894,9 +996,9 @@ function SummaryCard({ item, index }: any) {
 }
 
 function ScreenTitle({ title, sub, px = 0 }: { title: string; sub: string; px?: number }) {
-  const anim = useEntryAnim(100);
+  const anim = useEntryAnim(80);
   return (
-    <Animated.View style={[{ marginBottom: 24, paddingHorizontal: px, opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }]}>
+    <Animated.View style={[{ marginBottom: 24, paddingHorizontal: px, opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }]}>
       <Text style={ss.screenTitle}>{title}</Text>
       <Text style={ss.screenSub}>{sub}</Text>
     </Animated.View>
@@ -917,7 +1019,7 @@ export default function SenseAIOnboarding() {
   const [profile, setProfileState] = useState<Profile>(defaultProfile);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const router = useRouter();
-  const { user } = useUser(); // ← added
+  const { user } = useUser();
 
   const set = useCallback((key: keyof Profile, val: any) => {
     setProfileState((p) => ({ ...p, [key]: val }));
@@ -925,13 +1027,21 @@ export default function SenseAIOnboarding() {
 
   const TOTAL = 14;
 
+  // Smooth page transition: pure timing both ways, no spring chaining
   const goTo = (next: number) => {
-    Animated.sequence([
-      Animated.timing(slideAnim, { toValue: -W, duration: 200, useNativeDriver: true }),
-    ]).start(() => {
-      slideAnim.setValue(W);
+    const isForward = next > screen;
+    Animated.timing(slideAnim, {
+      toValue: isForward ? -W : W,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      slideAnim.setValue(isForward ? W : -W);
       setScreen(next);
-      Animated.spring(slideAnim, { toValue: 0, friction: 8, tension: 100, useNativeDriver: true }).start();
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
     });
   };
 
@@ -947,12 +1057,9 @@ export default function SenseAIOnboarding() {
     try {
       await AsyncStorage.setItem("fitsense_onboarding_complete", "true");
       await AsyncStorage.setItem("fitsense_user_profile", JSON.stringify(profile));
-
-      // ← Mark on Clerk so it persists across devices/reinstalls
       await user?.update({
         unsafeMetadata: { onboardingComplete: true },
       });
-
       router.replace("/(tabs)/home");
     } catch (error) {
       console.error("Error saving preferences:", error);
@@ -1038,7 +1145,15 @@ const ss = StyleSheet.create({
   colorChipSel: { borderColor: "#FFF", shadowColor: "#FFF", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 6 },
   colorLabel: { color: "#555", fontSize: 10, marginTop: 5, textAlign: "center" },
   fitGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16, gap: 10 },
-  fitCard: { borderRadius: 18, padding: 16, backgroundColor: "#141414", borderWidth: 1.5, borderColor: "#222", overflow: "hidden", alignItems: "center" },
+  fitCard: {
+  borderRadius: 18,
+  padding: 16,
+  backgroundColor: "#141414",
+  borderWidth: 1.5,
+  borderColor: "#222",
+  overflow: "hidden",
+  minHeight: 220,
+},
   fitCardSel: { borderColor: ORANGE, shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
   fitEmoji: { fontSize: 22, marginBottom: 10 },
   silhouetteWrap: { marginVertical: 12, alignItems: "center" },
