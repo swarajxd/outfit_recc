@@ -12,6 +12,8 @@ const { createClient } = require("@supabase/supabase-js");
 const profileRouter = require("./profile");
 const { processPost } = require("./services/createPostPipeline");
 const { getForYouFeed } = require("./services/recommendationService");
+const { processPostVectorPipeline } = require("./services/postVectorPipeline");
+const { toggleLike, getUserLikes } = require("./services/likeService");
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -53,7 +55,10 @@ app.get("/api/profile/posts", async (req, res) => {
   try {
     // Query param is the profile owner being viewed.
     // x-user-id is only the viewer identity and must not override target profile.
-    const userId = req.query.user_id || req.header("x-user-id");
+    const targetUserId = req.query.user_id;
+    const viewerUserId = await verifyClerkToken(req);
+    
+    const userId = targetUserId || viewerUserId;
     if (!userId) {
       return res.status(400).json({ error: "missing user id" });
     }
@@ -69,6 +74,10 @@ app.get("/api/profile/posts", async (req, res) => {
       return res.status(500).json({ error: error.message || error });
     }
 
+    // Fetch viewer's likes to show correct heart state
+    const likedPostIds = viewerUserId ? await getUserLikes(viewerUserId) : [];
+    const likedIdsSet = new Set(likedPostIds.map(String));
+
     const ownerIds = Array.from(
       new Set((data || []).map((p) => p.owner_clerk_id).filter(Boolean)),
     );
@@ -80,7 +89,7 @@ app.get("/api/profile/posts", async (req, res) => {
       }),
     );
 
-    // Rewrite URLs
+    // Rewrite URLs and add is_liked
     const nodeBase = `${req.protocol}://${req.get("host")}`;
     const posts = (data || []).map((p) => {
       const rawImg = p.image_url || p.image_path;
@@ -102,6 +111,7 @@ app.get("/api/profile/posts", async (req, res) => {
         p.image_path = rawImg;
       }
       p.owner_profile = ownerMap.get(String(p.owner_clerk_id)) || null;
+      p.is_liked = likedIdsSet.has(String(p.id));
       return p;
     });
 
@@ -334,15 +344,29 @@ function waitForOutfit(timeoutMs = 60000) {
   });
 }
 
-// ---- Helper: verify clerk token (PLACEHOLDER) ----
+// ---- Helper: verify clerk token (Robust for Dev) ----
 async function verifyClerkToken(req) {
+  // 1. Check custom header (common in this dev setup)
+  const xUserId = req.header("x-user-id");
+  if (xUserId) return xUserId;
+
+  // 2. Check Authorization header
   const auth = req.headers.authorization;
   if (!auth) return null;
+  
   const token = auth.split(" ")[1];
   if (!token) return null;
+
+  // 3. Handle dev prefix
   if (token.startsWith("dev:")) {
     return token.split(":")[1];
   }
+
+  // 4. Fallback: If it's a long string (JWT), try to extract user_id (sub)
+  // For now, in dev, we might just return the token itself if it looks like a user ID
+  // or return null if it looks like a real JWT that needs verification.
+  if (token.length < 50) return token; // Likely a raw user ID
+
   return null;
 }
 
@@ -473,8 +497,6 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
   }
 });
 
-const { processPostVectorPipeline } = require("./services/postVectorPipeline");
-
 // ---- endpoint: create post record in supabase ----
 app.post("/api/create-post", async (req, res) => {
   try {
@@ -529,19 +551,14 @@ app.post("/api/create-post", async (req, res) => {
   }
 });
 
-// ---- endpoint: for-you feed (basic fetch for now) ----
+// ---- endpoint: for-you feed (personalized) ----
 app.get("/api/for-you", async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("posts")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(20);
-
-    if (error) {
-      console.error("fetch for-you error", error);
-      return res.status(500).json({ error: error.message || error });
-    }
+    const userId = await verifyClerkToken(req);
+    console.log(`[for-you] Request from user: ${userId}`);
+    
+    // Get recommendations (personalized if userId exists, otherwise recency-based)
+    const data = await getForYouFeed(supabaseAdmin, userId);
 
     // Build owner profiles map from Clerk
     const ownerIds = Array.from(
@@ -580,31 +597,37 @@ app.get("/api/for-you", async (req, res) => {
       return p;
     });
 
-    // Fetch comment counts for each post
+    // Fetch comment counts and user likes
     const postIds = (data || []).map((p) => p.id);
     const commentCounts = {};
+    let likedPostIds = [];
+
     if (postIds.length > 0) {
-      const commentsData = await supabaseAdmin
+      // Fetch comment counts
+      const { data: countsData } = await supabaseAdmin
         .from("comments")
-        .select("post_id", { count: "exact" })
+        .select("post_id")
         .in("post_id", postIds);
       
-      if (commentsData.data) {
-        for (const pid of postIds) {
-          const count = await supabaseAdmin
-            .from("comments")
-            .select("*", { count: "exact" })
-            .eq("post_id", pid)
-            .then((res) => res.count || 0);
-          commentCounts[pid] = count;
-        }
+      if (countsData) {
+        countsData.forEach(c => {
+          commentCounts[c.post_id] = (commentCounts[c.post_id] || 0) + 1;
+        });
+      }
+
+      // Fetch viewer's likes to show correct heart state
+      if (userId) {
+        likedPostIds = await getUserLikes(userId);
       }
     }
 
-    // Add comment counts to posts
+    const likedIdsSet = new Set(likedPostIds.map(String));
+
+    // Add comment counts and is_liked status
     const postsWithCounts = posts.map((p) => ({
       ...p,
       comments_count: commentCounts[p.id] || 0,
+      is_liked: likedIdsSet.has(String(p.id)),
     }));
 
     res.json({ posts: postsWithCounts });
@@ -618,38 +641,25 @@ app.get("/api/for-you", async (req, res) => {
 app.post("/api/like-toggle", async (req, res) => {
   try {
     const clerkUserId = await verifyClerkToken(req);
-    if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
+    console.log(`[like-toggle] Request from user: ${clerkUserId}`);
+    
+    if (!clerkUserId) {
+      console.warn("[like-toggle] ❌ Unauthenticated request (no userId found)");
+      return res.status(401).json({ error: "unauthenticated" });
+    }
 
     const { post_id } = req.body;
-    if (!post_id) return res.status(400).json({ error: "missing post_id" });
-
-    // Check if like exists
-    const { data: existing } = await supabaseAdmin
-      .from("likes")
-      .select("*")
-      .eq("post_id", post_id)
-      .eq("user_id", clerkUserId)
-      .maybeSingle();
-
-    if (existing) {
-      // unlike
-      const { error } = await supabaseAdmin
-        .from("likes")
-        .delete()
-        .eq("post_id", post_id)
-        .eq("user_id", clerkUserId);
-      if (error) throw error;
-      res.json({ liked: false });
-    } else {
-      // like
-      const { error } = await supabaseAdmin
-        .from("likes")
-        .insert([{ post_id, user_id: clerkUserId }]);
-      if (error) throw error;
-      res.json({ liked: true });
+    if (!post_id) {
+      console.warn("[like-toggle] ❌ Missing post_id in request body");
+      return res.status(400).json({ error: "missing post_id" });
     }
+
+    console.log(`[like-toggle] Toggling like for post ${post_id} by user ${clerkUserId}`);
+    const result = await toggleLike(clerkUserId, post_id);
+    console.log(`[like-toggle] Result: ${JSON.stringify(result)}`);
+    res.json(result);
   } catch (err) {
-    console.error("like-toggle error", err);
+    console.error("[like-toggle] 💥 ERROR:", err);
     res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
