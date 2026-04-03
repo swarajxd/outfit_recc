@@ -1,28 +1,50 @@
 import { useUser } from "@clerk/clerk-expo";
 import * as ImagePicker from "expo-image-picker";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SERVER_BASE } from "../utils/config";
 
-const PRIMARY = "#FF6B00";
-const BG = "#0a0908";
-const CHARCOAL = "#1a1a1a";
-const ACCENT_DARK = "#1f1812";
+const { width: SCREEN_W } = Dimensions.get("window");
+
+// ─── Design Tokens ───────────────────────────────────────────────────────────
+const C = {
+  bg:                    "#0c0c0e",
+  surface:               "#131315",
+  surface2:              "#1a1a1c",
+  surface3:              "#222224",
+  surface4:              "#2a2a2d",
+  surfaceVariant:        "#353437",
+  border:                "rgba(255,255,255,0.07)",
+  border2:               "rgba(255,255,255,0.12)",
+  orange:                "#FFB68B",
+  orangeDark:            "#ff9b5e",
+  orangeDeep:            "#C45C00",
+  onOrange:              "#3a1400",
+  text:                  "#e8e4e8",
+  text2:                 "#a09ca8",
+  text3:                 "#6a6672",
+  cream:                 "#d3c5ad",
+  green:                 "#4ade80",
+};
+
 const DEFAULT_AVATAR =
   "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=60&q=80";
 
+// ─── Types ───────────────────────────────────────────────────────────────────
 type Message = {
   id: string;
   role: "ai" | "user";
@@ -37,19 +59,32 @@ type Message = {
 const INITIAL_MESSAGES: Message[] = [
   {
     id: "1",
+    role: "user",
+    content: "Show me something effortless for a Mediterranean dinner.",
+    time: "Just now",
+  },
+  {
+    id: "2",
     role: "ai",
     content:
-      "Hello! I'm Sense AI, your personal Zara Stylist. ✦\n\nI can help you find the perfect outfit from our curated Zara collection. You can type what you're looking for, or even upload a photo of a piece you love and I'll build a whole look around it!",
+      "I've curated a look built around your linen preference and Monaco evening palette — structured silhouette, breathable weave, exactly your aesthetic.",
     time: "Just now",
   },
 ];
 
-const QUICK_CHIPS = [
-  { icon: "👗", label: "Zara Party Look" },
-  { icon: "👔", label: "Smart Casual" },
-  { icon: "✨", label: "Summer Chic" },
+const FILTER_PILLS = ["Party", "Minimal", "Date Night", "Business", "Resort"];
+const CONTEXT_CHIPS = ["Style with blazer", "Casual alternative", "Change color", "Show accessories"];
+
+const WIDGETS = [
+  { icon: "🌤", label: "WEATHER", value: "28°C Sunny", accent: "Linen + light layers" },
+  { icon: "🎨", label: "YOUR AESTHETIC", value: "Old Money Minimal", accent: null },
+  { icon: "📈", label: "TRENDING", value: "Biscuit & Sage", accent: "This week" },
+  { icon: "🌸", label: "YOUR PALETTE", value: "Cream, Navy", accent: "Suit your skin tone" },
+  { icon: "📅", label: "UPCOMING", value: "Dinner · Fri", accent: "Prep your look" },
+  { icon: "🕳", label: "WARDROBE GAP", value: "Tailored trousers", accent: "Missing from closet" },
 ];
 
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 export default function AIScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
@@ -57,13 +92,26 @@ export default function AIScreen() {
   const [input, setInput] = useState("");
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [activePill, setActivePill] = useState("Party");
   const scrollRef = useRef<ScrollView>(null);
 
-  // Get user avatar - prefer Cloudinary URL from metadata, fallback to Clerk imageUrl
+  // Fade-in animation on mount
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   const userAvatar =
     (user?.unsafeMetadata as { profileImageUrl?: string })?.profileImageUrl ||
     user?.imageUrl ||
     DEFAULT_AVATAR;
+
+  const userName = user?.firstName || user?.username || "Bhavith";
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -71,80 +119,50 @@ export default function AIScreen() {
       allowsMultipleSelection: true,
       quality: 0.8,
     });
-
-    if (!result.canceled) {
-      const newUris = result.assets.map((a) => a.uri);
-      setSelectedImages((prev) => [...prev, ...newUris]);
-    }
+    if (!result.canceled)
+      setSelectedImages((prev) => [...prev, ...result.assets.map((a) => a.uri)]);
   };
 
   const sendMessage = async (text: string, imageUris?: string[]) => {
     if (!text.trim() && (!imageUris || imageUris.length === 0)) return;
-
     const now = new Date();
-    const time = now.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
+    const time = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
     const userMsgId = Date.now().toString();
     setMessages((prev) => [
       ...prev,
-      {
-        id: userMsgId,
-        role: "user",
-        content: text,
-        time,
-        imageUris,
-      },
+      { id: userMsgId, role: "user", content: text, time, imageUris },
     ]);
     setInput("");
     setSelectedImages([]);
     setIsUploading(true);
-
-    // AI "Typing" indicator
     const aiMsgId = (Date.now() + 1).toString();
     setMessages((prev) => [
       ...prev,
       { id: aiMsgId, role: "ai", content: "", time, isTyping: true },
     ]);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
       const formData = new FormData();
       formData.append("user_id", user?.id || "anonymous");
       if (text) formData.append("query", text);
-
-      if (imageUris && imageUris.length > 0) {
-        imageUris.forEach((uri, index) => {
+      if (imageUris?.length) {
+        imageUris.forEach((uri, i) => {
           const filename = uri.split("/").pop();
           const match = /\.(\w+)$/.exec(filename || "");
-          const type = match ? `image/${match[1]}` : `image`;
           formData.append("files", {
-            uri: uri,
-            name: filename || `image_${index}.jpg`,
-            type,
+            uri,
+            name: filename || `img_${i}.jpg`,
+            type: match ? `image/${match[1]}` : "image",
           } as any);
         });
       }
-
-      console.log(
-        "[AI] Sending request to:",
-        `${SERVER_BASE}/api/recommend-zara`,
-      );
       const response = await fetch(`${SERVER_BASE}/api/recommend-zara`, {
         method: "POST",
         body: formData,
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("[AI] Server error:", response.status, errorText);
-        throw new Error(`Server responded with ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Server ${response.status}`);
       const result = await response.json();
-      console.log("[AI] Received result:", result.success);
-
       if (result.success && result.outfits?.length > 0) {
         const best = result.outfits[0];
         setMessages((prev) =>
@@ -153,27 +171,21 @@ export default function AIScreen() {
               ? {
                   ...m,
                   isTyping: false,
-                  content: `I've found some amazing pieces from Zara that perfectly match your style! Here's a curated look featuring ${best.reasons.length > 0 ? best.reasons[0].toLowerCase() : "the perfect blend of items"}.`,
+                  content: `I've found some amazing pieces that perfectly match your style! Here's a curated look featuring ${best.reasons?.[0]?.toLowerCase() ?? "the perfect blend"}.`,
                   outfitCard: true,
                   outfitData: best,
                 }
-              : m,
-          ),
+              : m
+          )
         );
-      } else {
-        throw new Error(result.error || "No matching outfits found.");
-      }
+      } else throw new Error(result.error || "No outfits found.");
     } catch (err: any) {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiMsgId
-            ? {
-                ...m,
-                isTyping: false,
-                content: `I'm sorry, I couldn't find a matching outfit from the Zara dataset right now. ${err.message}`,
-              }
-            : m,
-        ),
+            ? { ...m, isTyping: false, content: `I couldn't find a match right now. ${err.message}` }
+            : m
+        )
       );
     } finally {
       setIsUploading(false);
@@ -183,199 +195,147 @@ export default function AIScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { paddingTop: insets.top }]}
+      style={[S.root, { paddingTop: insets.top }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn}>
-          <Text style={{ color: "#fff", fontSize: 18 }}>‹</Text>
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <View style={styles.aiStatus}>
-            <View style={styles.pulseDot} />
-            <Text style={styles.aiName}>Sense AI</Text>
+      {/* Ambient glow background */}
+      <View style={S.ambientBg} pointerEvents="none" />
+
+      {/* ── Header ── */}
+      <View style={S.header}>
+        <View style={S.headerRow}>
+          <View style={S.headerLeft}>
+            {/* Logo */}
+            <View style={S.logoWrap}>
+              <View style={S.logoIcon}>
+                <Text style={S.logoStar}>✦</Text>
+              </View>
+              <View style={S.onlineDot} />
+            </View>
+            {/* Title group */}
+            <View style={S.titleGroup}>
+              <Text style={S.headerTitle}>FITSENSE AI</Text>
+              <Text style={S.headerSub}>Luxury Fashion Curator</Text>
+            </View>
           </View>
-          <Text style={styles.aiSubtitle}>ZARA STYLIST</Text>
         </View>
-        <TouchableOpacity style={styles.headerBtn}>
-          <Text style={{ color: "#fff", fontSize: 20 }}>⋮</Text>
-        </TouchableOpacity>
+
+       
       </View>
 
-      {/* Chat Messages */}
+      {/* ── Scrollable Body ── */}
       <ScrollView
         ref={scrollRef}
-        style={styles.chatArea}
-        contentContainerStyle={{
-          paddingVertical: 20,
-          gap: 20,
-          paddingBottom: 12,
-        }}
+        style={S.body}
+        contentContainerStyle={[S.bodyContent, { paddingBottom: 200 }]}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() =>
-          scrollRef.current?.scrollToEnd({ animated: false })
-        }
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        {messages.map((msg) => (
-          <View key={msg.id}>
-            {msg.role === "ai" ? (
-              <View style={styles.aiBubbleWrapper}>
-                <View style={styles.aiBubbleMeta}>
-                  <View style={styles.aiAvatar}>
-                    <Text style={{ color: BG, fontSize: 12 }}>✦</Text>
-                  </View>
-                  <Text style={styles.msgTime}>Sense AI · {msg.time}</Text>
-                </View>
-                <View style={styles.aiBubble}>
-                  {msg.isTyping ? (
-                    <ActivityIndicator size="small" color={PRIMARY} />
-                  ) : (
-                    <Text style={styles.aiBubbleText}>{msg.content}</Text>
-                  )}
-                </View>
-                {msg.outfitCard && msg.outfitData && (
-                  <OutfitCard data={msg.outfitData} />
-                )}
-              </View>
-            ) : (
-              <View style={styles.userBubbleWrapper}>
-                <View style={styles.userBubbleMeta}>
-                  <Text style={styles.msgTime}>You · {msg.time}</Text>
-                  <Image
-                    source={{
-                      uri: userAvatar,
-                    }}
-                    style={styles.userAvatarSmall}
-                  />
-                </View>
-                <View style={styles.userBubble}>
-                  {msg.imageUris && msg.imageUris.length > 0 && (
-                    <View style={styles.userMsgImageContainer}>
-                      {msg.imageUris.map((uri, i) => (
-                        <Image
-                          key={i}
-                          source={{ uri }}
-                          style={styles.userMsgImage}
-                        />
-                      ))}
-                    </View>
-                  )}
-                  {msg.content ? (
-                    <Text style={styles.userBubbleText}>{msg.content}</Text>
-                  ) : null}
-                </View>
-              </View>
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+
+          {/* Welcome Section */}
+          <View style={S.welcomeSection}>
+            <Text style={S.welcomeLabel}>{"Good Evening, " + userName.toUpperCase()}</Text>
+            <Text style={S.welcomeHeadline}>{"What would you like\nto wear today?"}</Text>
+            <Text style={S.welcomeSub}>
+              {"Curated around your wardrobe,\naesthetic & upcoming plans."}
+            </Text>
+
+            {/* Action Cards Grid */}
+            <View style={S.actionGrid}>
+              <ActionCard icon="✨" label="Build Look" sub="Create a complete outfit" />
+              <ActionCard icon="👔" label="Wardrobe" sub="Browse your wardrobe pieces " />
+              <ActionCard icon="🔍" label="Find Similar" sub="Shop inspired looks" />
+            </View>
+          </View>
+
+          {/* Featured Look */}
+          <Text style={S.sectionLabel}>Featured Look of the Day</Text>
+          <FeaturedCard />
+
+          {/* Chat Messages */}
+          <View style={S.chatSection}>
+            {messages.map((msg) =>
+              msg.role === "user" ? (
+                <UserBubble key={msg.id} msg={msg} />
+              ) : (
+                <AIResponse key={msg.id} msg={msg} />
+              )
             )}
           </View>
-        ))}
+
+        </Animated.View>
       </ScrollView>
 
-      {/* Bottom Input Area */}
-      <View style={[styles.bottomArea, { paddingBottom: insets.bottom || 16 }]}>
-        {/* Selected Image Preview */}
+      {/* ── Fixed Bottom Area ── */}
+      <View style={[S.bottomArea, { paddingBottom: insets.bottom || 20 }]}>
+        {/* Context chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={S.chipsRow}
+        >
+          {CONTEXT_CHIPS.map((chip) => (
+            <TouchableOpacity
+              key={chip}
+              style={S.chip}
+              onPress={() => sendMessage(chip)}
+              activeOpacity={0.7}
+            >
+              <Text style={S.chipText}>{chip}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Image previews */}
         {selectedImages.length > 0 && (
           <ScrollView
             horizontal
-            style={styles.imagePreviewList}
-            contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
             showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 8 }}
+            contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}
           >
-            {selectedImages.map((uri, index) => (
-              <View key={index} style={styles.imagePreviewContainer}>
-                <Image source={{ uri }} style={styles.imagePreview} />
+            {selectedImages.map((uri, i) => (
+              <View key={i} style={S.imgPreviewWrap}>
+                <Image source={{ uri }} style={S.imgPreview} />
                 <TouchableOpacity
-                  style={styles.removeImageBtn}
-                  onPress={() =>
-                    setSelectedImages((prev) =>
-                      prev.filter((_, i) => i !== index),
-                    )
-                  }
+                  style={S.imgRemoveBtn}
+                  onPress={() => setSelectedImages((p) => p.filter((_, j) => j !== i))}
                 >
-                  <Text
-                    style={{ color: "#fff", fontWeight: "bold", fontSize: 10 }}
-                  >
-                    ✕
-                  </Text>
+                  <Text style={{ color: "#fff", fontSize: 9, fontWeight: "800" }}>✕</Text>
                 </TouchableOpacity>
               </View>
             ))}
           </ScrollView>
         )}
 
-        {/* Quick Chips */}
-        {selectedImages.length === 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-          >
-            {QUICK_CHIPS.map((chip) => (
-              <TouchableOpacity
-                key={chip.label}
-                style={styles.chip}
-                onPress={() => sendMessage(chip.label)}
-              >
-                <Text style={styles.chipIcon}>{chip.icon}</Text>
-                <Text style={styles.chipText}>{chip.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Input Row */}
-        <View style={styles.inputRow}>
-          <View style={styles.inputContainer}>
-            <TouchableOpacity style={styles.inputIconBtn} onPress={pickImage}>
-              <Text
-                style={{
-                  color:
-                    selectedImages.length > 0
-                      ? PRIMARY
-                      : "rgba(255,255,255,0.4)",
-                  fontSize: 20,
-                }}
-              >
-                ⊕
-              </Text>
-            </TouchableOpacity>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Message Sense AI..."
-              placeholderTextColor="rgba(255,255,255,0.35)"
-              value={input}
-              onChangeText={setInput}
-              onSubmitEditing={() =>
-                sendMessage(
-                  input,
-                  selectedImages.length > 0 ? selectedImages : undefined,
-                )
-              }
-              multiline
-            />
-            <TouchableOpacity style={styles.inputIconBtn}>
-              <Text style={{ color: "rgba(255,255,255,0.4)", fontSize: 18 }}>
-                🎙️
-              </Text>
-            </TouchableOpacity>
-          </View>
+        {/* Floating Input Pill */}
+        <View style={S.inputPill}>
+          <TouchableOpacity style={S.inputIconBtn} onPress={pickImage} activeOpacity={0.7}>
+            <Text style={[S.inputIconText, selectedImages.length > 0 && { color: C.orange }]}>⊕</Text>
+          </TouchableOpacity>
+          <TextInput
+            style={S.textInput}
+            placeholder="Describe a mood or style..."
+            placeholderTextColor="rgba(229,225,228,0.3)"
+            value={input}
+            onChangeText={setInput}
+            onSubmitEditing={() => sendMessage(input, selectedImages.length ? selectedImages : undefined)}
+            multiline
+          />
+          <TouchableOpacity style={S.inputIconBtn} activeOpacity={0.7}>
+            <Text style={S.inputIconText}>🎙</Text>
+          </TouchableOpacity>
           <TouchableOpacity
-            style={styles.sendBtn}
-            onPress={() =>
-              sendMessage(
-                input,
-                selectedImages.length > 0 ? selectedImages : undefined,
-              )
-            }
+            style={S.sendBtn}
+            onPress={() => sendMessage(input, selectedImages.length ? selectedImages : undefined)}
             disabled={isUploading}
+            activeOpacity={0.8}
           >
             {isUploading ? (
-              <ActivityIndicator size="small" color="#000" />
+              <ActivityIndicator size="small" color={C.onOrange} />
             ) : (
-              <Text style={{ color: "#000", fontSize: 18, fontWeight: "800" }}>
-                ↑
-              </Text>
+              <Text style={S.sendArrow}>↑</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -384,450 +344,543 @@ export default function AIScreen() {
   );
 }
 
-function OutfitCard({ data }: { data: any }) {
-  if (!data || !data.outfit) return null;
-  const outfit = data.outfit;
-
-  const top = outfit.top;
-  const bottom = outfit.bottom;
-  const shoes = outfit.shoes;
-  const outer = outfit.outerwear;
-  const acc = outfit.accessory;
-
-  const renderItemImage = (item: any, style: any, isMain: boolean = false) => {
-    if (!item) return null;
-    const isUserUpload = item.item_id?.toString().startsWith("user_upload_");
-    return (
-      <View style={[style, isUserUpload ? styles.userItemBorder : null]}>
-        <Image
-          source={{ uri: item.image_path }}
-          style={isMain ? styles.mainImage : styles.miniImage}
-          resizeMode="cover"
-        />
-        {isUserUpload && (
-          <View style={styles.userPieceBadge}>
-            <Text style={styles.userPieceText}>LOCKED</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  // Logic to determine what to show in the main 'Vibe' grid
-  // We want to prioritize showing the user's locked pieces if they exist.
-  const mainPiece1 = outer || top;
-  const mainPiece2 = bottom;
+// ─── Action Card ─────────────────────────────────────────────────────────────
+function ActionCard({
+  icon, label, sub, onPress,
+}: {
+  icon: string; label: string; sub: string; onPress?: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () =>
+    Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 30 }).start();
+  const handlePressOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
 
   return (
-    <View style={styles.outfitCard}>
-      <View style={styles.collageContainer}>
-        {/* Left Side: The "Vibe" / Main Pieces */}
-        <View style={styles.mainOutfitSection}>
-          <View style={styles.lookGrid}>
-            <View style={styles.lookColumn}>
-              {renderItemImage(mainPiece1, styles.mainItemLarge, true)}
-            </View>
-            {mainPiece2 && (
-              <View style={styles.lookColumn}>
-                {renderItemImage(mainPiece2, styles.mainItemLarge, true)}
-              </View>
-            )}
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={1}
+      style={{ width: "32%" }}
+    >
+      <Animated.View style={[AC.card, { transform: [{ scale }] }]}>
+        <Text style={AC.icon}>{icon}</Text>
+        <Text style={AC.label}>{label}</Text>
+        <Text style={AC.sub}>{sub}</Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Smart Widget ─────────────────────────────────────────────────────────────
+function SmartWidget({ icon, label, value, accent }: {
+  icon: string; label: string; value: string; accent: string | null;
+}) {
+  return (
+    <TouchableOpacity style={SW.widget} activeOpacity={0.75}>
+      <Text style={SW.icon}>{icon}</Text>
+      <Text style={SW.label}>{label}</Text>
+      <Text style={SW.value}>{value}</Text>
+      {accent && <Text style={SW.accent}>{accent}</Text>}
+    </TouchableOpacity>
+  );
+}
+
+// ─── Featured Card ────────────────────────────────────────────────────────────
+function FeaturedCard() {
+  const scale = useRef(new Animated.Value(1)).current;
+  return (
+    <TouchableOpacity
+      style={FC.card}
+      activeOpacity={1}
+      onPressIn={() => Animated.spring(scale, { toValue: 0.985, useNativeDriver: true, speed: 30 }).start()}
+      onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 20 }).start()}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        {/* Hero Image Placeholder */}
+        <View style={FC.imgWrap}>
+          <View style={FC.imgPlaceholder}>
+            <Text style={FC.silhouette}>🧥</Text>
+            <Text style={FC.imgLabel}>Editorial Look</Text>
+          </View>
+          <View style={FC.matchBadge}>
+            <Text style={FC.matchStar}>✦</Text>
+            <Text style={FC.matchText}>97% Match</Text>
           </View>
         </View>
-
-        {/* Right Side: Details & Accessories */}
-        <View style={styles.outfitDetailsSection}>
-          <View style={styles.detailsHeader}>
-            <Text style={styles.outfitTitle}>Sense Selection</Text>
-            <View style={styles.matchBadge}>
-              <Text style={styles.matchBadgeText}>
-                {Math.round(data.score * 100)}% Match
-              </Text>
-            </View>
+        {/* Body */}
+        <View style={FC.body}>
+          <Text style={FC.title}>The Monaco Evening</Text>
+          <Text style={FC.desc}>
+            Architectural linen silhouette meets effortless dusk dressing. Breathable, elevated, unmistakably curated.
+          </Text>
+          <View style={FC.tagsRow}>
+            {["Minimal", "Old Money", "Dinner", "Linen"].map((t) => (
+              <View key={t} style={FC.tag}><Text style={FC.tagText}>{t.toUpperCase()}</Text></View>
+            ))}
           </View>
-
-          <View style={styles.miniItemsGrid}>
-            {shoes && (
-              <View style={styles.miniItemBox}>
-                {renderItemImage(shoes, styles.miniItemImageWrap)}
-                <Text style={styles.miniLabel}>Shoes</Text>
-              </View>
-            )}
-            {acc && (
-              <View style={styles.miniItemBox}>
-                {renderItemImage(acc, styles.miniItemImageWrap)}
-                <Text style={styles.miniLabel}>Accessory</Text>
-              </View>
-            )}
+          <View style={FC.actionsRow}>
+            <TouchableOpacity style={FC.btnPrimary} activeOpacity={0.8}>
+              <Text style={FC.btnPrimaryText}>VIEW LOOK</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={FC.btnSecondary} activeOpacity={0.8}>
+              <Text style={FC.btnSecondaryText}>Save ♡</Text>
+            </TouchableOpacity>
           </View>
-
-          <TouchableOpacity style={styles.viewDetailsBtn}>
-            <Text style={styles.viewDetailsText}>Get the Look ✓</Text>
-          </TouchableOpacity>
         </View>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── User Bubble ──────────────────────────────────────────────────────────────
+function UserBubble({ msg }: { msg: Message }) {
+  return (
+    <View style={UB.wrapper}>
+      {msg.imageUris && msg.imageUris.length > 0 && (
+        <View style={UB.imgRow}>
+          {msg.imageUris.map((uri, i) => (
+            <Image key={i} source={{ uri }} style={UB.img} />
+          ))}
+        </View>
+      )}
+      {!!msg.content && (
+        <View style={UB.bubble}>
+          <Text style={UB.text}>{msg.content}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── AI Response ──────────────────────────────────────────────────────────────
+function AIResponse({ msg }: { msg: Message }) {
+  return (
+    <View style={AI_S.wrapper}>
+      <View style={AI_S.curatorLabel}>
+        <View style={AI_S.curatorBar} />
+        <Text style={AI_S.curatorText}>SENSE AI CURATOR</Text>
+      </View>
+      {msg.isTyping ? (
+        <View style={AI_S.typingBubble}>
+          <TypingDots />
+        </View>
+      ) : (
+        <>
+          {!!msg.content && (
+            <View style={AI_S.textBubble}>
+              <Text style={AI_S.text}>{msg.content}</Text>
+            </View>
+          )}
+          {msg.outfitCard && msg.outfitData && <OutfitCard data={msg.outfitData} />}
+        </>
+      )}
+    </View>
+  );
+}
+
+// ─── Outfit Card ──────────────────────────────────────────────────────────────
+function OutfitCard({ data }: { data: any }) {
+  if (!data?.outfit) return null;
+  const { outfit, score } = data;
+  const { top, bottom, shoes, outerwear, accessory } = outfit;
+  const mainPiece = outerwear || top;
+
+  return (
+    <View style={OC.card}>
+      <View style={OC.imageWrap}>
+        {mainPiece?.image_path ? (
+          <Image source={{ uri: mainPiece.image_path }} style={OC.mainImage} resizeMode="cover" />
+        ) : (
+          <View style={[OC.mainImage, { backgroundColor: C.surface3, alignItems: "center", justifyContent: "center" }]}>
+            <Text style={{ fontSize: 48 }}>👔</Text>
+          </View>
+        )}
+        <View style={OC.matchBadge}>
+          <Text style={OC.matchIcon}>✦</Text>
+          <Text style={OC.matchText}>{Math.round((score ?? 0.98) * 100)}% Match</Text>
+        </View>
+      </View>
+      <View style={OC.body}>
+        <View style={OC.titleRow}>
+          <Text style={OC.title}>{mainPiece?.name ?? "Structured Linen Silhouette"}</Text>
+          <Text style={OC.price}>€{mainPiece?.price ?? "420"}</Text>
+        </View>
+        <View style={OC.tagsRow}>
+          <View style={OC.tag}><Text style={OC.tagText}>BESPOKE</Text></View>
+          <View style={OC.tag}><Text style={OC.tagText}>LINEN</Text></View>
+        </View>
+        <Text style={OC.description}>
+          {mainPiece?.description ?? "Architectural draping meets breathable weave. This piece captures the Monaco dusk with an effortless tonal shift."}
+        </Text>
+        <View style={OC.actionsRow}>
+          <View style={OC.swatches}>
+            <View style={[OC.swatch, OC.swatchActive]} />
+            <View style={[OC.swatch, { backgroundColor: C.cream, opacity: 0.5 }]} />
+            <View style={[OC.swatch, { backgroundColor: C.surfaceVariant, opacity: 0.5 }]} />
+          </View>
+          <View style={OC.iconBtns}>
+            <TouchableOpacity><Text style={OC.iconBtn}>🔖</Text></TouchableOpacity>
+            <TouchableOpacity><Text style={OC.iconBtn}>♡</Text></TouchableOpacity>
+            <TouchableOpacity style={OC.buyBtn}>
+              <Text style={OC.buyText}>BUY</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+      <View style={OC.accessories}>
+        <Text style={OC.accTitle}>COMPLETE THE LOOK</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={OC.accScroll}>
+          {[
+            { item: shoes,     label: shoes?.name     ?? "Vesta Sneakers"  },
+            { item: accessory, label: accessory?.name ?? "Orbit Timepiece" },
+            { item: bottom,    label: bottom?.name    ?? "Nomad Carryall"  },
+          ].map((acc, i) => (
+            <View key={i} style={OC.accItem}>
+              <View style={OC.accImgWrap}>
+                {acc.item?.image_path ? (
+                  <Image source={{ uri: acc.item.image_path }} style={OC.accImg} resizeMode="cover" />
+                ) : (
+                  <View style={[OC.accImg, { backgroundColor: C.surface3 }]} />
+                )}
+              </View>
+              <Text style={OC.accLabel}>{acc.label}</Text>
+            </View>
+          ))}
+        </ScrollView>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
+// ─── Typing Dots ──────────────────────────────────────────────────────────────
+function TypingDots() {
+  const anims = [
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+  ];
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.stagger(
+        200,
+        anims.map((a) =>
+          Animated.sequence([
+            Animated.timing(a, { toValue: -4, duration: 300, useNativeDriver: true }),
+            Animated.timing(a, { toValue: 0, duration: 300, useNativeDriver: true }),
+          ])
+        )
+      )
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  return (
+    <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+      {anims.map((anim, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 7, height: 7, borderRadius: 4,
+            backgroundColor: C.orange,
+            opacity: 0.6 + i * 0.2,
+            transform: [{ translateY: anim }],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ─── StyleSheets ──────────────────────────────────────────────────────────────
+const S = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.bg },
+
+  // Ambient glow overlay
+  ambientBg: {
+    position: "absolute", inset: 0,
+    // Simulated with a very subtle radial tint — actual gradient requires expo-linear-gradient
+    backgroundColor: "transparent",
+  },
+
+  // Header
   header: {
-    flexDirection: "row",
-    alignItems: "center",
+    backgroundColor: "rgba(12,12,14,0.95)",
+    paddingTop: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  headerRow: {
+    flexDirection: "row", alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: `${PRIMARY}1a`,
-    backgroundColor: "rgba(10,9,8,0.9)",
+    paddingHorizontal: 24, paddingBottom: 14,
   },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  logoWrap: { position: "relative" },
+  logoIcon: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: "rgba(255,182,139,0.1)",
+    borderWidth: 1, borderColor: "rgba(255,182,139,0.25)",
+    alignItems: "center", justifyContent: "center",
   },
-  headerCenter: { alignItems: "center" },
-  aiStatus: { flexDirection: "row", alignItems: "center", gap: 6 },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: PRIMARY,
-    shadowColor: PRIMARY,
-    shadowRadius: 4,
-    shadowOpacity: 0.8,
+  logoStar: { fontSize: 16, color: C.orange },
+  onlineDot: {
+    position: "absolute", bottom: 1, right: 1,
+    width: 9, height: 9, borderRadius: 5,
+    backgroundColor: C.green,
+    borderWidth: 1.5, borderColor: C.bg,
   },
-  aiName: { color: "#fff", fontSize: 17, fontWeight: "800" },
-  aiSubtitle: {
-    color: PRIMARY,
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginTop: 2,
-  },
-  chatArea: { flex: 1, paddingHorizontal: 16 },
-  aiBubbleWrapper: { maxWidth: "85%", gap: 6 },
-  aiBubbleMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
-  },
-  aiAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  msgTime: { color: "rgba(255,255,255,0.35)", fontSize: 11, fontWeight: "500" },
-  aiBubble: {
-    backgroundColor: CHARCOAL,
-    borderRadius: 18,
-    borderTopLeftRadius: 4,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  aiBubbleText: { color: "#e8e8e8", fontSize: 14, lineHeight: 22 },
-  userBubbleWrapper: { maxWidth: "85%", alignSelf: "flex-end", gap: 6 },
-  userBubbleMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
-    justifyContent: "flex-end",
-  },
-  userAvatarSmall: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: `${PRIMARY}55`,
-  },
-  userBubble: {
-    backgroundColor: PRIMARY,
-    borderRadius: 18,
-    borderTopRightRadius: 4,
-    padding: 14,
-    shadowColor: PRIMARY,
-    shadowRadius: 4,
-    shadowOpacity: 0.2,
-  },
-  userMsgImageContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-    maxWidth: 220,
-  },
-  userMsgImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-  },
-  userBubbleText: {
-    color: "#000",
-    fontSize: 14,
-    lineHeight: 22,
-    fontWeight: "600",
-  },
-  outfitCard: {
-    backgroundColor: CHARCOAL,
-    borderRadius: 24,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    marginTop: 12,
-    width: "100%",
-  },
-  collageContainer: {
-    flexDirection: "row",
-    height: 280,
-  },
-  mainOutfitSection: {
-    flex: 1.4,
-    backgroundColor: "#121212",
-    padding: 6,
-  },
-  lookGrid: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 6,
-  },
-  lookColumn: {
-    flex: 1,
-    gap: 6,
-  },
-  mainItemLarge: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#1a1a1a",
-  },
-  mainImage: {
-    width: "100%",
-    height: "100%",
-  },
-  userItemBorder: {
-    borderWidth: 2,
-    borderColor: PRIMARY,
-  },
-  userPieceBadge: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    backgroundColor: PRIMARY,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-    zIndex: 10,
-  },
-  userPieceText: {
-    color: "#000",
-    fontSize: 8,
-    fontWeight: "900",
-  },
-  outfitDetailsSection: {
-    flex: 1,
-    padding: 16,
-    justifyContent: "space-between",
-    backgroundColor: CHARCOAL,
-  },
-  detailsHeader: {
-    gap: 6,
-  },
-  outfitTitle: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  miniItemsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginVertical: 10,
-  },
-  miniItemBox: {
-    alignItems: "center",
-    gap: 4,
-  },
-  miniItemImageWrap: {
-    width: 48,
-    height: 60,
-    borderRadius: 6,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  miniImage: {
-    width: "100%",
-    height: "100%",
-  },
-  miniLabel: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 8,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  viewDetailsBtn: {
-    backgroundColor: PRIMARY,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-    shadowColor: PRIMARY,
-    shadowRadius: 8,
-    shadowOpacity: 0.3,
-  },
-  viewDetailsText: {
-    color: "#000",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  outfitImageBg: { height: 180, position: "relative" },
-  outfitImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  outfitOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  outfitLabel: {
-    position: "absolute",
-    bottom: 12,
-    left: 12,
-    right: 12,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  outfitSub: { color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 2 },
-  matchBadge: {
-    backgroundColor: `${PRIMARY}33`,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: `${PRIMARY}55`,
-  },
-  matchBadgeText: {
-    color: PRIMARY,
-    fontSize: 9,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-  outfitItems: {
-    flexDirection: "row",
-    gap: 8,
-    padding: 12,
-  },
-  outfitItemImage: {
-    width: 60,
-    height: 80,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  outfitItemWrapper: {
-    alignItems: "center",
-    gap: 4,
-  },
-  itemCategory: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  wearBtn: {
-    margin: 12,
-    marginTop: 0,
-    backgroundColor: PRIMARY,
-    borderRadius: 999,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  wearBtnText: { color: "#000", fontSize: 15, fontWeight: "800" },
-  bottomArea: {
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    backgroundColor: "rgba(10,9,8,0.98)",
-  },
-  imagePreviewList: {
-    maxHeight: 80,
-    marginBottom: 10,
-  },
-  imagePreviewContainer: {
+  titleGroup: { flexDirection: "column", gap: 1 },
+  headerTitle: { color: C.text, fontSize: 17, fontWeight: "700", letterSpacing: -0.3 },
+  headerSub: { color: C.orange, fontSize: 10, fontWeight: "500", letterSpacing: 1.2, opacity: 0.8 },
+  notifBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: C.surface3,
+    borderWidth: 1, borderColor: C.border2,
+    alignItems: "center", justifyContent: "center",
     position: "relative",
-    width: 60,
-    height: 60,
   },
-  imagePreview: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+  notifIcon: { fontSize: 16 },
+  notifBadge: {
+    position: "absolute", top: -4, right: -4,
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: C.orange, borderWidth: 1.5, borderColor: C.bg,
+    alignItems: "center", justifyContent: "center",
   },
-  removeImageBtn: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+  notifBadgeText: { color: C.onOrange, fontSize: 8, fontWeight: "800" },
+  pillsScroll: { paddingLeft: 24 },
+  pillsRow: { gap: 8, paddingRight: 24, paddingBottom: 14 },
+  pill: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 999, borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: "rgba(42,42,45,0.5)",
   },
-  chipsRow: { gap: 8, paddingBottom: 10 },
+  pillActive: {
+    borderColor: "rgba(255,182,139,0.4)",
+    backgroundColor: "rgba(255,182,139,0.08)",
+  },
+  pillText: { color: C.text2, fontSize: 10, fontWeight: "600", letterSpacing: 1.5 },
+  pillTextActive: { color: C.orange },
+
+  // Body
+  body: { flex: 1 },
+  bodyContent: { paddingHorizontal: 20 },
+
+  // Welcome
+  welcomeSection: { marginTop: 28, marginBottom: 28 },
+  welcomeLabel: {
+    color: C.cream, fontSize: 10, fontWeight: "600",
+    letterSpacing: 2, textTransform: "uppercase", marginBottom: 10,
+  },
+  welcomeHeadline: {
+    color: C.text, fontSize: 30, fontWeight: "800",
+    letterSpacing: -0.8, lineHeight: 38, marginBottom: 10,
+  },
+  welcomeSub: {
+    color: C.text3, fontSize: 13, lineHeight: 20, marginBottom: 24,
+  },
+  actionGrid: {
+    flexDirection: "row",  gap: 12,
+  },
+
+  // Context bar
+  contextBar: {
+    flexDirection: "row", alignItems: "center",
+    gap: 10, paddingHorizontal: 18, paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(42,42,45,0.4)",
+    borderWidth: 1, borderColor: C.border,
+    marginBottom: 28,
+  },
+  contextText: { color: C.cream, fontSize: 10, fontWeight: "600", letterSpacing: 1.2, textTransform: "uppercase" },
+  contextDivider: { color: C.text3, fontSize: 11 },
+
+  // Section label
+  sectionLabel: {
+    color: C.text2, fontSize: 10, fontWeight: "700",
+    letterSpacing: 2, textTransform: "uppercase",
+    marginBottom: 12,
+  },
+
+  // Widgets
+  widgetsScroll: { marginBottom: 28, marginHorizontal: -4 },
+  widgetsRow: { gap: 10, paddingHorizontal: 4 },
+
+  // Chat
+  chatSection: { gap: 24, marginTop: 4 },
+
+  // Bottom area
+  bottomArea: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    paddingHorizontal: 20, paddingTop: 16,
+    backgroundColor: "rgba(12,12,14,0.96)",
+    borderTopWidth: 0.5,
+    borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  chipsRow: { gap: 8, paddingBottom: 12 },
   chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: CHARCOAL,
+    paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: C.surface3,
+    borderWidth: 1, borderColor: C.border,
   },
-  chipIcon: { fontSize: 13 },
-  chipText: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" },
-  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
-  inputContainer: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: CHARCOAL,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+  chipText: { color: C.text2, fontSize: 12 },
+
+  imgPreviewWrap: { position: "relative", width: 60, height: 60 },
+  imgPreview: {
+    width: 60, height: 60, borderRadius: 10,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
   },
-  inputIconBtn: { padding: 8 },
+  imgRemoveBtn: {
+    position: "absolute", top: -6, right: -6,
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: C.surface3,
+    alignItems: "center", justifyContent: "center",
+  },
+
+  // Input pill
+  inputPill: {
+    flexDirection: "row", alignItems: "center",
+    gap: 4, padding: 6, borderRadius: 999,
+    backgroundColor: "rgba(42,42,45,0.7)",
+    borderWidth: 1, borderColor: C.border2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4, shadowRadius: 20, elevation: 10,
+  },
+  inputIconBtn: { padding: 10 },
+  inputIconText: { fontSize: 20, color: "rgba(160,156,168,0.6)" },
   textInput: {
-    flex: 1,
-    color: "#fff",
-    fontSize: 14,
-    paddingVertical: 8,
-    maxHeight: 100,
+    flex: 1, color: C.text, fontSize: 14,
+    paddingVertical: 8, maxHeight: 100,
   },
   sendBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: PRIMARY,
-    shadowRadius: 10,
-    shadowOpacity: 0.4,
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: C.orange,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: C.orange, shadowRadius: 10, shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 0 },
   },
+  sendArrow: { color: C.onOrange, fontSize: 18, fontWeight: "800" },
+});
+
+// Action Card styles
+const AC = StyleSheet.create({
+  card: {
+    padding: 16, borderRadius: 16,
+    backgroundColor: "rgba(42,42,45,0.6)",
+    borderWidth: 1, borderColor: C.border,
+    gap: 6,
+  },
+  icon: { fontSize: 22 },
+  label: { color: C.text, fontSize: 14, fontWeight: "600" },
+  sub: { color: C.text3, fontSize: 11 },
+});
+
+// Smart Widget styles
+const SW = StyleSheet.create({
+  widget: {
+    width: 140, padding: 14, borderRadius: 16,
+    backgroundColor: C.surface2,
+    borderWidth: 1, borderColor: C.border,
+  },
+  icon: { fontSize: 20, marginBottom: 8 },
+  label: { color: C.text3, fontSize: 9, fontWeight: "600", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 },
+  value: { color: C.text, fontSize: 13, fontWeight: "600", lineHeight: 18 },
+  accent: { color: C.orange, fontSize: 11, marginTop: 4 },
+});
+
+// Featured Card styles
+const FC = StyleSheet.create({
+  card: { marginBottom: 28, borderRadius: 24, overflow: "hidden", backgroundColor: C.surface2, borderWidth: 1, borderColor: C.border },
+  imgWrap: { height: 220, position: "relative" },
+  imgPlaceholder: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#16151a", gap: 8,
+  },
+  silhouette: { fontSize: 56, opacity: 0.5 },
+  imgLabel: { color: "rgba(255,182,139,0.4)", fontSize: 10, letterSpacing: 2, textTransform: "uppercase" },
+  matchBadge: {
+    position: "absolute", top: 14, left: 14,
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(12,12,14,0.75)",
+    borderWidth: 1, borderColor: "rgba(255,182,139,0.25)",
+    borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5,
+  },
+  matchStar: { color: C.orange, fontSize: 11 },
+  matchText: { color: C.orange, fontSize: 11, fontWeight: "700" },
+  body: { padding: 18 },
+  title: { color: C.text, fontSize: 18, fontWeight: "700", letterSpacing: -0.3, marginBottom: 6 },
+  desc: { color: C.text2, fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  tagsRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", marginBottom: 16 },
+  tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: C.border },
+  tagText: { color: C.text2, fontSize: 10, fontWeight: "600", letterSpacing: 1 },
+  actionsRow: { flexDirection: "row", gap: 10 },
+  btnPrimary: { flex: 1, paddingVertical: 11, borderRadius: 10, backgroundColor: C.orange, alignItems: "center" },
+  btnPrimaryText: { color: C.onOrange, fontSize: 12, fontWeight: "800", letterSpacing: 1 },
+  btnSecondary: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 10, backgroundColor: "transparent", borderWidth: 1, borderColor: C.border2, alignItems: "center" },
+  btnSecondaryText: { color: C.text2, fontSize: 12, fontWeight: "600" },
+});
+
+// User Bubble styles
+const UB = StyleSheet.create({
+  wrapper: { alignItems: "flex-end" },
+  imgRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 6, justifyContent: "flex-end" },
+  img: { width: 90, height: 90, borderRadius: 10 },
+  bubble: {
+    maxWidth: "80%", paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 18, borderTopRightRadius: 4,
+    backgroundColor: C.orangeDeep,
+    shadowColor: C.orange, shadowRadius: 8, shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  text: { color: "#ffe8d6", fontSize: 14, fontWeight: "500", lineHeight: 22 },
+});
+
+// AI Response styles
+const AI_S = StyleSheet.create({
+  wrapper: { gap: 8 },
+  curatorLabel: { flexDirection: "row", alignItems: "center", gap: 8 },
+  curatorBar: { width: 3, height: 14, backgroundColor: C.cream, borderRadius: 2 },
+  curatorText: { color: C.text2, fontSize: 9, fontWeight: "700", letterSpacing: 2, textTransform: "uppercase" },
+  typingBubble: { backgroundColor: C.surface3, padding: 16, borderRadius: 16, alignSelf: "flex-start" },
+  textBubble: { backgroundColor: C.surface3, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: C.border },
+  text: { color: C.text2, fontSize: 14, lineHeight: 22 },
+});
+
+// Outfit Card styles
+const OC = StyleSheet.create({
+  card: { backgroundColor: C.surface3, borderRadius: 24, overflow: "hidden", shadowColor: "#000", shadowRadius: 20, shadowOpacity: 0.4, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
+  imageWrap: { height: 360, position: "relative" },
+  mainImage: { width: "100%", height: "100%" },
+  matchBadge: { position: "absolute", top: 16, left: 16, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(42,42,45,0.55)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  matchIcon: { color: C.orange, fontSize: 12 },
+  matchText: { color: C.orange, fontSize: 12, fontWeight: "700" },
+  body: { padding: 20 },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 },
+  title: { color: C.text, fontSize: 20, fontWeight: "800", letterSpacing: -0.3, flex: 1, marginRight: 12 },
+  price: { color: C.cream, fontSize: 18, fontWeight: "500" },
+  tagsRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  tag: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: C.bg },
+  tagText: { color: C.text, fontSize: 10, fontWeight: "700", letterSpacing: 1.5 },
+  description: { color: C.text2, fontSize: 14, lineHeight: 22, marginBottom: 20 },
+  actionsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderTopColor: C.border, paddingTop: 16 },
+  swatches: { flexDirection: "row", gap: 6 },
+  swatch: { width: 16, height: 16, borderRadius: 8 },
+  swatchActive: { backgroundColor: "#E5E1E4", borderWidth: 2, borderColor: C.orange },
+  iconBtns: { flexDirection: "row", alignItems: "center", gap: 14 },
+  iconBtn: { fontSize: 20, color: C.text2 },
+  buyBtn: { paddingHorizontal: 22, paddingVertical: 9, borderRadius: 999, backgroundColor: C.orange, shadowColor: C.orange, shadowRadius: 8, shadowOpacity: 0.3, shadowOffset: { width: 0, height: 0 } },
+  buyText: { color: C.onOrange, fontSize: 12, fontWeight: "800", letterSpacing: 1.5 },
+  accessories: { paddingHorizontal: 20, paddingBottom: 20 },
+  accTitle: { color: C.cream, fontSize: 9, fontWeight: "700", letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 14 },
+  accScroll: { gap: 24, paddingRight: 8 },
+  accItem: { flexDirection: "row", alignItems: "center", gap: 12 },
+  accImgWrap: { width: 48, height: 48, borderRadius: 10, overflow: "hidden", backgroundColor: C.bg },
+  accImg: { width: "100%", height: "100%" },
+  accLabel: { color: C.text, fontSize: 11, fontWeight: "500" },
 });

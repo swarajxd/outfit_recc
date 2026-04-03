@@ -1,7 +1,5 @@
-
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { BlurView } from 'expo-blur';
-import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -10,8 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 import {
-  Animated,
   ActivityIndicator,
+  Animated,
   Dimensions,
   Image,
   Platform,
@@ -24,6 +22,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SERVER_BASE } from "../utils/config";
 import {
   FALLBACK_WARDROBE,
   GeneratedOutfit,
@@ -31,7 +30,6 @@ import {
   forceRegenerateOutfit,
   getOrCreateDailyOutfit,
 } from "../utils/outfitEngine";
-import { SERVER_BASE } from "../utils/config";
 
 AsyncStorage.removeItem("fitsense_daily_outfit");
 
@@ -285,7 +283,11 @@ function OutfitItemRow({
   );
 }
 
-// ─── Today's Outfit Card ──────────────────────────────────────────────────────
+// ─── Day Outfit Card ─────────────────────────────────────────────────────────
+const DAY_CARD_W = 150;
+const DAY_HALF   = Math.floor(DAY_CARD_W / 2);
+const DAY_IMG_H  = 120;
+
 function DayOutfitCard({
   label,
   date,
@@ -299,39 +301,60 @@ function DayOutfitCard({
 }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-<View style={styles.dayCard}>
+      <View style={styles.dayCard}>
 
-  {outfit ? (
-    <View style={styles.outfitStack}>
-      {outfit.top && (
-        <Image source={{ uri: outfit.top.image }} style={styles.outfitImage}/>
-      )}
+        {/* Split-panel image area */}
+        {outfit ? (
+          <View style={styles.dayPanels}>
 
-      {outfit.bottom && (
-        <Image source={{ uri: outfit.bottom.image }} style={styles.outfitImage}/>
-      )}
+            {/* LEFT — Top */}
+            <View style={styles.dayPanelLeft}>
+              {outfit.top?.image ? (
+                <Image
+                  source={{ uri: outfit.top.image }}
+                  style={styles.dayPanelImg}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={styles.dayEmoji}>👕</Text>
+              )}
+              <View style={styles.dayPanelLabel}>
+                <Text style={styles.dayPanelLabelTxt}>TOP</Text>
+              </View>
+            </View>
 
-      {outfit.footwear && (
-        <Image source={{ uri: outfit.footwear.image }} style={styles.outfitImage}/>
-      )}
+            <View style={styles.dayDivider} />
 
-      {outfit.outerwear && (
-        <Image source={{ uri: outfit.outerwear.image }} style={styles.outfitImage}/>
-      )}
+            {/* RIGHT — Bottom */}
+            <View style={styles.dayPanelRight}>
+              {outfit.bottom?.image ? (
+                <Image
+                  source={{ uri: outfit.bottom.image }}
+                  style={styles.dayPanelImg}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={styles.dayEmoji}>👖</Text>
+              )}
+              <View style={styles.dayPanelLabel}>
+                <Text style={styles.dayPanelLabelTxt}>BOT</Text>
+              </View>
+            </View>
 
-      {outfit.accessory && (
-        <Image source={{ uri: outfit.accessory.image }} style={styles.outfitImage}/>
-      )}
-    </View>
-  ) : (
-    <View style={styles.addCircle}>
-      <Text style={styles.addPlus}>+</Text>
-    </View>
-  )}
+          </View>
+        ) : (
+          <View style={styles.dayEmpty}>
+            <Text style={styles.dayPlus}>+</Text>
+          </View>
+        )}
 
-  <Text style={styles.dayLabel}>{label}, {date}</Text>
+        {/* Day label strip */}
+        <View style={styles.dayLabelStrip}>
+          <Text style={styles.dayLabel}>{label}</Text>
+          <Text style={styles.dayDate}>{date}</Text>
+        </View>
 
-</View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -456,27 +479,27 @@ export default function HomeScreen() {
   const [outfitLoading, setOutfitLoading] = useState(true);
   const weekDates = useMemo(() => getWeekDates(), []);
   const { user, isLoaded } = useUser();
-   const [savedOutfits, setSavedOutfits] = useState<any>({});
-   
+  const [savedOutfits, setSavedOutfits] = useState<any>({});
 
-useEffect(() => {
-  const loadSavedOutfits = async () => {
-    const outfits: any = {};
 
-    for (const d of weekDates) {
-      const key = `fitsense_outfit_${d.label}_${d.date}`;
-      const stored = await AsyncStorage.getItem(key);
+  useEffect(() => {
+    const loadSavedOutfits = async () => {
+      const outfits: any = {};
 
-      if (stored) {
-        outfits[key] = JSON.parse(stored);
+      for (const d of weekDates) {
+        const key = `fitsense_outfit_${d.label}_${d.date}`;
+        const stored = await AsyncStorage.getItem(key);
+
+        if (stored) {
+          outfits[key] = JSON.parse(stored);
+        }
       }
-    }
 
-    setSavedOutfits(outfits);
-  };
+      setSavedOutfits(outfits);
+    };
 
-  loadSavedOutfits();
-}, [weekDates]);
+    loadSavedOutfits();
+  }, [weekDates]);
 
 
   if (!isLoaded) {
@@ -547,8 +570,17 @@ useEffect(() => {
         owner_clerk_id: String(p.owner_clerk_id ?? ""),
         tags: Array.isArray(p.tags) ? p.tags.map((t: any) => String(t)) : null,
         created_at: String(p.created_at ?? ""),
-        score: typeof p.score === "number" ? p.score : undefined,
+        score: typeof p.similarity_score === "number" ? Math.round(p.similarity_score * 100) : undefined,
+        isLiked: p.is_liked === true,
       }));
+      
+      // Update likedItems map for local heart states
+      const newLikedMap: Record<string, boolean> = {};
+      normalized.forEach(p => {
+        if (p.isLiked) newLikedMap[p.id] = true;
+      });
+      setLikedItems(newLikedMap);
+      
       setPosts(normalized);
     } catch (e) {
       console.error("fetchPosts error", e);
@@ -628,13 +660,14 @@ useEffect(() => {
       })
       .catch(() => {});
   }, [user]);
+
   const userWardrobe = useMemo(() => {
     if (items && items.length > 0) {
       return buildWardrobeFromItems(items);
     }
     return FALLBACK_WARDROBE;
   }, [items]);
-  console.log("WARDROBE AFTER BUILD:", userWardrobe);
+
   // Load or generate today's outfit on mount
   useEffect(() => {
     if (!items || items.length === 0) return;
@@ -643,12 +676,9 @@ useEffect(() => {
     setOutfitLoading(true);
 
     const wardrobe = buildWardrobeFromItems(items);
-    console.log("ITEMS FROM API:", items);
-    console.log("BUILT WARDROBE:", wardrobe);
 
     getOrCreateDailyOutfit(wardrobe, user?.id || undefined)
       .then((o) => {
-        console.log("GENERATED OUTFIT:", o);
         if (!cancelled) {
           setOutfit(o);
           setOutfitLoading(false);
@@ -673,10 +703,6 @@ useEffect(() => {
       .catch(() => setOutfitLoading(false));
   };
 
-  console.log("WARDROBE ITEMS", items);
-    if (!isLoaded) {
-    return null;
-  }
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
@@ -779,20 +805,20 @@ useEffect(() => {
         <View style={styles.sectionPad}>
           <Text style={styles.sectionLabel}>AI Tools</Text>
           <View style={styles.aiGrid}>
-           <AICard
-            icon="✦"
-            title="Outfit Maker"
-            subtitle="AI creates looks from your wardrobe"
-            accentColor={PRIMARY}
-            onPress={() =>
-              router.push({
-                pathname: "../outfitMaker",
-                params: {
-                  wardrobe: JSON.stringify(items),
-                },
-              })
-            }
-          />
+            <AICard
+              icon="✦"
+              title="Outfit Maker"
+              subtitle="AI creates looks from your wardrobe"
+              accentColor={PRIMARY}
+              onPress={() =>
+                router.push({
+                  pathname: "../outfitMaker",
+                  params: {
+                    wardrobe: JSON.stringify(items),
+                  },
+                })
+              }
+            />
             <AICard
               icon="◈"
               title="Fashion Chat"
@@ -802,59 +828,40 @@ useEffect(() => {
           </View>
         </View>
 
-{/* ── Weekly Planner ── */}
-<View style={styles.sectionPad}>
-  <View style={styles.sectionHeader}>
-    <Text style={styles.sectionLabel}>Your Week</Text>
-    <Text style={styles.sectionSub}>Planner</Text>
-  </View>
-
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    contentContainerStyle={{ gap: 12 }}
-  >
-{weekDates.map((d, i) => {
-  const key = `fitsense_outfit_${d.label}_${d.date}`;
-
-  return (
-    <DayOutfitCard
-      key={i}
-      label={d.label}
-      date={d.date}
-      outfit={savedOutfits[key]}
-      onPress={() =>
-        router.push({
-          pathname: "/dailyOutfit",
-          params: {
-            wardrobe: JSON.stringify(items),
-            day: d.label,
-            date: d.date,
-          },
-        })
-      }
-    />
-  );
-})}
-  </ScrollView>
-</View>
-
-        {/* ── Week Strip ── */}
+        {/* ── Weekly Planner ── */}
         <View style={styles.sectionPad}>
-          <Text style={styles.sectionLabelSmall}>This Week</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>Your Week</Text>
+            <Text style={styles.sectionSub}>Planner</Text>
+          </View>
+
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.weekRow}
+            contentContainerStyle={{ gap: 12 }}
           >
-            {weekDates.map((d) => (
-              <WeekDayChip
-                key={d.label}
-                label={d.label}
-                date={d.date}
-                isToday={d.isToday}
-              />
-            ))}
+            {weekDates.map((d, i) => {
+              const key = `fitsense_outfit_${d.label}_${d.date}`;
+
+              return (
+                <DayOutfitCard
+                  key={i}
+                  label={d.label}
+                  date={d.date}
+                  outfit={savedOutfits[key]}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/dailyOutfit",
+                      params: {
+                        wardrobe: JSON.stringify(items),
+                        day: d.label,
+                        date: d.date,
+                      },
+                    })
+                  }
+                />
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -868,7 +875,7 @@ useEffect(() => {
           ) : postsError ? (
             <View style={{ paddingVertical: 16 }}>
               <Text style={{ color: "rgba(255,255,255,0.55)" }}>
-                Couldn’t load posts. Pull to refresh.
+                Couldn't load posts. Pull to refresh.
               </Text>
             </View>
           ) : posts.length === 0 ? (
@@ -878,17 +885,15 @@ useEffect(() => {
               </Text>
             </View>
           ) : (
-            posts.map((p) => {
+            posts.map((p: any) => {
+              const owner = p.owner_profile || {};
               const derivedItem = {
                 id: p.id,
                 image: p.image_url,
-                matchPercent: 90,
-                username:
-                  p.owner_clerk_id === user?.id
-                    ? currentUserName
-                    : p.owner_clerk_id,
-                avatar: currentUserAvatar,
-                liked: false,
+                matchPercent: typeof p.similarity_score === 'number' ? Math.round(p.similarity_score * 100) : 0,
+                username: owner.username || (p.owner_clerk_id === user?.id ? currentUserName : "Unknown"),
+                avatar: owner.profile_image_url || (p.owner_clerk_id === user?.id ? currentUserAvatar : DEFAULT_AVATAR),
+                liked: !!likedItems[p.id],
                 caption: p.caption ?? "",
                 tag: p.tags?.[0] ? `#${p.tags[0]}` : "",
               } as (typeof FEED_ITEMS)[0];
@@ -930,7 +935,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start", // ✅ logo stays left
+    justifyContent: "flex-start",
     marginBottom: 16,
   },
   logoText: {
@@ -1293,58 +1298,124 @@ const styles = StyleSheet.create({
   username: { color: "#fff", fontSize: 14, fontWeight: "700" },
   actions: { flexDirection: "row", alignItems: "center", gap: 18 },
   actionBtn: { padding: 2 },
-  caption: { color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 20, fontWeight: '400' },
+  caption: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "400",
+  },
 
+  // ── Day Card — split panel ─────────────────────────────────────────────────
   dayCard: {
-  width: 90,
-  height: 140,
-  borderRadius: 20,
-  backgroundColor: "#111",
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.08)",
-  alignItems: "center",
-  justifyContent: "space-between",
-  paddingVertical: 14,
-},
+    width: DAY_CARD_W,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  dayPanels: {
+    flexDirection: "row",
+    height: DAY_IMG_H,
+    overflow: "hidden",
+  },
+  dayPanelLeft: {
+    width: DAY_HALF,
+    height: DAY_IMG_H,
+    backgroundColor: "#EDE8E2",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  dayPanelRight: {
+    width: DAY_HALF,
+    height: DAY_IMG_H,
+    backgroundColor: "#E8E3DC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  dayPanelImg: {
+    width: DAY_HALF,
+    height: DAY_IMG_H - 18,
+  },
+  dayPanelLabel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 16,
+    backgroundColor: "rgba(235,230,222,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayPanelLabelTxt: {
+    fontSize: 7,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    color: "#7A6A5A",
+  },
+  dayDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: DAY_IMG_H,
+    backgroundColor: "#C8BFB5",
+  },
+  dayEmpty: {
+    height: DAY_IMG_H,
+    backgroundColor: "#1A1A1A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayEmoji: { fontSize: 28 },
+  dayPlus: { color: PRIMARY, fontSize: 28, fontWeight: "700" },
 
-dayLabel: {
-  color: "rgba(255,255,255,0.6)",
-  fontSize: 12,
-  fontWeight: "600",
-},
+  // ✅ FIXED: dayLabelStrip now properly closed, dayLabel is its own key
+  dayLabelStrip: {
+    backgroundColor: "#111",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  dayLabel: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  dayDate: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
 
-dayDate: {
-  color: "#fff",
-  fontSize: 14,
-  fontWeight: "700",
-},
-
-addCircle: {
-  width: 42,
-  height: 42,
-  borderRadius: 21,
-  backgroundColor: "rgba(255,107,0,0.12)",
-  borderWidth: 1,
-  borderColor: "rgba(255,107,0,0.5)",
-  alignItems: "center",
-  justifyContent: "center",
-},
-
-addPlus: {
-  color: "#FF6B00",
-  fontSize: 24,
-  fontWeight: "700",
-},
-outfitStack: {
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 4,
-},
-outfitImage: {
+  addCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,107,0,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,107,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addPlus: {
+    color: "#FF6B00",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  outfitStack: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  outfitImage: {
     width: 40,
     height: 40,
     resizeMode: "contain",
   },
+
+  // FAB
   fab: {
     position: "absolute",
     bottom: 24,
