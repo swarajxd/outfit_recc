@@ -21,15 +21,24 @@ const SERVER_DIR = __dirname;
 const REPO_OUTFIT = path.join(SERVER_DIR, "outfit_model");
 const OUTFIT_PORT = parseInt(process.env.OUTFIT_PORT || "8000", 10);
 const OUTFIT_API_URL = `http://127.0.0.1:${OUTFIT_PORT}`;
+const CLERK_API_BASE = "https://api.clerk.com/v1";
 
-// Enable CORS with credentials support
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-User-Id"],
-  }),
-);
+// Enable CORS for local dev clients (Expo web/native + localhost ports).
+const allowedOriginRegex =
+  /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/;
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow non-browser requests (no Origin header).
+    if (!origin) return callback(null, true);
+    if (allowedOriginRegex.test(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-User-Id"],
+  optionsSuccessStatus: 204,
+};
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 app.use(bodyParser.json({ limit: "10mb" }));
 
@@ -42,7 +51,9 @@ app.use("/api/profile", profileRouter);
 // ---- endpoint: list posts for profile (Supabase) ----
 app.get("/api/profile/posts", async (req, res) => {
   try {
-    const userId = req.header("x-user-id") || req.query.user_id;
+    // Query param is the profile owner being viewed.
+    // x-user-id is only the viewer identity and must not override target profile.
+    const userId = req.query.user_id || req.header("x-user-id");
     if (!userId) {
       return res.status(400).json({ error: "missing user id" });
     }
@@ -57,6 +68,17 @@ app.get("/api/profile/posts", async (req, res) => {
       console.error("fetch profile posts error", error);
       return res.status(500).json({ error: error.message || error });
     }
+
+    const ownerIds = Array.from(
+      new Set((data || []).map((p) => p.owner_clerk_id).filter(Boolean)),
+    );
+    const ownerMap = new Map();
+    await Promise.all(
+      ownerIds.map(async (id) => {
+        const clerkUser = await fetchClerkUserById(id);
+        ownerMap.set(String(id), mapOwnerProfileFromClerk(clerkUser));
+      }),
+    );
 
     // Rewrite URLs
     const nodeBase = `${req.protocol}://${req.get("host")}`;
@@ -79,13 +101,14 @@ app.get("/api/profile/posts", async (req, res) => {
         p.image_url = rawImg;
         p.image_path = rawImg;
       }
+      p.owner_profile = ownerMap.get(String(p.owner_clerk_id)) || null;
       return p;
     });
 
     res.json({ posts: posts });
   } catch (err) {
     console.error("profile posts endpoint error", err);
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -108,6 +131,62 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
+
+async function fetchClerkUserById(clerkId) {
+  const secretRaw =
+    process.env.CLERK_SECRET_KEY ||
+    process.env.CLERK_API_KEY ||
+    process.env.EXPO_CLERK_SECRET_KEY ||
+    "";
+  const secret = String(secretRaw).trim();
+  if (!secret || !clerkId) return null;
+  try {
+    const resp = await fetch(
+      `${CLERK_API_BASE}/users/${encodeURIComponent(String(clerkId))}`,
+      { headers: { Authorization: `Bearer ${secret}` } },
+    );
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+function mapOwnerProfileFromClerk(clerkUser) {
+  if (!clerkUser) return null;
+  const firstName = clerkUser.first_name || "";
+  const lastName = clerkUser.last_name || "";
+  const fullName = `${firstName} ${lastName}`.trim() || null;
+  
+  // Generate username from first/last name if not set
+  let username = clerkUser.username || null;
+  if (!username && (firstName || lastName)) {
+    // Create username like "bhaviths.shetty" or just "bhaviths"
+    username = firstName.toLowerCase();
+    if (lastName) {
+      username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
+    }
+  }
+  
+  // Fallback: use email prefix if no name
+  let email = null;
+  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
+    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
+  } else if (clerkUser.primary_email_address?.email_address) {
+    email = clerkUser.primary_email_address.email_address;
+  }
+  
+  if (!username && email) {
+    username = email.split("@")[0];
+  }
+  
+  return {
+    clerk_id: clerkUser.id ? String(clerkUser.id) : null,
+    username: username ? String(username) : null,
+    full_name: fullName,
+    profile_image_url: clerkUser.image_url || clerkUser.profile_image_url || null,
+  };
+}
 
 // ---- Start outfit model API (Python) from repo's outfit_model ----
 let outfitProcess = null;
@@ -267,6 +346,50 @@ async function verifyClerkToken(req) {
   return null;
 }
 
+// ---- Helper: normalize Clerk user data ----
+function normalizeClerkUser(clerkUser) {
+  if (!clerkUser || typeof clerkUser !== "object") return null;
+  
+  const firstName = clerkUser.first_name || "";
+  const lastName = clerkUser.last_name || "";
+  const fullName = `${firstName} ${lastName}`.trim() || null;
+  
+  // Generate username from first/last name if not set
+  let username = clerkUser.username || null;
+  if (!username && (firstName || lastName)) {
+    // Create username like "bhaviths.shetty" or just "bhaviths"
+    username = firstName.toLowerCase();
+    if (lastName) {
+      username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
+    }
+  }
+  
+  // Fallback: use email prefix if no name
+  let email = null;
+  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
+    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
+  } else if (clerkUser.primary_email_address?.email_address) {
+    email = clerkUser.primary_email_address.email_address;
+  }
+  
+  if (!username && email) {
+    username = email.split("@")[0];
+  }
+  
+  const profileImage = clerkUser.image_url || clerkUser.profile_image_url || null;
+  
+  const normalized = {
+    clerk_id: clerkUser.id ? String(clerkUser.id) : null,
+    username: username ? String(username) : null,
+    full_name: fullName ? String(fullName) : null,
+    profile_image_url: profileImage ? String(profileImage) : null,
+    role: null,
+    bio: null,
+  };
+  
+  return normalized;
+}
+
 // ---- endpoint: get Cloudinary signature for upload ----
 app.post("/api/cloudinary-sign", async (req, res) => {
   try {
@@ -287,7 +410,7 @@ app.post("/api/cloudinary-sign", async (req, res) => {
     });
   } catch (err) {
     console.error("cloudinary-sign error", err);
-    res.status(500).json({ error: "signing failed" });
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -346,7 +469,7 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("outfit-analysis error", err);
-    res.status(500).json({ error: err.message || String(err) });
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -402,7 +525,7 @@ app.post("/api/create-post", async (req, res) => {
     res.json({ ok: true, post: data });
   } catch (err) {
     console.error("create-post error", err);
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -419,6 +542,18 @@ app.get("/api/for-you", async (req, res) => {
       console.error("fetch for-you error", error);
       return res.status(500).json({ error: error.message || error });
     }
+
+    // Build owner profiles map from Clerk
+    const ownerIds = Array.from(
+      new Set((data || []).map((p) => p.owner_clerk_id).filter(Boolean)),
+    );
+    const ownerMap = new Map();
+    await Promise.all(
+      ownerIds.map(async (id) => {
+        const clerkUser = await fetchClerkUserById(id);
+        ownerMap.set(String(id), mapOwnerProfileFromClerk(clerkUser));
+      }),
+    );
 
     // Rewrite URLs
     const nodeBase = `${req.protocol}://${req.get("host")}`;
@@ -441,13 +576,41 @@ app.get("/api/for-you", async (req, res) => {
         p.image_url = rawImg;
         p.image_path = rawImg;
       }
+      p.owner_profile = ownerMap.get(String(p.owner_clerk_id)) || null;
       return p;
     });
 
-    res.json({ posts });
+    // Fetch comment counts for each post
+    const postIds = (data || []).map((p) => p.id);
+    const commentCounts = {};
+    if (postIds.length > 0) {
+      const commentsData = await supabaseAdmin
+        .from("comments")
+        .select("post_id", { count: "exact" })
+        .in("post_id", postIds);
+      
+      if (commentsData.data) {
+        for (const pid of postIds) {
+          const count = await supabaseAdmin
+            .from("comments")
+            .select("*", { count: "exact" })
+            .eq("post_id", pid)
+            .then((res) => res.count || 0);
+          commentCounts[pid] = count;
+        }
+      }
+    }
+
+    // Add comment counts to posts
+    const postsWithCounts = posts.map((p) => ({
+      ...p,
+      comments_count: commentCounts[p.id] || 0,
+    }));
+
+    res.json({ posts: postsWithCounts });
   } catch (err) {
     console.error("for-you error", err);
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -465,7 +628,7 @@ app.post("/api/like-toggle", async (req, res) => {
       .from("likes")
       .select("*")
       .eq("post_id", post_id)
-      .eq("user_clerk_id", clerkUserId)
+      .eq("user_id", clerkUserId)
       .maybeSingle();
 
     if (existing) {
@@ -474,20 +637,181 @@ app.post("/api/like-toggle", async (req, res) => {
         .from("likes")
         .delete()
         .eq("post_id", post_id)
-        .eq("user_clerk_id", clerkUserId);
+        .eq("user_id", clerkUserId);
       if (error) throw error;
       res.json({ liked: false });
     } else {
       // like
       const { error } = await supabaseAdmin
         .from("likes")
-        .insert([{ post_id, user_clerk_id: clerkUserId }]);
+        .insert([{ post_id, user_id: clerkUserId }]);
       if (error) throw error;
       res.json({ liked: true });
     }
   } catch (err) {
     console.error("like-toggle error", err);
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+  }
+});
+
+// ---- endpoint: get comments for a post ----
+app.get("/api/comments/:post_id", async (req, res) => {
+  try {
+    const { post_id } = req.params;
+    if (!post_id) return res.status(400).json({ error: "missing post_id" });
+
+    const { data: comments, error } = await supabaseAdmin
+      .from("comments")
+      .select("*")
+      .eq("post_id", post_id)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    // Fetch user profiles for each comment
+    const userIds = Array.from(
+      new Set((comments || []).map((c) => c.user_clerk_id).filter(Boolean)),
+    );
+    const userMap = new Map();
+    await Promise.all(
+      userIds.map(async (userId) => {
+        const profile = await fetchClerkUserById(userId);
+        if (profile) {
+          userMap.set(
+            String(userId),
+            normalizeClerkUser(profile),
+          );
+        }
+      }),
+    );
+
+    const enrichedComments = (comments || []).map((c) => ({
+      ...c,
+      user: userMap.get(String(c.user_clerk_id)) || null,
+    }));
+
+    res.json({ comments: enrichedComments });
+  } catch (err) {
+    console.error("get-comments error", err);
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+  }
+});
+
+// ---- endpoint: add a comment ----
+app.post("/api/comments", async (req, res) => {
+  try {
+    const clerkUserId = await verifyClerkToken(req);
+    if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
+
+    const { post_id, content } = req.body;
+    if (!post_id) return res.status(400).json({ error: "missing post_id" });
+    if (!content || !String(content).trim()) {
+      return res.status(400).json({ error: "missing content" });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("comments")
+      .insert([
+        {
+          post_id,
+          user_clerk_id: clerkUserId,
+          content: String(content).trim(),
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Fetch the user profile for the response
+    const userProfile = await fetchClerkUserById(clerkUserId);
+    const normalizedUser = normalizeClerkUser(userProfile);
+
+    res.json({
+      comment: {
+        ...data,
+        user: normalizedUser,
+      },
+    });
+  } catch (err) {
+    console.error("add-comment error", err);
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+  }
+});
+
+// ---- endpoint: delete a comment ----
+app.delete("/api/comments/:comment_id", async (req, res) => {
+  try {
+    const clerkUserId = await verifyClerkToken(req);
+    if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
+
+    const { comment_id } = req.params;
+    if (!comment_id) return res.status(400).json({ error: "missing comment_id" });
+
+    // Check if user owns the comment
+    const { data: comment } = await supabaseAdmin
+      .from("comments")
+      .select("*")
+      .eq("id", comment_id)
+      .maybeSingle();
+
+    if (!comment) {
+      return res.status(404).json({ error: "comment not found" });
+    }
+
+    if (comment.user_clerk_id !== clerkUserId) {
+      return res.status(403).json({ error: "unauthorized" });
+    }
+
+    const { error } = await supabaseAdmin
+      .from("comments")
+      .delete()
+      .eq("id", comment_id);
+
+    if (error) throw error;
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("delete-comment error", err);
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+  }
+});
+
+// ---- endpoint: get likes count for posts ----
+app.get("/api/posts/likes-count", async (req, res) => {
+  try {
+    const postIds = req.query.post_ids
+      ? (Array.isArray(req.query.post_ids)
+          ? req.query.post_ids
+          : [req.query.post_ids]
+        ).map(String)
+      : [];
+
+    if (postIds.length === 0) {
+      return res.json({ likeCounts: {} });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("likes")
+      .select("post_id")
+      .in("post_id", postIds);
+
+    if (error) throw error;
+
+    /** @type {Record<string, number>} */
+    const likeCounts = {};
+    postIds.forEach((id) => {
+      likeCounts[id] = 0;
+    });
+
+    (data || []).forEach((like) => {
+      likeCounts[like.post_id] = (likeCounts[like.post_id] || 0) + 1;
+    });
+
+    res.json({ likeCounts });
+  } catch (err) {
+    console.error("likes-count error", err);
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -542,7 +866,7 @@ app.get("/api/recommend-outfit", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("recommend-outfit error", err);
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
