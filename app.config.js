@@ -12,7 +12,8 @@ module.exports = {
       CLERK_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
       API_BASE_URL: process.env.API_BASE_URL || "http://localhost:4000",
       // Supabase client config (safe to expose anon key to the app)
-      SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
+      SUPABASE_URL:
+        process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
       SUPABASE_ANON_KEY:
         process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
         process.env.SUPABASE_ANON_KEY ||

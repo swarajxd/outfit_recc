@@ -1,26 +1,23 @@
 import { useUser } from "@clerk/clerk-expo";
-import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { v4 as uuidv4 } from "uuid";
-
-const SERVER_BASE =
-  (Constants.expoConfig?.extra as any)?.API_BASE_URL ?? "http://localhost:4000";
+import { SERVER_BASE } from "../utils/config";
 
 const PRIMARY = "#FF6B00";
 const BG = "#000000";
@@ -91,24 +88,110 @@ export default function ProfileScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
 
+  // Stats state (followers / following / style score from backend)
+  const [followers, setFollowers] = useState<number | null>(null);
+  const [following, setFollowing] = useState<number | null>(null);
+  const [styleScore, setStyleScore] = useState<number | null>(null);
+
+  // Posts state (real backend instead of static images)
+  interface PostItem {
+    id: string;
+    image_url: string;
+    caption?: string | null;
+  }
+  const [posts, setPosts] = useState<PostItem[]>([]);
+  const [isPostsLoading, setIsPostsLoading] = useState(false);
+
   // Derive user_id from Clerk
   const userId = user?.id || "default_user";
+
+  // ── Fetch profile stats (followers/following/style) ──────────────────────
+  const fetchStats = useCallback(async () => {
+    try {
+      const resp = await fetch(
+        `${SERVER_BASE}/api/profile/stats?user_id=${encodeURIComponent(userId)}`,
+        {
+          headers: {
+            "X-User-Id": userId,
+          },
+        },
+      );
+      if (!resp.ok) throw new Error("Failed to fetch stats");
+      const json = await resp.json();
+      setFollowers(typeof json.followers === "number" ? json.followers : null);
+      setFollowing(typeof json.following === "number" ? json.following : null);
+      setStyleScore(
+        typeof json.style_score === "number" ? json.style_score : null,
+      );
+    } catch (err) {
+      console.warn("profile stats fetch error:", err);
+      // leave defaults/nulls – UI will still show something
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (isLoaded) {
+      fetchStats();
+    }
+  }, [isLoaded, fetchStats]);
+
+  // ── Fetch posts for profile (Supabase via Node) ──────────────────────────
+  const fetchPosts = useCallback(async () => {
+    setIsPostsLoading(true);
+    try {
+      const resp = await fetch(
+        `${SERVER_BASE}/api/profile/posts?user_id=${encodeURIComponent(userId)}`,
+        {
+          headers: {
+            "X-User-Id": userId,
+          },
+        },
+      );
+      if (!resp.ok) throw new Error("Failed to fetch posts");
+      const json = await resp.json();
+      const items: PostItem[] = (json.posts || []).map((p: any) => ({
+        id: String(p.id ?? uuidv4()),
+        image_url: p.image_url,
+        caption: p.caption ?? null,
+      }));
+      setPosts(items);
+    } catch (err) {
+      console.warn("profile posts fetch error:", err);
+    } finally {
+      setIsPostsLoading(false);
+    }
+  }, [userId]);
+
+  // Load posts when tab switches to "Posts"
+  useEffect(() => {
+    if (activeTab === 0) {
+      fetchPosts();
+    }
+  }, [activeTab, fetchPosts]);
 
   // ── Fetch wardrobe items (segmented images from uploads dir) ───────────
   const fetchWardrobe = useCallback(async () => {
     setIsWardrobeLoading(true);
     try {
       const resp = await fetch(
-        `${SERVER_BASE}/api/profile/segmented/${encodeURIComponent(userId)}`,
+        `${SERVER_BASE}/api/profile/wardrobe/${encodeURIComponent(userId)}`,
       );
       if (!resp.ok) throw new Error("Failed to fetch wardrobe");
       const json = await resp.json();
-      const items: WardrobeItem[] = (json.items || []).map((item: any) => ({
-        id: item.id || uuidv4(),
-        image: item.image,
-        category: item.category || "",
-      }));
-      setWardrobeItems(items);
+
+      const w = json?.wardrobe || {};
+      const fetched: WardrobeItem[] = [];
+      for (const key of Object.keys(w)) {
+        const arr = Array.isArray(w[key]) ? w[key] : [];
+        for (const item of arr) {
+          fetched.push({
+            id: item.id || uuidv4(),
+            image: item.image,
+            category: item.category || key.replace(/s$/, "") || "",
+          });
+        }
+      }
+      setWardrobeItems(fetched);
     } catch (err) {
       console.warn("wardrobe fetch error:", err);
     } finally {
@@ -383,13 +466,7 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Top Bar */}
         <View style={styles.topBar}>
-          <TouchableOpacity>
-            <Text style={styles.topBarIcon}>⚙</Text>
-          </TouchableOpacity>
           <Text style={styles.topBarHandle}>{userHandle}</Text>
-          <TouchableOpacity>
-            <Text style={styles.topBarIcon}>⬆</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Avatar */}
@@ -420,30 +497,6 @@ export default function ProfileScreen() {
             <TouchableOpacity style={styles.editBtn} onPress={openEditModal}>
               <Text style={styles.editBtnText}>Edit Profile</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.insightBtn}>
-              <Text style={{ color: "#000", fontSize: 16 }}>📊</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>1.2k</Text>
-            <Text style={styles.statLabel}>FOLLOWERS</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>850</Text>
-            <Text style={styles.statLabel}>FOLLOWING</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <View style={styles.statValueRow}>
-              <Text style={[styles.statValue, { color: PRIMARY }]}>92</Text>
-              <Text style={styles.statPercent}>%</Text>
-            </View>
-            <Text style={styles.statLabel}>STYLE SENSE</Text>
           </View>
         </View>
 
@@ -516,11 +569,44 @@ export default function ProfileScreen() {
         ) : (
           /* ── Posts / Saved Grid ───────────────────────────────────── */
           <View style={styles.postsGrid}>
-            {POST_IMAGES.map((uri, i) => (
-              <TouchableOpacity key={i} style={styles.postItem}>
-                <Image source={{ uri }} style={styles.postImage} />
-              </TouchableOpacity>
-            ))}
+            {isPostsLoading ? (
+              <View style={{ paddingVertical: 60, alignItems: "center" }}>
+                <ActivityIndicator size="large" color={PRIMARY} />
+                <Text style={{ color: "rgba(255,255,255,0.5)", marginTop: 8 }}>
+                  Loading posts…
+                </Text>
+              </View>
+            ) : posts.length === 0 ? (
+              <View
+                style={{ paddingVertical: 60, alignItems: "center", gap: 8 }}
+              >
+                <Text style={{ fontSize: 40 }}>📷</Text>
+                <Text
+                  style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}
+                >
+                  No posts yet
+                </Text>
+                <Text
+                  style={{
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: 13,
+                    textAlign: "center",
+                    paddingHorizontal: 40,
+                  }}
+                >
+                  Create a post from the Create tab to see your looks here.
+                </Text>
+              </View>
+            ) : (
+              posts.map((post) => (
+                <TouchableOpacity key={post.id} style={styles.postItem}>
+                  <Image
+                    source={{ uri: post.image_url }}
+                    style={styles.postImage}
+                  />
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         )}
 
