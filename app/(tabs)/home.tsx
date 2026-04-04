@@ -1,5 +1,5 @@
 
-import { useAuth, useUser } from "@clerk/clerk-expo";
+import { useUser } from "@clerk/clerk-expo";
 import { BlurView } from 'expo-blur';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,6 +8,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import LikeButton from '../../components/LikeButton';
+import CommentModal from '../../components/CommentModal';
 
 import {
   Animated,
@@ -111,10 +113,18 @@ type Post = {
   image_url: string;
   caption: string | null;
   owner_clerk_id: string;
+  owner_profile?: {
+    clerk_id?: string | null;
+    username?: string | null;
+    full_name?: string | null;
+    profile_image_url?: string | null;
+  } | null;
   tags: string[] | null;
   created_at: string;
   score?: number;
   isLiked?: boolean;
+  likes_count?: number;
+  comments_count?: number;
 };
 
 // ─── Color Display Map ────────────────────────────────────────────────────────
@@ -359,14 +369,24 @@ function WeekDayChip({
 }
 
 // ─── Feed Card ────────────────────────────────────────────────────────────────
-function FeedCard({
+function FeedCardComponent({
   item,
   liked,
   onLike,
+  likesCount = 0,
+  commentsCount = 0,
+  onCommentPress = () => {},
+  saved = false,
+  onSave = () => {},
 }: {
   item: (typeof FEED_ITEMS)[0];
   liked: boolean;
   onLike: () => void;
+  likesCount?: number;
+  commentsCount?: number;
+  onCommentPress?: () => void;
+  saved?: boolean;
+  onSave?: () => void;
 }) {
   return (
     <View style={styles.card}>
@@ -409,23 +429,31 @@ function FeedCard({
             <Text style={styles.username}>{item.username}</Text>
           </View>
           <View style={styles.actions}>
-            <TouchableOpacity onPress={onLike} style={styles.actionBtn}>
-              <Text
-                style={{
-                  fontSize: 22,
-                  color: liked ? PRIMARY : "rgba(255,255,255,0.8)",
-                }}
-              >
-                {liked ? "♥" : "♡"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
+            <LikeButton
+              liked={liked}
+              likesCount={likesCount}
+              onPress={onLike}
+              style={styles.actionBtn}
+            />
+            <TouchableOpacity
+              onPress={onCommentPress}
+              style={[styles.actionBtn, { paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 4 }]}
+            >
               <Text style={{ fontSize: 20, color: "rgba(255,255,255,0.8)" }}>
                 💬
               </Text>
+              {commentsCount > 0 && (
+                <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.9)", fontWeight: '600' }}>
+                  {commentsCount}
+                </Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
-              <Text style={{ fontSize: 20, color: "rgba(255,255,255,0.8)" }}>
+            <TouchableOpacity 
+              onPress={onSave}
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 20, color: saved ? PRIMARY : "rgba(255,255,255,0.5)" }}>
                 🔖
               </Text>
             </TouchableOpacity>
@@ -440,11 +468,12 @@ function FeedCard({
   );
 }
 
+const FeedCard = React.memo(FeedCardComponent);
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<"foryou" | "following">("foryou");
   const [likedItems, setLikedItems] = useState<Record<string, boolean>>({});
   const [posts, setPosts] = useState<Post[]>([]);
@@ -458,6 +487,70 @@ export default function HomeScreen() {
   const { user, isLoaded } = useUser();
    const [savedOutfits, setSavedOutfits] = useState<any>({});
    
+  // Comment modal state
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [savedItems, setSavedItems] = useState<Record<string, boolean>>({});
+  const [persistedDataLoaded, setPersistedDataLoaded] = useState(false);
+
+// Load liked and saved items from AsyncStorage
+useEffect(() => {
+  const loadPersistedData = async () => {
+    if (!user?.id) {
+      console.log('User not loaded yet, skipping load');
+      return;
+    }
+    try {
+      const likedKey = `fitsense_liked_${user?.id}`;
+      const savedKey = `fitsense_saved_${user?.id}`;
+      console.log('Loading persisted data from keys:', likedKey, savedKey);
+      const likedJson = await AsyncStorage.getItem(likedKey);
+      const savedJson = await AsyncStorage.getItem(savedKey);
+      console.log('Loaded likedJson:', likedJson);
+      console.log('Loaded savedJson:', savedJson);
+      if (likedJson) setLikedItems(JSON.parse(likedJson));
+      if (savedJson) setSavedItems(JSON.parse(savedJson));
+      setPersistedDataLoaded(true);
+    } catch (e) {
+      console.warn('Error loading persisted data:', e);
+      setPersistedDataLoaded(true);
+    }
+  };
+  loadPersistedData();
+}, [user?.id]);
+
+// Persist liked items whenever they change (but only AFTER loading initial data)
+useEffect(() => {
+  if (!persistedDataLoaded) return; // Don't persist until data is loaded
+  const persistLikedItems = async () => {
+    try {
+      await AsyncStorage.setItem(
+        `fitsense_liked_${user?.id}`,
+        JSON.stringify(likedItems)
+      );
+    } catch (e) {
+      console.warn('Error saving liked items:', e);
+    }
+  };
+  if (user?.id) persistLikedItems();
+}, [likedItems, user?.id, persistedDataLoaded]);
+
+// Persist saved items whenever they change (but only AFTER loading initial data)
+useEffect(() => {
+  if (!persistedDataLoaded) return; // Don't persist until data is loaded
+  const persistSavedItems = async () => {
+    try {
+      const key = `fitsense_saved_${user?.id}`;
+      console.log('Persisting saved items to key:', key, 'value:', savedItems);
+      await AsyncStorage.setItem(key, JSON.stringify(savedItems));
+      console.log('Successfully persisted saved items');
+    } catch (e) {
+      console.warn('Error saving saved items:', e);
+    }
+  };
+  if (user?.id) persistSavedItems();
+}, [savedItems, user?.id, persistedDataLoaded]);
 
 useEffect(() => {
   const loadSavedOutfits = async () => {
@@ -502,17 +595,8 @@ useEffect(() => {
 
   async function getAuthHeader(): Promise<string | null> {
     if (!user?.id) return null;
-    // Keep dev-token fallback (works with current server verifyClerkToken)
-    let authHeader = `Bearer dev:${user.id}`;
-    try {
-      if (getToken) {
-        const token = await getToken({ template: "supabase" });
-        if (token) authHeader = `Bearer ${token}`;
-      }
-    } catch {
-      authHeader = `Bearer dev:${user.id}`;
-    }
-    return authHeader;
+    // Use dev-token (works with current server verifyClerkToken)
+    return `Bearer dev:${user.id}`;
   }
 
   async function fetchPosts() {
@@ -545,11 +629,29 @@ useEffect(() => {
         image_url: String(p.image_url),
         caption: p.caption ?? null,
         owner_clerk_id: String(p.owner_clerk_id ?? ""),
+        owner_profile: p.owner_profile ?? null,
         tags: Array.isArray(p.tags) ? p.tags.map((t: any) => String(t)) : null,
         created_at: String(p.created_at ?? ""),
         score: typeof p.score === "number" ? p.score : undefined,
+        likes_count: 0,
+        comments_count: p.comments_count ?? 0,
       }));
       setPosts(normalized);
+
+      // Fetch like counts for all posts
+      const postIds = normalized.map((p) => p.id);
+      if (postIds.length > 0) {
+        const likesResp = await fetch(
+          `${SERVER_BASE}/api/posts/likes-count?${postIds.map((id) => `post_ids=${id}`).join("&")}`,
+          {
+            headers: { Authorization: authHeader },
+          },
+        );
+        const likesJson = await likesResp.json().catch(() => ({}));
+        if (likesResp.ok && likesJson.likeCounts) {
+          setLikeCounts(likesJson.likeCounts);
+        }
+      }
     } catch (e) {
       console.error("fetchPosts error", e);
       const msg =
@@ -570,8 +672,6 @@ useEffect(() => {
     const authHeader = await getAuthHeader();
     if (!authHeader || !user?.id) return;
 
-    console.log("LIKE CLICKED:", user.id, post_id);
-
     // optimistic UI (local heart state)
     setLikedItems((prev) => ({ ...prev, [post_id]: !prev[post_id] }));
 
@@ -589,7 +689,6 @@ useEffect(() => {
         console.error("LIKE ERROR:", json);
         throw new Error((json as any)?.error || "like-toggle failed");
       }
-      console.log("LIKE RESULT:", json);
 
       // Optionally refetch feed so personalization kicks in immediately
       fetchPosts();
@@ -634,7 +733,7 @@ useEffect(() => {
     }
     return FALLBACK_WARDROBE;
   }, [items]);
-  console.log("WARDROBE AFTER BUILD:", userWardrobe);
+
   // Load or generate today's outfit on mount
   useEffect(() => {
     if (!items || items.length === 0) return;
@@ -643,12 +742,9 @@ useEffect(() => {
     setOutfitLoading(true);
 
     const wardrobe = buildWardrobeFromItems(items);
-    console.log("ITEMS FROM API:", items);
-    console.log("BUILT WARDROBE:", wardrobe);
 
     getOrCreateDailyOutfit(wardrobe, user?.id || undefined)
       .then((o) => {
-        console.log("GENERATED OUTFIT:", o);
         if (!cancelled) {
           setOutfit(o);
           setOutfitLoading(false);
@@ -673,7 +769,7 @@ useEffect(() => {
       .catch(() => setOutfitLoading(false));
   };
 
-  console.log("WARDROBE ITEMS", items);
+
     if (!isLoaded) {
     return null;
   }
@@ -886,8 +982,13 @@ useEffect(() => {
                 username:
                   p.owner_clerk_id === user?.id
                     ? currentUserName
-                    : p.owner_clerk_id,
-                avatar: currentUserAvatar,
+                    : p.owner_profile?.username ||
+                      p.owner_profile?.full_name ||
+                      p.owner_clerk_id,
+                avatar:
+                  p.owner_clerk_id === user?.id
+                    ? currentUserAvatar
+                    : p.owner_profile?.profile_image_url || DEFAULT_AVATAR,
                 liked: false,
                 caption: p.caption ?? "",
                 tag: p.tags?.[0] ? `#${p.tags[0]}` : "",
@@ -899,6 +1000,19 @@ useEffect(() => {
                   item={derivedItem}
                   liked={!!likedItems[p.id]}
                   onLike={() => handleLike(p.id)}
+                  likesCount={likeCounts[p.id] || 0}
+                  commentsCount={p.comments_count || 0}
+                  onCommentPress={() => {
+                    setSelectedPostId(p.id);
+                    setCommentModalVisible(true);
+                  }}
+                  saved={!!savedItems[p.id]}
+                  onSave={() => {
+                    setSavedItems((prev) => {
+                      const newState = { ...prev, [p.id]: !prev[p.id] };
+                      return newState;
+                    });
+                  }}
                 />
               );
             })
@@ -913,6 +1027,16 @@ useEffect(() => {
       >
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
+
+      {/* Comment Modal */}
+      {selectedPostId && (
+        <CommentModal
+          visible={commentModalVisible}
+          postId={selectedPostId}
+          onClose={() => setCommentModalVisible(false)}
+          serverBase={SERVER_BASE}
+        />
+      )}
     </View>
   );
 }
@@ -1292,7 +1416,7 @@ const styles = StyleSheet.create({
   },
   username: { color: "#fff", fontSize: 14, fontWeight: "700" },
   actions: { flexDirection: "row", alignItems: "center", gap: 18 },
-  actionBtn: { padding: 2 },
+  actionBtn: { padding: 8, borderRadius: 8, minWidth: 40, alignItems: 'center', justifyContent: 'center' },
   caption: { color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 20, fontWeight: '400' },
 
   dayCard: {
