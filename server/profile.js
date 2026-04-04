@@ -1164,4 +1164,151 @@ router.get("/search", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// PREFERENCES — Style onboarding data (shown only once, stored in Supabase)
+//
+// Required Supabase table (run once in your Supabase SQL editor):
+//
+// create table if not exists user_preferences (
+//   clerk_id          text primary key,
+//   gender            text,
+//   styles            text[],
+//   favorite_colors   text[],
+//   disliked_colors   text[],
+//   fit               text,
+//   body_type         text,
+//   skin_tone         text,
+//   height            text,
+//   budget            text,
+//   avoid_items       text[],
+//   occasions         text[],
+//   goals             text[],
+//   created_at        timestamptz default now(),
+//   updated_at        timestamptz default now()
+// );
+// ---------------------------------------------------------------------------
+
+// GET /api/profile/preferences/:clerkId
+// Returns { onboarding_complete: true/false } — the single source of truth.
+// true  → redirect to home (user already did onboarding)
+// false → redirect to pref page
+router.get("/preferences/:clerkId", async (req, res) => {
+  try {
+    const { clerkId } = req.params;
+    if (!clerkId) return res.status(400).json({ error: "missing clerkId" });
+
+    const { data, error } = await supabaseAdmin
+      .from("user_preferences")
+      .select("clerk_id, onboarding_complete")
+      .eq("clerk_id", clerkId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[preferences/get] Supabase error:", error.message);
+      return res.json({ onboarding_complete: false });
+    }
+
+    const done = !!data && data.onboarding_complete === true;
+    console.log(`[preferences/get] ${clerkId} onboarding_complete=${done}`);
+    return res.json({ onboarding_complete: done });
+  } catch (err) {
+    console.error("[preferences/get] error:", err);
+    res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
+// POST /api/profile/preferences
+// Upserts the full style profile for a user. Called when onboarding completes.
+router.post("/preferences", async (req, res) => {
+  try {
+    const viewerUserId = getViewerUserId(req);
+    const {
+      clerk_id,
+      gender,
+      styles,
+      favoriteColors,
+      dislikedColors,
+      fit,
+      bodyType,
+      skinTone,
+      height,
+      budget,
+      avoidItems,
+      occasions,
+      goals,
+    } = req.body;
+
+    const targetId = clerk_id || viewerUserId;
+    if (!targetId) return res.status(400).json({ error: "missing clerk_id" });
+
+    const payload = {
+      clerk_id: String(targetId),
+      onboarding_complete: true,          // <- the single source of truth flag
+      gender: gender || null,
+      styles: Array.isArray(styles) ? styles : [],
+      favorite_colors: Array.isArray(favoriteColors) ? favoriteColors : [],
+      disliked_colors: Array.isArray(dislikedColors) ? dislikedColors : [],
+      fit: fit || null,
+      body_type: bodyType || null,
+      skin_tone: skinTone || null,
+      height: height || null,
+      budget: budget || null,
+      avoid_items: Array.isArray(avoidItems) ? avoidItems : [],
+      occasions: Array.isArray(occasions) ? occasions : [],
+      goals: Array.isArray(goals) ? goals : [],
+      updated_at: new Date().toISOString(),
+    };
+
+    console.log(`[preferences/post] Upserting preferences for ${targetId}`);
+    console.log(`[preferences/post] Payload:`, JSON.stringify(payload, null, 2).substring(0, 500));
+
+    // First, check if table exists and get current data
+    let { data: existing, error: checkErr } = await supabaseAdmin
+      .from("user_preferences")
+      .select("clerk_id")
+      .eq("clerk_id", targetId)
+      .maybeSingle();
+
+    if (checkErr) {
+      console.warn("[preferences/post] Table check error (table may not exist):", checkErr.message);
+      existing = null;
+    }
+    console.log(`[preferences/post] Existing record found:`, !!existing);
+
+    // Use upsert (insert or update)
+    const { data, error } = await supabaseAdmin
+      .from("user_preferences")
+      .upsert(payload, { onConflict: "clerk_id" })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("[preferences/post] Supabase upsert error:", error);
+      // Try manual upsert if onConflict fails
+      if (existing) {
+        console.log("[preferences/post] Falling back to UPDATE query");
+        const { data: updateData, error: updateError } = await supabaseAdmin
+          .from("user_preferences")
+          .update(payload)
+          .eq("clerk_id", targetId)
+          .select()
+          .single();
+        if (updateError) {
+          console.error("[preferences/post] UPDATE also failed:", updateError);
+          return res.status(500).json({ error: updateError.message || String(updateError) });
+        }
+        console.log(`[preferences/post] Updated preferences for ${targetId}`);
+        return res.json({ ok: true, preferences: updateData });
+      }
+      return res.status(500).json({ error: error.message || String(error) });
+    }
+
+    console.log(`[preferences/post] Saved preferences for ${targetId}`);
+    res.json({ ok: true, preferences: data });
+  } catch (err) {
+    console.error("[preferences/post] error:", err);
+    res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
 module.exports = router;

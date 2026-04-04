@@ -8,12 +8,34 @@ import {
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
-export default function ProfileHeader() {
+interface ProfileHeaderProps {
+  username: string;
+  name: string;
+  email: string;
+  avatarUrl: string;
+  followers?: string | number;
+  following?: string | number;
+  posts?: string | number;
+  onEditPress?: () => void;
+  onSharePress?: () => void;
+}
+
+export default function ProfileHeader({
+  username,
+  name,
+  email,
+  avatarUrl,
+  followers = '—',
+  following = '—',
+  posts = '—',
+  onEditPress,
+  onSharePress,
+}: ProfileHeaderProps) {
   return (
     <View style={styles.container}>
       {/* Top Bar */}
       <View style={styles.topBar}>
-        <Text style={styles.username}>Sanandsu</Text>
+        <Text style={styles.username}>{username}</Text>
 
         <View style={styles.iconRow}>
           <TouchableOpacity>
@@ -35,7 +57,7 @@ export default function ProfileHeader() {
         {/* Avatar */}
         <View style={styles.avatarWrapper}>
           <Image
-            source={require('../../assets/img1.jpg')}
+            source={{ uri: avatarUrl }}
             style={styles.avatar}
           />
           <View style={styles.onlineIndicator} />
@@ -43,22 +65,22 @@ export default function ProfileHeader() {
 
         {/* Info */}
         <View style={{ flex: 1 }}>
-          <Text style={styles.name}>Sanandsu</Text>
-          <Text style={styles.email}>sanandsu@gmail.com</Text>
+          <Text style={styles.name}>{name}</Text>
+          <Text style={styles.email}>{email}</Text>
 
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>24</Text>
+              <Text style={styles.statNumber}>{posts}</Text>
               <Text style={styles.statLabel}>Posts</Text>
             </View>
 
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>1.2k</Text>
+              <Text style={styles.statNumber}>{followers}</Text>
               <Text style={styles.statLabel}>Followers</Text>
             </View>
 
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>320</Text>
+              <Text style={styles.statNumber}>{following}</Text>
               <Text style={styles.statLabel}>Following</Text>
             </View>
           </View>
@@ -67,11 +89,11 @@ export default function ProfileHeader() {
 
       {/* Action Buttons */}
       <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.primaryButton}>
+        <TouchableOpacity style={styles.primaryButton} onPress={onEditPress}>
           <Text style={styles.primaryText}>Edit Profile</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.secondaryButton}>
+        <TouchableOpacity style={styles.secondaryButton} onPress={onSharePress}>
           <Ionicons name="share-social-outline" size={18} color="#fff" />
           <Text style={styles.secondaryText}> Share</Text>
         </TouchableOpacity>

@@ -36,7 +36,8 @@ const ON_SURF_DIM= "rgba(239,239,239,0.4)";
 const W          = Dimensions.get("window").width;
 const CARD_W     = W - 40;           // results paddingHorizontal: 20
 const HALF_W     = Math.floor(CARD_W / 2);
-const PANEL_H    = 340;              // height of each image panel
+const PANEL_H    = 250;              // main row (top + bottom)
+const PANEL_H2   = 180;              // secondary row (accessory + footwear)
 
 const QUICK_PROMPTS = [
   "Casual summer day", "Date night",
@@ -49,8 +50,14 @@ function OutfitCard({ outfit, rank }: { outfit: GeneratedOutfit; rank: number })
   const isBest = rank === 1;
   const score  = outfit.score !== undefined ? Math.round(outfit.score * 100) : null;
 
-  const topName    = outfit.top?.name    ?? null;
-  const bottomName = outfit.bottom?.name ?? null;
+  const topName    = outfit.top?.name       ?? null;
+  const bottomName = outfit.bottom?.name    ?? null;
+  const accName    = outfit.accessory?.name ?? null;
+  const fwName     = outfit.footwear?.name  ?? null;
+
+  const hasAcc = outfit.accessory?.image || outfit.accessory;
+  const hasFw  = outfit.footwear?.image  || outfit.footwear;
+  const hasRow2 = hasAcc || hasFw;
 
   return (
     <View style={[s.card, isBest && s.cardBest]}>
@@ -69,7 +76,6 @@ function OutfitCard({ outfit, rank }: { outfit: GeneratedOutfit; rank: number })
           ) : (
             <Text style={s.panelEmoji}>👕</Text>
           )}
-          {/* Category label at bottom of panel */}
           <View style={s.panelLabel}>
             <Text style={s.panelLabelTxt}>TOP</Text>
           </View>
@@ -94,14 +100,14 @@ function OutfitCard({ outfit, rank }: { outfit: GeneratedOutfit; rank: number })
           </View>
         </View>
 
-        {/* Floating rank badge — top-left */}
+        {/* Rank badge — top-left floating over panels */}
         <View style={[s.rankBadge, isBest && s.rankBadgeBest]}>
           <Text style={[s.rankTxt, isBest && s.rankTxtBest]}>
             {LABELS[rank - 1] ?? `Look ${rank}`}
           </Text>
         </View>
 
-        {/* Floating score — top-right */}
+        {/* Score badge — top-right floating over panels */}
         {score !== null && (
           <View style={[s.scoreBadge, isBest && s.scoreBadgeBest]}>
             <Text style={[s.scoreNum, isBest && s.scoreNumBest]}>{score}</Text>
@@ -109,6 +115,49 @@ function OutfitCard({ outfit, rank }: { outfit: GeneratedOutfit; rank: number })
           </View>
         )}
       </View>
+
+      {/* ── Second row: Accessory + Footwear ── */}
+      {hasRow2 && (
+        <View style={s.panels2}>
+          {/* LEFT — Accessory */}
+          <View style={s.panel2Cell}>
+            {outfit.accessory?.image ? (
+              <Image
+                source={{ uri: outfit.accessory.image }}
+                style={s.panelImg2}
+                resizeMode="contain"
+              />
+            ) : outfit.accessory ? (
+              <Text style={s.panelEmoji}>👜</Text>
+            ) : (
+              <View style={s.panelEmpty} />
+            )}
+            <View style={s.panelLabel}>
+              <Text style={s.panelLabelTxt}>ACCESSORY</Text>
+            </View>
+          </View>
+
+          <View style={s.divider} />
+
+          {/* RIGHT — Footwear */}
+          <View style={[s.panel2Cell, { backgroundColor: "#E8E3DC" }]}>
+            {outfit.footwear?.image ? (
+              <Image
+                source={{ uri: outfit.footwear.image }}
+                style={s.panelImg2}
+                resizeMode="contain"
+              />
+            ) : outfit.footwear ? (
+              <Text style={s.panelEmoji}>👟</Text>
+            ) : (
+              <View style={s.panelEmpty} />
+            )}
+            <View style={s.panelLabel}>
+              <Text style={s.panelLabelTxt}>FOOTWEAR</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* ── Footer ── */}
       <View style={s.footer}>
@@ -124,6 +173,18 @@ function OutfitCard({ outfit, rank }: { outfit: GeneratedOutfit; rank: number })
             <View style={s.nameRow}>
               <Text style={s.nameCat}>BOTTOM</Text>
               <Text style={s.nameVal} numberOfLines={1}>{bottomName}</Text>
+            </View>
+          )}
+          {accName && (
+            <View style={s.nameRow}>
+              <Text style={s.nameCat}>BAG</Text>
+              <Text style={s.nameVal} numberOfLines={1}>{accName}</Text>
+            </View>
+          )}
+          {fwName && (
+            <View style={s.nameRow}>
+              <Text style={s.nameCat}>SHOES</Text>
+              <Text style={s.nameVal} numberOfLines={1}>{fwName}</Text>
             </View>
           )}
         </View>
@@ -320,6 +381,8 @@ const s = StyleSheet.create({
     backgroundColor: "#F1EDE7",
     position: "relative",
     overflow: "hidden",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#C8BFB5",
   },
 
   panelLeft: {
@@ -340,9 +403,32 @@ const s = StyleSheet.create({
     overflow: "hidden",
   },
 
+  // Second row — accessory + footwear
+  panels2: {
+    flexDirection: "row",
+    height: PANEL_H2,
+    backgroundColor: "#F1EDE7",
+    overflow: "hidden",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#C8BFB5",
+  },
+  panel2Cell: {
+    width: HALF_W,
+    height: PANEL_H2,
+    backgroundColor: "#EDE8E2",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  panelImg2: {
+    width: HALF_W,
+    height: PANEL_H2 - 26,
+  },
+  panelEmpty: { flex: 1 },
+
   divider: {
     width: StyleSheet.hairlineWidth,
-    height: PANEL_H,
+    height: "100%" as any,
     backgroundColor: "#C8BFB5",
   },
 

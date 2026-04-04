@@ -1,17 +1,18 @@
 
-import { useAuth, useUser } from "@clerk/clerk-expo";
+import { useUser } from "@clerk/clerk-expo";
 import { BlurView } from 'expo-blur';
-import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import LikeButton from '../../components/LikeButton';
+import CommentModal from '../../components/CommentModal';
 
 import {
-  Animated,
   ActivityIndicator,
+  Animated,
   Dimensions,
   Image,
   Platform,
@@ -24,6 +25,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SERVER_BASE } from "../utils/config";
 import {
   FALLBACK_WARDROBE,
   GeneratedOutfit,
@@ -31,7 +33,6 @@ import {
   forceRegenerateOutfit,
   getOrCreateDailyOutfit,
 } from "../utils/outfitEngine";
-import { SERVER_BASE } from "../utils/config";
 
 AsyncStorage.removeItem("fitsense_daily_outfit");
 
@@ -111,10 +112,18 @@ type Post = {
   image_url: string;
   caption: string | null;
   owner_clerk_id: string;
+  owner_profile?: {
+    clerk_id?: string | null;
+    username?: string | null;
+    full_name?: string | null;
+    profile_image_url?: string | null;
+  } | null;
   tags: string[] | null;
   created_at: string;
   score?: number;
   isLiked?: boolean;
+  likes_count?: number;
+  comments_count?: number;
 };
 
 // ─── Color Display Map ────────────────────────────────────────────────────────
@@ -285,7 +294,11 @@ function OutfitItemRow({
   );
 }
 
-// ─── Today's Outfit Card ──────────────────────────────────────────────────────
+// ─── Day Outfit Card ─────────────────────────────────────────────────────────
+const DAY_CARD_W = 150;
+const DAY_HALF   = Math.floor(DAY_CARD_W / 2);
+const DAY_IMG_H  = 120;
+
 function DayOutfitCard({
   label,
   date,
@@ -299,39 +312,60 @@ function DayOutfitCard({
 }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-<View style={styles.dayCard}>
+      <View style={styles.dayCard}>
 
-  {outfit ? (
-    <View style={styles.outfitStack}>
-      {outfit.top && (
-        <Image source={{ uri: outfit.top.image }} style={styles.outfitImage}/>
-      )}
+        {/* Split-panel image area */}
+        {outfit ? (
+          <View style={styles.dayPanels}>
 
-      {outfit.bottom && (
-        <Image source={{ uri: outfit.bottom.image }} style={styles.outfitImage}/>
-      )}
+            {/* LEFT — Top */}
+            <View style={styles.dayPanelLeft}>
+              {outfit.top?.image ? (
+                <Image
+                  source={{ uri: outfit.top.image }}
+                  style={styles.dayPanelImg}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={styles.dayEmoji}>👕</Text>
+              )}
+              <View style={styles.dayPanelLabel}>
+                <Text style={styles.dayPanelLabelTxt}>TOP</Text>
+              </View>
+            </View>
 
-      {outfit.footwear && (
-        <Image source={{ uri: outfit.footwear.image }} style={styles.outfitImage}/>
-      )}
+            <View style={styles.dayDivider} />
 
-      {outfit.outerwear && (
-        <Image source={{ uri: outfit.outerwear.image }} style={styles.outfitImage}/>
-      )}
+            {/* RIGHT — Bottom */}
+            <View style={styles.dayPanelRight}>
+              {outfit.bottom?.image ? (
+                <Image
+                  source={{ uri: outfit.bottom.image }}
+                  style={styles.dayPanelImg}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={styles.dayEmoji}>👖</Text>
+              )}
+              <View style={styles.dayPanelLabel}>
+                <Text style={styles.dayPanelLabelTxt}>BOT</Text>
+              </View>
+            </View>
 
-      {outfit.accessory && (
-        <Image source={{ uri: outfit.accessory.image }} style={styles.outfitImage}/>
-      )}
-    </View>
-  ) : (
-    <View style={styles.addCircle}>
-      <Text style={styles.addPlus}>+</Text>
-    </View>
-  )}
+          </View>
+        ) : (
+          <View style={styles.dayEmpty}>
+            <Text style={styles.dayPlus}>+</Text>
+          </View>
+        )}
 
-  <Text style={styles.dayLabel}>{label}, {date}</Text>
+        {/* Day label strip */}
+        <View style={styles.dayLabelStrip}>
+          <Text style={styles.dayLabel}>{label}</Text>
+          <Text style={styles.dayDate}>{date}</Text>
+        </View>
 
-</View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -359,14 +393,24 @@ function WeekDayChip({
 }
 
 // ─── Feed Card ────────────────────────────────────────────────────────────────
-function FeedCard({
+function FeedCardComponent({
   item,
   liked,
   onLike,
+  likesCount = 0,
+  commentsCount = 0,
+  onCommentPress = () => {},
+  saved = false,
+  onSave = () => {},
 }: {
   item: (typeof FEED_ITEMS)[0];
   liked: boolean;
   onLike: () => void;
+  likesCount?: number;
+  commentsCount?: number;
+  onCommentPress?: () => void;
+  saved?: boolean;
+  onSave?: () => void;
 }) {
   return (
     <View style={styles.card}>
@@ -409,23 +453,31 @@ function FeedCard({
             <Text style={styles.username}>{item.username}</Text>
           </View>
           <View style={styles.actions}>
-            <TouchableOpacity onPress={onLike} style={styles.actionBtn}>
-              <Text
-                style={{
-                  fontSize: 22,
-                  color: liked ? PRIMARY : "rgba(255,255,255,0.8)",
-                }}
-              >
-                {liked ? "♥" : "♡"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
+            <LikeButton
+              liked={liked}
+              likesCount={likesCount}
+              onPress={onLike}
+              style={styles.actionBtn}
+            />
+            <TouchableOpacity
+              onPress={onCommentPress}
+              style={[styles.actionBtn, { paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 4 }]}
+            >
               <Text style={{ fontSize: 20, color: "rgba(255,255,255,0.8)" }}>
                 💬
               </Text>
+              {commentsCount > 0 && (
+                <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.9)", fontWeight: '600' }}>
+                  {commentsCount}
+                </Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
-              <Text style={{ fontSize: 20, color: "rgba(255,255,255,0.8)" }}>
+            <TouchableOpacity 
+              onPress={onSave}
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 20, color: saved ? PRIMARY : "rgba(255,255,255,0.5)" }}>
                 🔖
               </Text>
             </TouchableOpacity>
@@ -440,11 +492,12 @@ function FeedCard({
   );
 }
 
+const FeedCard = React.memo(FeedCardComponent);
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<"foryou" | "following">("foryou");
   const [likedItems, setLikedItems] = useState<Record<string, boolean>>({});
   const [posts, setPosts] = useState<Post[]>([]);
@@ -458,25 +511,90 @@ export default function HomeScreen() {
   const { user, isLoaded } = useUser();
    const [savedOutfits, setSavedOutfits] = useState<any>({});
    
+  // Comment modal state
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [savedItems, setSavedItems] = useState<Record<string, boolean>>({});
+  const [persistedDataLoaded, setPersistedDataLoaded] = useState(false);
 
+// Load liked and saved items from AsyncStorage
 useEffect(() => {
-  const loadSavedOutfits = async () => {
-    const outfits: any = {};
-
-    for (const d of weekDates) {
-      const key = `fitsense_outfit_${d.label}_${d.date}`;
-      const stored = await AsyncStorage.getItem(key);
-
-      if (stored) {
-        outfits[key] = JSON.parse(stored);
-      }
+  const loadPersistedData = async () => {
+    if (!user?.id) {
+      console.log('User not loaded yet, skipping load');
+      return;
     }
-
-    setSavedOutfits(outfits);
+    try {
+      const likedKey = `fitsense_liked_${user?.id}`;
+      const savedKey = `fitsense_saved_${user?.id}`;
+      console.log('Loading persisted data from keys:', likedKey, savedKey);
+      const likedJson = await AsyncStorage.getItem(likedKey);
+      const savedJson = await AsyncStorage.getItem(savedKey);
+      console.log('Loaded likedJson:', likedJson);
+      console.log('Loaded savedJson:', savedJson);
+      if (likedJson) setLikedItems(JSON.parse(likedJson));
+      if (savedJson) setSavedItems(JSON.parse(savedJson));
+      setPersistedDataLoaded(true);
+    } catch (e) {
+      console.warn('Error loading persisted data:', e);
+      setPersistedDataLoaded(true);
+    }
   };
+  loadPersistedData();
+}, [user?.id]);
 
-  loadSavedOutfits();
-}, [weekDates]);
+// Persist liked items whenever they change (but only AFTER loading initial data)
+useEffect(() => {
+  if (!persistedDataLoaded) return; // Don't persist until data is loaded
+  const persistLikedItems = async () => {
+    try {
+      await AsyncStorage.setItem(
+        `fitsense_liked_${user?.id}`,
+        JSON.stringify(likedItems)
+      );
+    } catch (e) {
+      console.warn('Error saving liked items:', e);
+    }
+  };
+  if (user?.id) persistLikedItems();
+}, [likedItems, user?.id, persistedDataLoaded]);
+
+// Persist saved items whenever they change (but only AFTER loading initial data)
+useEffect(() => {
+  if (!persistedDataLoaded) return; // Don't persist until data is loaded
+  const persistSavedItems = async () => {
+    try {
+      const key = `fitsense_saved_${user?.id}`;
+      console.log('Persisting saved items to key:', key, 'value:', savedItems);
+      await AsyncStorage.setItem(key, JSON.stringify(savedItems));
+      console.log('Successfully persisted saved items');
+    } catch (e) {
+      console.warn('Error saving saved items:', e);
+    }
+  };
+  if (user?.id) persistSavedItems();
+}, [savedItems, user?.id, persistedDataLoaded]);
+
+
+  useEffect(() => {
+    const loadSavedOutfits = async () => {
+      const outfits: any = {};
+
+      for (const d of weekDates) {
+        const key = `fitsense_outfit_${d.label}_${d.date}`;
+        const stored = await AsyncStorage.getItem(key);
+
+        if (stored) {
+          outfits[key] = JSON.parse(stored);
+        }
+      }
+
+      setSavedOutfits(outfits);
+    };
+
+    loadSavedOutfits();
+  }, [weekDates]);
 
 
   if (!isLoaded) {
@@ -502,17 +620,8 @@ useEffect(() => {
 
   async function getAuthHeader(): Promise<string | null> {
     if (!user?.id) return null;
-    // Keep dev-token fallback (works with current server verifyClerkToken)
-    let authHeader = `Bearer dev:${user.id}`;
-    try {
-      if (getToken) {
-        const token = await getToken({ template: "supabase" });
-        if (token) authHeader = `Bearer ${token}`;
-      }
-    } catch {
-      authHeader = `Bearer dev:${user.id}`;
-    }
-    return authHeader;
+    // Use dev-token (works with current server verifyClerkToken)
+    return `Bearer dev:${user.id}`;
   }
 
   async function fetchPosts() {
@@ -545,10 +654,12 @@ useEffect(() => {
         image_url: String(p.image_url),
         caption: p.caption ?? null,
         owner_clerk_id: String(p.owner_clerk_id ?? ""),
+        owner_profile: p.owner_profile ?? null,
         tags: Array.isArray(p.tags) ? p.tags.map((t: any) => String(t)) : null,
         created_at: String(p.created_at ?? ""),
-        score: typeof p.similarity_score === "number" ? Math.round(p.similarity_score * 100) : undefined,
-        isLiked: p.is_liked === true,
+        score: typeof p.score === "number" ? p.score : undefined,
+        likes_count: 0,
+        comments_count: p.comments_count ?? 0,
       }));
       
       // Update likedItems map for local heart states
@@ -559,6 +670,21 @@ useEffect(() => {
       setLikedItems(newLikedMap);
       
       setPosts(normalized);
+
+      // Fetch like counts for all posts
+      const postIds = normalized.map((p) => p.id);
+      if (postIds.length > 0) {
+        const likesResp = await fetch(
+          `${SERVER_BASE}/api/posts/likes-count?${postIds.map((id) => `post_ids=${id}`).join("&")}`,
+          {
+            headers: { Authorization: authHeader },
+          },
+        );
+        const likesJson = await likesResp.json().catch(() => ({}));
+        if (likesResp.ok && likesJson.likeCounts) {
+          setLikeCounts(likesJson.likeCounts);
+        }
+      }
     } catch (e) {
       console.error("fetchPosts error", e);
       const msg =
@@ -579,8 +705,6 @@ useEffect(() => {
     const authHeader = await getAuthHeader();
     if (!authHeader || !user?.id) return;
 
-    console.log("LIKE CLICKED:", user.id, post_id);
-
     // optimistic UI (local heart state)
     setLikedItems((prev) => ({ ...prev, [post_id]: !prev[post_id] }));
 
@@ -598,7 +722,6 @@ useEffect(() => {
         console.error("LIKE ERROR:", json);
         throw new Error((json as any)?.error || "like-toggle failed");
       }
-      console.log("LIKE RESULT:", json);
 
       // Optionally refetch feed so personalization kicks in immediately
       fetchPosts();
@@ -637,13 +760,14 @@ useEffect(() => {
       })
       .catch(() => {});
   }, [user]);
+
   const userWardrobe = useMemo(() => {
     if (items && items.length > 0) {
       return buildWardrobeFromItems(items);
     }
     return FALLBACK_WARDROBE;
   }, [items]);
-  console.log("WARDROBE AFTER BUILD:", userWardrobe);
+
   // Load or generate today's outfit on mount
   useEffect(() => {
     if (!items || items.length === 0) return;
@@ -652,12 +776,9 @@ useEffect(() => {
     setOutfitLoading(true);
 
     const wardrobe = buildWardrobeFromItems(items);
-    console.log("ITEMS FROM API:", items);
-    console.log("BUILT WARDROBE:", wardrobe);
 
     getOrCreateDailyOutfit(wardrobe, user?.id || undefined)
       .then((o) => {
-        console.log("GENERATED OUTFIT:", o);
         if (!cancelled) {
           setOutfit(o);
           setOutfitLoading(false);
@@ -682,7 +803,7 @@ useEffect(() => {
       .catch(() => setOutfitLoading(false));
   };
 
-  console.log("WARDROBE ITEMS", items);
+
     if (!isLoaded) {
     return null;
   }
@@ -788,20 +909,20 @@ useEffect(() => {
         <View style={styles.sectionPad}>
           <Text style={styles.sectionLabel}>AI Tools</Text>
           <View style={styles.aiGrid}>
-           <AICard
-            icon="✦"
-            title="Outfit Maker"
-            subtitle="AI creates looks from your wardrobe"
-            accentColor={PRIMARY}
-            onPress={() =>
-              router.push({
-                pathname: "../outfitMaker",
-                params: {
-                  wardrobe: JSON.stringify(items),
-                },
-              })
-            }
-          />
+            <AICard
+              icon="✦"
+              title="Outfit Maker"
+              subtitle="AI creates looks from your wardrobe"
+              accentColor={PRIMARY}
+              onPress={() =>
+                router.push({
+                  pathname: "../outfitMaker",
+                  params: {
+                    wardrobe: JSON.stringify(items),
+                  },
+                })
+              }
+            />
             <AICard
               icon="◈"
               title="Fashion Chat"
@@ -811,59 +932,40 @@ useEffect(() => {
           </View>
         </View>
 
-{/* ── Weekly Planner ── */}
-<View style={styles.sectionPad}>
-  <View style={styles.sectionHeader}>
-    <Text style={styles.sectionLabel}>Your Week</Text>
-    <Text style={styles.sectionSub}>Planner</Text>
-  </View>
-
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    contentContainerStyle={{ gap: 12 }}
-  >
-{weekDates.map((d, i) => {
-  const key = `fitsense_outfit_${d.label}_${d.date}`;
-
-  return (
-    <DayOutfitCard
-      key={i}
-      label={d.label}
-      date={d.date}
-      outfit={savedOutfits[key]}
-      onPress={() =>
-        router.push({
-          pathname: "/dailyOutfit",
-          params: {
-            wardrobe: JSON.stringify(items),
-            day: d.label,
-            date: d.date,
-          },
-        })
-      }
-    />
-  );
-})}
-  </ScrollView>
-</View>
-
-        {/* ── Week Strip ── */}
+        {/* ── Weekly Planner ── */}
         <View style={styles.sectionPad}>
-          <Text style={styles.sectionLabelSmall}>This Week</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>Your Week</Text>
+            <Text style={styles.sectionSub}>Planner</Text>
+          </View>
+
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.weekRow}
+            contentContainerStyle={{ gap: 12 }}
           >
-            {weekDates.map((d) => (
-              <WeekDayChip
-                key={d.label}
-                label={d.label}
-                date={d.date}
-                isToday={d.isToday}
-              />
-            ))}
+            {weekDates.map((d, i) => {
+              const key = `fitsense_outfit_${d.label}_${d.date}`;
+
+              return (
+                <DayOutfitCard
+                  key={i}
+                  label={d.label}
+                  date={d.date}
+                  outfit={savedOutfits[key]}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/dailyOutfit",
+                      params: {
+                        wardrobe: JSON.stringify(items),
+                        day: d.label,
+                        date: d.date,
+                      },
+                    })
+                  }
+                />
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -877,7 +979,7 @@ useEffect(() => {
           ) : postsError ? (
             <View style={{ paddingVertical: 16 }}>
               <Text style={{ color: "rgba(255,255,255,0.55)" }}>
-                Couldn’t load posts. Pull to refresh.
+                Couldn't load posts. Pull to refresh.
               </Text>
             </View>
           ) : posts.length === 0 ? (
@@ -892,10 +994,18 @@ useEffect(() => {
               const derivedItem = {
                 id: p.id,
                 image: p.image_url,
-                matchPercent: typeof p.similarity_score === 'number' ? Math.round(p.similarity_score * 100) : 0,
-                username: owner.username || (p.owner_clerk_id === user?.id ? currentUserName : "Unknown"),
-                avatar: owner.profile_image_url || (p.owner_clerk_id === user?.id ? currentUserAvatar : DEFAULT_AVATAR),
-                liked: !!likedItems[p.id],
+                matchPercent: 90,
+                username:
+                  p.owner_clerk_id === user?.id
+                    ? currentUserName
+                    : p.owner_profile?.username ||
+                      p.owner_profile?.full_name ||
+                      p.owner_clerk_id,
+                avatar:
+                  p.owner_clerk_id === user?.id
+                    ? currentUserAvatar
+                    : p.owner_profile?.profile_image_url || DEFAULT_AVATAR,
+                liked: false,
                 caption: p.caption ?? "",
                 tag: p.tags?.[0] ? `#${p.tags[0]}` : "",
               } as (typeof FEED_ITEMS)[0];
@@ -906,6 +1016,19 @@ useEffect(() => {
                   item={derivedItem}
                   liked={!!likedItems[p.id]}
                   onLike={() => handleLike(p.id)}
+                  likesCount={likeCounts[p.id] || 0}
+                  commentsCount={p.comments_count || 0}
+                  onCommentPress={() => {
+                    setSelectedPostId(p.id);
+                    setCommentModalVisible(true);
+                  }}
+                  saved={!!savedItems[p.id]}
+                  onSave={() => {
+                    setSavedItems((prev) => {
+                      const newState = { ...prev, [p.id]: !prev[p.id] };
+                      return newState;
+                    });
+                  }}
                 />
               );
             })
@@ -920,6 +1043,16 @@ useEffect(() => {
       >
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
+
+      {/* Comment Modal */}
+      {selectedPostId && (
+        <CommentModal
+          visible={commentModalVisible}
+          postId={selectedPostId}
+          onClose={() => setCommentModalVisible(false)}
+          serverBase={SERVER_BASE}
+        />
+      )}
     </View>
   );
 }
@@ -937,7 +1070,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start", // ✅ logo stays left
+    justifyContent: "flex-start",
     marginBottom: 16,
   },
   logoText: {
@@ -1299,59 +1432,120 @@ const styles = StyleSheet.create({
   },
   username: { color: "#fff", fontSize: 14, fontWeight: "700" },
   actions: { flexDirection: "row", alignItems: "center", gap: 18 },
-  actionBtn: { padding: 2 },
+  actionBtn: { padding: 8, borderRadius: 8, minWidth: 40, alignItems: 'center', justifyContent: 'center' },
   caption: { color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 20, fontWeight: '400' },
 
+  // ── Day Card — split panel ─────────────────────────────────────────────────
   dayCard: {
-  width: 90,
-  height: 140,
-  borderRadius: 20,
-  backgroundColor: "#111",
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.08)",
-  alignItems: "center",
-  justifyContent: "space-between",
-  paddingVertical: 14,
-},
+    width: DAY_CARD_W,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  dayPanels: {
+    flexDirection: "row",
+    height: DAY_IMG_H,
+    overflow: "hidden",
+  },
+  dayPanelLeft: {
+    width: DAY_HALF,
+    height: DAY_IMG_H,
+    backgroundColor: "#EDE8E2",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  dayPanelRight: {
+    width: DAY_HALF,
+    height: DAY_IMG_H,
+    backgroundColor: "#E8E3DC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  dayPanelImg: {
+    width: DAY_HALF,
+    height: DAY_IMG_H - 18,
+  },
+  dayPanelLabel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 16,
+    backgroundColor: "rgba(235,230,222,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayPanelLabelTxt: {
+    fontSize: 7,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    color: "#7A6A5A",
+  },
+  dayDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: DAY_IMG_H,
+    backgroundColor: "#C8BFB5",
+  },
+  dayEmpty: {
+    height: DAY_IMG_H,
+    backgroundColor: "#1A1A1A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayEmoji: { fontSize: 28 },
+  dayPlus: { color: PRIMARY, fontSize: 28, fontWeight: "700" },
 
-dayLabel: {
-  color: "rgba(255,255,255,0.6)",
-  fontSize: 12,
-  fontWeight: "600",
-},
+  // ✅ FIXED: dayLabelStrip now properly closed, dayLabel is its own key
+  dayLabelStrip: {
+    backgroundColor: "#111",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  dayLabel: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  dayDate: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
 
-dayDate: {
-  color: "#fff",
-  fontSize: 14,
-  fontWeight: "700",
-},
-
-addCircle: {
-  width: 42,
-  height: 42,
-  borderRadius: 21,
-  backgroundColor: "rgba(255,107,0,0.12)",
-  borderWidth: 1,
-  borderColor: "rgba(255,107,0,0.5)",
-  alignItems: "center",
-  justifyContent: "center",
-},
-
-addPlus: {
-  color: "#FF6B00",
-  fontSize: 24,
-  fontWeight: "700",
-},
-outfitStack: {
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 4,
-},
-outfitImage: {
+  addCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,107,0,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,107,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addPlus: {
+    color: "#FF6B00",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  outfitStack: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  outfitImage: {
     width: 40,
     height: 40,
     resizeMode: "contain",
   },
+
+  // FAB
   fab: {
     position: "absolute",
     bottom: 24,

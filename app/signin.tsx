@@ -95,7 +95,7 @@ export default function SignIn() {
   // Redirect if already signed in
   useEffect(() => {
     if (isSignedIn) {
-      router.replace("/home");
+      router.replace("/pref");
     }
   }, [isSignedIn]);
 
@@ -173,7 +173,7 @@ export default function SignIn() {
 
       if (createdSessionId) {
         await oAuthSetActive!({ session: createdSessionId });
-        router.replace("/home");
+        router.replace("/pref");
       }
     } catch (err: any) {
       console.error("OAuth error:", err);
@@ -210,7 +210,7 @@ export default function SignIn() {
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        router.replace("/home");
+        router.replace("/pref");
       } else {
         // Handle other statuses if needed
         console.log("Sign in result:", result);
