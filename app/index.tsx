@@ -2,67 +2,73 @@
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Redirect } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+
+type Destination = "home" | "pref" | "signin" | null;
 
 export default function Index() {
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
-  const [isChecking, setIsChecking] = useState(true);
-  const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const [destination, setDestination] = useState<Destination>(null);
+  const checkedForUserId = useRef<string | null>(null);
 
   useEffect(() => {
-    checkOnboarding();
-  }, [isSignedIn, user?.id]);
+    if (!isLoaded) return;
 
-  const checkOnboarding = async () => {
-    if (!isSignedIn) {
-      setIsChecking(false);
+    if (!isSignedIn || !user?.id) {
+      setDestination("signin");
+      checkedForUserId.current = null;
       return;
     }
 
-    if (!user?.id) return;
+    // Don't re-run if we already completed the check for this user
+    if (checkedForUserId.current === user.id) return;
 
-    try {
-      // 1. Clerk metadata says done
-      const clerkDone = (user.unsafeMetadata as any)?.onboardingComplete;
-      if (clerkDone === true) {
-        setOnboardingComplete(true);
-        setIsChecking(false);
-        return;
+    const userId = user.id;
+    checkedForUserId.current = userId;
+
+    // Reset destination to null (shows spinner) while we check
+    setDestination(null);
+
+    const check = async () => {
+      const cacheKey = `fitsense_pref_done_${userId}`;
+
+      try {
+        // 1. Fast path: local cache
+        const cached = await AsyncStorage.getItem(cacheKey);
+        if (cached === "true") {
+          setDestination("home");
+          return;
+        }
+
+        // 2. DB check
+        const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000";
+        const res = await fetch(
+          `${apiBase}/api/profile/preferences/${encodeURIComponent(userId)}`,
+          { headers: { "x-user-id": userId } }
+        );
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.onboarding_complete === true) {
+            await AsyncStorage.setItem(cacheKey, "true");
+            setDestination("home");
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("[index] check failed:", err);
       }
 
-      // 2. Local storage says done
-      const localDone = await AsyncStorage.getItem("fitsense_onboarding_complete");
-      if (localDone === "true") {
-        setOnboardingComplete(true);
-        setIsChecking(false);
-        return;
-      }
+      setDestination("pref");
+    };
 
-      // 3. Existing account (older than 2 minutes) → skip onboarding
-      const accountAgeMs = Date.now() - new Date(user.createdAt!).getTime();
-      const isExistingUser = accountAgeMs > 2 * 60 * 1000;
-      if (isExistingUser) {
-        // Cache it so we don't re-check next time
-        await AsyncStorage.setItem("fitsense_onboarding_complete", "true");
-        setOnboardingComplete(true);
-        setIsChecking(false);
-        return;
-      }
+    check();
+  }, [isLoaded, isSignedIn, user?.id]);
 
-      // 4. Brand new account — show onboarding
-      setOnboardingComplete(false);
-    } catch (e) {
-      console.log("Onboarding check error:", e);
-      // On any error, don't block existing users
-      setOnboardingComplete(true);
-    } finally {
-      setIsChecking(false);
-    }
-  };
-
-  if (!isLoaded || isChecking) {
+  // Show spinner until we know where to go
+  if (destination === null) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0a0a0a" }}>
         <ActivityIndicator size="large" color="#FF6B00" />
@@ -70,11 +76,7 @@ export default function Index() {
     );
   }
 
-  if (isSignedIn) {
-    return onboardingComplete
-      ? <Redirect href="/(tabs)/home" />
-      : <Redirect href="/pref" />;
-  }
-
+  if (destination === "home") return <Redirect href="/(tabs)/home" />;
+  if (destination === "pref") return <Redirect href="/pref" />;
   return <Redirect href="/signin" />;
 }

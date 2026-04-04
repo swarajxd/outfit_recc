@@ -271,11 +271,22 @@ export default function WardrobeScreen() {
       formData.append("user_id", userId);
       formData.append("use_imagen", chosenImagen3 ? "true" : "false");
 
-      const uploadResp = await fetch(
+      // Helper to add timeout to fetch (30 seconds for upload)
+      const fetchWithTimeout = (url: string, options: any, timeoutMs = 30000) =>
+        Promise.race([
+          fetch(url, options),
+          new Promise<Response>((_, reject) =>
+            setTimeout(() => reject(new Error('Upload request timeout')), timeoutMs)
+          ),
+        ]);
+
+      console.log(`[uploadToWardrobe] Starting upload to ${serverBase}/api/profile/upload-wardrobe`);
+      const uploadResp = await fetchWithTimeout(
         `${serverBase}/api/profile/upload-wardrobe`,
         { method: "POST", body: formData },
+        30000
       );
-      if (!uploadResp.ok) throw new Error("Upload failed");
+      if (!uploadResp.ok) throw new Error(`Upload failed: ${uploadResp.status}`);
       const { job_id: jobId } = await uploadResp.json();
       if (!jobId) throw new Error("No job_id returned");
 
@@ -288,33 +299,41 @@ export default function WardrobeScreen() {
       let attempts = 0;
       const poll = async (): Promise<void> => {
         attempts++;
-        const statusJson = await (
-          await fetch(
+        try {
+          const statusResp = await fetchWithTimeout(
             `${serverBase}/api/profile/job/${encodeURIComponent(jobId)}`,
-          )
-        ).json();
-        if (statusJson.status === "completed") {
-          const added = statusJson.results?.items_added || 0;
-          const isDup = statusJson.results?.all_duplicates;
-          const ai = statusJson.results?.items_imagen3 || 0;
-          setUploadProgress("");
-          setIsUploading(false);
-          Alert.alert(
-            isDup ? "Already in wardrobe" : "Done!",
-            isDup
-              ? "These items are already in your wardrobe."
-              : chosenImagen3
-                ? `${added} item(s) added with AI mannequin images (${ai} generated).`
-                : `${added} item(s) added in fast mode.`,
+            {},
+            15000  // 15 second timeout for polling
           );
-          fetchWardrobe();
-          return;
+          const statusJson = await statusResp.json();
+          if (statusJson.status === "completed") {
+            const added = statusJson.results?.items_added || 0;
+            const isDup = statusJson.results?.all_duplicates;
+            const ai = statusJson.results?.items_imagen3 || 0;
+            setUploadProgress("");
+            setIsUploading(false);
+            Alert.alert(
+              isDup ? "Already in wardrobe" : "Done!",
+              isDup
+                ? "These items are already in your wardrobe."
+                : chosenImagen3
+                  ? `${added} item(s) added with AI mannequin images (${ai} generated).`
+                  : `${added} item(s) added in fast mode.`,
+            );
+            fetchWardrobe();
+            return;
+          }
+          if (statusJson.status === "error")
+            throw new Error(statusJson.error || "Processing failed");
+          if (attempts >= 120) throw new Error("Processing timed out");
+          await new Promise((r) => setTimeout(r, 1000));
+          return poll();
+        } catch (err: any) {
+          if (attempts >= 120) throw err;
+          console.warn(`[poll attempt ${attempts}] Error:`, err.message);
+          await new Promise((r) => setTimeout(r, 1000));
+          return poll();
         }
-        if (statusJson.status === "error")
-          throw new Error(statusJson.error || "Processing failed");
-        if (attempts >= 120) throw new Error("Processing timed out");
-        await new Promise((r) => setTimeout(r, 1000));
-        return poll();
       };
       await poll();
     } catch (err: any) {
