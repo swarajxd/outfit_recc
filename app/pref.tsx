@@ -1103,8 +1103,11 @@ export default function SenseAIOnboarding() {
         }
       }
 
-      // 2. Mark locally so we don't re-check DB every cold start
+      // 2. Mark locally — use BOTH user-specific and legacy keys for maximum reliability
+      const storageKey = `fitsense_pref_done_${userId}`;
+      await AsyncStorage.setItem(storageKey, "true");
       await AsyncStorage.setItem("fitsense_onboarding_complete", "true");
+
       await AsyncStorage.setItem("fitsense_user_profile", JSON.stringify(profile));
 
       // 3. Update Clerk metadata as a secondary flag

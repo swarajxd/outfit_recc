@@ -1189,8 +1189,9 @@ router.get("/search", async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /api/profile/preferences/:clerkId
-// Returns { exists: true/false } — used by app/index.tsx at startup to know
-// whether to show the pref page or redirect to home.
+// Returns { onboarding_complete: true/false } — the single source of truth.
+// true  → redirect to home (user already did onboarding)
+// false → redirect to pref page
 router.get("/preferences/:clerkId", async (req, res) => {
   try {
     const { clerkId } = req.params;
@@ -1198,17 +1199,18 @@ router.get("/preferences/:clerkId", async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from("user_preferences")
-      .select("clerk_id")
+      .select("clerk_id, onboarding_complete")
       .eq("clerk_id", clerkId)
       .maybeSingle();
 
     if (error) {
-      // Table may not exist yet — treat as "not found" (show pref page)
-      console.warn("[preferences/get] Supabase error (table may not exist):", error.message);
-      return res.json({ exists: false });
+      console.warn("[preferences/get] Supabase error:", error.message);
+      return res.json({ onboarding_complete: false });
     }
 
-    return res.json({ exists: !!data });
+    const done = !!data && data.onboarding_complete === true;
+    console.log(`[preferences/get] ${clerkId} onboarding_complete=${done}`);
+    return res.json({ onboarding_complete: done });
   } catch (err) {
     console.error("[preferences/get] error:", err);
     res.status(500).json({ error: err.message || String(err) });
@@ -1241,6 +1243,7 @@ router.post("/preferences", async (req, res) => {
 
     const payload = {
       clerk_id: String(targetId),
+      onboarding_complete: true,          // <- the single source of truth flag
       gender: gender || null,
       styles: Array.isArray(styles) ? styles : [],
       favorite_colors: Array.isArray(favoriteColors) ? favoriteColors : [],
