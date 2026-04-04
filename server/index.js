@@ -519,6 +519,7 @@ app.post("/api/create-post", async (req, res) => {
       image_public_id: image_public_id ?? null,
       caption,
       tags: Array.isArray(tags) ? tags : [],
+      embedding_status: 'pending', // ✅ NEW: Explicitly set pending status
     };
 
     const { data, error } = await supabaseAdmin
