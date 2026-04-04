@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { updateTasteVector } = require("./tasteService");
 
 // ✅ NEW: Like Service
 // This service handles all logic related to post likes, including adding,
@@ -52,6 +53,36 @@ async function addLike(userId, postId) {
     }
 
     console.log(`[likeService] ✅ Like added successfully to DB`);
+
+    // ✅ UPDATE: Taste updated on like
+    // Fetch post embedding and update user taste vector asynchronously
+    (async () => {
+      try {
+        console.log(`[likeService] Fetching post ${postId} for taste update...`);
+        const { data: post, error: postError } = await supabaseAdmin
+          .from("posts")
+          .select("outfit_data")
+          .eq("id", postId)
+          .maybeSingle();
+
+        if (postError) {
+          console.error(`[likeService] Error fetching post for taste update:`, postError);
+          return;
+        }
+
+        const embedding = post?.outfit_data?.combined_embedding;
+        if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+          console.warn("[likeService] No embedding found, skipping taste update");
+          return;
+        }
+
+        console.log(`[likeService] Calling updateTasteVector for user ${userId}`);
+        await updateTasteVector(userId, embedding);
+      } catch (err) {
+        console.error(`[likeService] Taste update failed:`, err.message);
+      }
+    })();
+
     return { liked: true };
   } catch (err) {
     console.error(`[likeService] 💥 CRITICAL ERROR in addLike:`, err.message);
