@@ -9,10 +9,10 @@ import { Platform } from "react-native";
 export const getServerBase = (): string => {
   // Use Platform.select to return the correct URL based on platform
   const platformUrl = Platform.select({
-    web: "http://localhost:4000",
+    web: "http://127.0.0.1:4000",
     android: "http://10.0.2.2:4000",
-    ios: "http://localhost:4000",
-    default: "http://localhost:4000",
+    ios: "http://127.0.0.1:4000",
+    default: "http://127.0.0.1:4000",
   });
 
   // If we're on web, return the localhost URL immediately for safe same-machine dev

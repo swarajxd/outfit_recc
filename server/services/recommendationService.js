@@ -1,3 +1,6 @@
+const { getTasteVector } = require("./tasteService");
+const { getUserLikes } = require("./likeService");
+
 function dot(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return null;
   let s = 0;
@@ -17,7 +20,6 @@ function normalize(vec) {
 function extractItemEmbeddings(outfit_data) {
   if (!outfit_data || typeof outfit_data !== "object") return [];
 
-  // Check new outfit_data format from postVectorPipeline.js
   const items = Array.isArray(outfit_data.items) ? outfit_data.items : null;
   if (items) {
     return items
@@ -25,7 +27,6 @@ function extractItemEmbeddings(outfit_data) {
       .filter((v) => Array.isArray(v) && v.length === 512);
   }
 
-  // Backward compatibility with current wardrobe pipeline output.
   const vectors = Array.isArray(outfit_data.wardrobe_vectors)
     ? outfit_data.wardrobe_vectors
     : null;
@@ -35,95 +36,27 @@ function extractItemEmbeddings(outfit_data) {
       .filter((v) => Array.isArray(v) && v.length === 512);
   }
 
+  // Check if combined_embedding exists directly
+  if (Array.isArray(outfit_data.combined_embedding) && outfit_data.combined_embedding.length === 512) {
+    return [outfit_data.combined_embedding];
+  }
+
   return [];
-}
-
-async function getUserLikedPosts(supabaseAdmin, user_id) {
-  console.log("[for-you] USER ID:", user_id);
-  const { data: likes, error: likesErr } = await supabaseAdmin
-    .from("likes")
-    .select("*")
-    .eq("user_id", user_id);
-  if (likesErr) throw likesErr;
-  console.log("[for-you] LIKES COUNT:", (likes || []).length);
-
-  const likedPostIds = (likes || []).map((l) => l.post_id).filter(Boolean);
-  if (likedPostIds.length === 0) return { likedRows: likes || [], likedPosts: [] };
-
-  const { data: likedPosts, error: lpErr } = await supabaseAdmin
-    .from("posts")
-    .select("id,outfit_data")
-    .in("id", likedPostIds);
-  if (lpErr) throw lpErr;
-  console.log("[for-you] LIKED POSTS COUNT:", (likedPosts || []).length);
-  return { likedRows: likes || [], likedPosts: likedPosts || [] };
-}
-
-function buildUserVector(likedPosts) {
-  let all_embeddings = [];
-  for (const post of likedPosts || []) {
-    const embs = extractItemEmbeddings(post?.outfit_data);
-    all_embeddings.push(...embs.map((e) => e.map((v) => Number(v))));
-  }
-  
-  console.log("[for-you] TOTAL EMBEDDINGS USED:", all_embeddings.length);
-  if (all_embeddings.length === 0) return null;
-
-  const dim = all_embeddings[0].length;
-  const mean = new Array(dim).fill(0);
-  for (const emb of all_embeddings) {
-    for (let i = 0; i < dim; i++) mean[i] += emb[i];
-  }
-  for (let i = 0; i < dim; i++) mean[i] /= all_embeddings.length;
-
-  const user_vector = normalize(mean);
-  if (user_vector) {
-    console.log("[for-you] USER VECTOR BUILT, length:", user_vector.length);
-  }
-  return user_vector;
-}
-
-function computeSimilarity(user_vector, post) {
-  if (!user_vector) return 0;
-  const items = extractItemEmbeddings(post?.outfit_data);
-  let best_score = 0;
-  for (const emb of items) {
-    const embNorm = normalize(emb) || emb;
-    const score = dot(user_vector, embNorm);
-    if (typeof score === "number" && Number.isFinite(score)) {
-      if (score > best_score) best_score = score;
-    }
-  }
-  return best_score;
-}
-
-async function latestPosts(supabaseAdmin, limit = 20, likedIdsSet = new Set()) {
-  const { data, error } = await supabaseAdmin
-    .from("posts")
-    .select("id,image_url,caption,owner_clerk_id,tags,created_at,outfit_data")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  
-  return (data || []).map(p => ({
-    ...p,
-    is_liked: likedIdsSet.has(String(p.id)),
-    similarity_score: 0
-  }));
 }
 
 async function getForYouFeed(supabaseAdmin, user_id) {
   let likedIdsSet = new Set();
   try {
-    const { likedRows, likedPosts } = await getUserLikedPosts(supabaseAdmin, user_id);
-    const likedPostIds = (likedRows || []).map((r) => r.post_id).filter(Boolean);
+    // 1. Fetch user likes for persistence
+    const likedPostIds = user_id ? await getUserLikes(user_id) : [];
     likedIdsSet = new Set(likedPostIds.map(String));
-    
-    console.log("[for-you] Processing for-you feed for user:", user_id);
+    console.log("User likes fetched:", likedPostIds);
 
-    const user_vector = buildUserVector(likedPosts);
-    
-    // Fetch a pool of posts to recommend from
+    // 2. Fetch user taste vector
+    const taste_vector = user_id ? await getTasteVector(user_id) : null;
+    console.log("User taste:", taste_vector);
+
+    // 3. Fetch a pool of posts
     const { data: posts, error } = await supabaseAdmin
       .from("posts")
       .select("id,image_url,caption,owner_clerk_id,tags,outfit_data,created_at")
@@ -133,55 +66,77 @@ async function getForYouFeed(supabaseAdmin, user_id) {
     if (error) throw error;
     if (!posts || posts.length === 0) return [];
 
-    // Score and filter
-    const scored = posts.map((post) => {
-      // If we have a user vector, compute similarity
-      let similarity_score = 0;
-      if (user_vector) {
-        similarity_score = computeSimilarity(user_vector, post);
-      }
-      
-      return {
-        ...post,
-        similarity_score,
-        is_liked: likedIdsSet.has(String(post.id))
-      };
-    });
+    console.log("Ranking posts...");
 
-    // Sort: 
-    // 1. If user has preferences (user_vector), sort by similarity
-    // 2. Otherwise, just by recency (already done by SQL query)
-    if (user_vector) {
-      scored.sort((a, b) => {
-        // First, push already liked posts to the bottom to show new content
-        const aLiked = a.is_liked ? 1 : 0;
-        const bLiked = b.is_liked ? 1 : 0;
-        if (aLiked !== bLiked) return aLiked - bLiked;
-
-        // Then, sort by similarity score (descending)
-        if (b.similarity_score !== a.similarity_score) {
-          return b.similarity_score - a.similarity_score;
+    // 4. Score posts
+    const now = Date.now();
+    const scored = posts
+      .filter(p => p.outfit_data && extractItemEmbeddings(p.outfit_data).length > 0)
+      .map((post) => {
+        let similarity = 0;
+        if (taste_vector) {
+          const items = extractItemEmbeddings(post.outfit_data);
+          // Use best matching item for similarity
+          let best_sim = 0;
+          for (const emb of items) {
+            const sim = dot(taste_vector, normalize(emb) || emb);
+            if (sim > best_sim) best_sim = sim;
+          }
+          similarity = best_sim;
         }
-        // Recency as final fallback
-        return new Date(b.created_at) - new Date(a.created_at);
+
+        // Recency score: 1 / (current_time - created_at_ms + 1)
+        // Normalize time to days or hours to keep score meaningful
+        const ageMs = Math.max(0, now - new Date(post.created_at).getTime());
+        const ageHours = ageMs / (1000 * 60 * 60);
+        const recency_score = 1 / (ageHours + 1);
+
+        // Final score: 0.7 * similarity + 0.3 * recency
+        // If no taste vector, use recency only (similarity = 0)
+        const score = taste_vector ? (0.7 * similarity + 0.3 * recency_score) : recency_score;
+
+        return {
+          id: post.id,
+          image_url: post.image_url,
+          caption: post.caption,
+          owner_clerk_id: post.owner_clerk_id,
+          tags: post.tags,
+          created_at: post.created_at,
+          liked: likedIdsSet.has(String(post.id)),
+          score,
+          similarity
+        };
       });
-      console.log("[for-you] Personalized sort complete. Top score:", scored[0]?.similarity_score);
+
+    // 5. Sort by final score
+    scored.sort((a, b) => b.score - a.score);
+
+    if (taste_vector && scored.length > 0) {
+      console.log("Feed ranked using taste + recency");
+      console.log("Top post score:", scored[0].score);
     } else {
-      console.log("[for-you] No user preferences found, using recency-based feed");
+      console.log("Feed using recency-based fallback");
     }
 
-    // Limit to 20 for the feed
     return scored.slice(0, 20);
   } catch (err) {
     console.error("[for-you] Error generating For You feed:", err);
-    // Fallback to latest posts, passing the likedIdsSet if we managed to fetch it
-    return latestPosts(supabaseAdmin, 20, likedIdsSet);
+    // Fallback to latest posts
+    const { data } = await supabaseAdmin
+      .from("posts")
+      .select("id,image_url,caption,owner_clerk_id,tags,created_at")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    
+    return (data || []).map(p => ({
+      ...p,
+      liked: likedIdsSet.has(String(p.id)),
+      score: 0
+    }));
   }
 }
+
 module.exports = {
-  getUserLikedPosts,
-  buildUserVector,
-  computeSimilarity,
   getForYouFeed,
   dot,
   normalize,
