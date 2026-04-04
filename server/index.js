@@ -532,10 +532,12 @@ app.post("/api/recommend-zara", upload.any(), async (req, res) => {
     const userId =
       req.header("x-user-id") || req.body.user_id || "zara_official";
     const query = req.body.query || "";
+    const mode = req.body.mode || "";
 
     const form = new FormData();
     form.append("user_id", userId);
     if (query) form.append("query", query);
+    if (mode) form.append("mode", mode);
 
     // Support both `files` (current frontend) and legacy `file`.
     const uploads = Array.isArray(req.files) ? req.files : [];
