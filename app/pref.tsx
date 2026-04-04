@@ -483,38 +483,51 @@ const FITS = [
     label: "Oversized",
     image: require("../assets/pref/oversized.png"),
     shape: [40, 70, 60, 70, 40],
+    icon: "🧥",
+    desc: "Loose, relaxed silhouette",
   },
   {
     id: "slim",
     label: "Slim Fit",
     image: require("../assets/pref/slimfit.png"),
     shape: [30, 50, 45, 50, 30],
+    icon: "👔",
+    desc: "Close to the body",
   },
   {
     id: "relaxed",
     label: "Relaxed",
     image: require("../assets/pref/relaxedfit.png"),
     shape: [36, 60, 54, 60, 36],
+    icon: "😌",
+    desc: "Comfortable, easy fit",
   },
   {
     id: "boxy",
     label: "Boxy",
     image: require("../assets/pref/boxy.png"),
     shape: [45, 55, 55, 55, 45],
+    icon: "📦",
+    desc: "Square, straight cut",
   },
   {
     id: "tailored",
     label: "Tailored",
     image: require("../assets/pref/tailored.png"),
     shape: [28, 52, 44, 52, 28],
+    icon: "✂️",
+    desc: "Sharp, structured lines",
   },
   {
     id: "layered",
     label: "Layered",
     image: require("../assets/pref/layered.png"),
     shape: [42, 65, 58, 65, 42],
+    icon: "🧣",
+    desc: "Multi-piece styling",
   },
 ];
+
 
 function FitScreen({ step, total, onBack, onSkip, onContinue }: StepProps) {
   const { profile, set } = useContext(ProfileCtx);
@@ -1055,17 +1068,57 @@ export default function SenseAIOnboarding() {
 
   const handleFinish = async () => {
     try {
+      const userId = user?.id;
+      const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000";
+
+      // 1. Save full preferences to database (source of truth for "onboarding done")
+      if (userId) {
+        try {
+          await fetch(`${apiBase}/api/profile/preferences`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-id": userId,
+            },
+            body: JSON.stringify({
+              clerk_id: userId,
+              gender: profile.gender,
+              styles: profile.styles,
+              favoriteColors: profile.favoriteColors,
+              dislikedColors: profile.dislikedColors,
+              fit: profile.fit,
+              bodyType: profile.bodyType,
+              skinTone: profile.skinTone,
+              height: profile.height,
+              budget: profile.budget,
+              avoidItems: profile.avoidItems,
+              occasions: profile.occasions,
+              goals: profile.goals,
+            }),
+          });
+          console.log("[pref] Preferences saved to database for", userId);
+        } catch (dbErr) {
+          // Non-fatal — local cache will still mark done
+          console.warn("[pref] Could not save preferences to DB (non-fatal):", dbErr);
+        }
+      }
+
+      // 2. Mark locally so we don't re-check DB every cold start
       await AsyncStorage.setItem("fitsense_onboarding_complete", "true");
       await AsyncStorage.setItem("fitsense_user_profile", JSON.stringify(profile));
+
+      // 3. Update Clerk metadata as a secondary flag
       await user?.update({
         unsafeMetadata: { onboardingComplete: true },
       });
+
       router.replace("/(tabs)/home");
     } catch (error) {
       console.error("Error saving preferences:", error);
       router.replace("/(tabs)/home");
     }
   };
+
 
   const screens = [
     <WelcomeScreen onStart={next} />,

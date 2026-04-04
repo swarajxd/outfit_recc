@@ -32,7 +32,7 @@ export default function Index() {
         return;
       }
 
-      // 2. Local storage says done
+      // 2. Local storage says done (fast, avoids network on every launch)
       const localDone = await AsyncStorage.getItem("fitsense_onboarding_complete");
       if (localDone === "true") {
         setOnboardingComplete(true);
@@ -40,7 +40,29 @@ export default function Index() {
         return;
       }
 
-      // 3. Existing account (older than 2 minutes) → skip onboarding
+      // 3. Check database — authoritative source of truth (handles new devices / cleared storage)
+      try {
+        const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000";
+        const response = await fetch(
+          `${apiBase}/api/profile/preferences/${encodeURIComponent(user.id)}`,
+          { headers: { "x-user-id": user.id } }
+        );
+        if (response.ok) {
+          const { exists } = await response.json();
+          if (exists) {
+            // Cache it locally so we skip this DB check on subsequent launches
+            await AsyncStorage.setItem("fitsense_onboarding_complete", "true");
+            setOnboardingComplete(true);
+            setIsChecking(false);
+            return;
+          }
+        }
+      } catch (dbErr) {
+        // Network down / server not running — fall through to age check
+        console.warn("[index] DB preferences check failed (non-fatal):", dbErr);
+      }
+
+      // 4. Existing account (older than 2 minutes) → skip onboarding
       const accountAgeMs = Date.now() - new Date(user.createdAt!).getTime();
       const isExistingUser = accountAgeMs > 2 * 60 * 1000;
       if (isExistingUser) {
@@ -51,7 +73,7 @@ export default function Index() {
         return;
       }
 
-      // 4. Brand new account — show onboarding
+      // 5. Brand new account — show onboarding
       setOnboardingComplete(false);
     } catch (e) {
       console.log("Onboarding check error:", e);
@@ -61,6 +83,7 @@ export default function Index() {
       setIsChecking(false);
     }
   };
+
 
   if (!isLoaded || isChecking) {
     return (
