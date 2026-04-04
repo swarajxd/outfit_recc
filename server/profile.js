@@ -1260,7 +1260,22 @@ router.post("/preferences", async (req, res) => {
     };
 
     console.log(`[preferences/post] Upserting preferences for ${targetId}`);
+    console.log(`[preferences/post] Payload:`, JSON.stringify(payload, null, 2).substring(0, 500));
 
+    // First, check if table exists and get current data
+    let { data: existing, error: checkErr } = await supabaseAdmin
+      .from("user_preferences")
+      .select("clerk_id")
+      .eq("clerk_id", targetId)
+      .maybeSingle();
+
+    if (checkErr) {
+      console.warn("[preferences/post] Table check error (table may not exist):", checkErr.message);
+      existing = null;
+    }
+    console.log(`[preferences/post] Existing record found:`, !!existing);
+
+    // Use upsert (insert or update)
     const { data, error } = await supabaseAdmin
       .from("user_preferences")
       .upsert(payload, { onConflict: "clerk_id" })
@@ -1268,7 +1283,23 @@ router.post("/preferences", async (req, res) => {
       .single();
 
     if (error) {
-      console.error("[preferences/post] Supabase error:", error);
+      console.error("[preferences/post] Supabase upsert error:", error);
+      // Try manual upsert if onConflict fails
+      if (existing) {
+        console.log("[preferences/post] Falling back to UPDATE query");
+        const { data: updateData, error: updateError } = await supabaseAdmin
+          .from("user_preferences")
+          .update(payload)
+          .eq("clerk_id", targetId)
+          .select()
+          .single();
+        if (updateError) {
+          console.error("[preferences/post] UPDATE also failed:", updateError);
+          return res.status(500).json({ error: updateError.message || String(updateError) });
+        }
+        console.log(`[preferences/post] Updated preferences for ${targetId}`);
+        return res.json({ ok: true, preferences: updateData });
+      }
       return res.status(500).json({ error: error.message || String(error) });
     }
 

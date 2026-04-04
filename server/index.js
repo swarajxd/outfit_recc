@@ -10,6 +10,7 @@ const { spawn } = require("child_process");
 const cloudinary = require("cloudinary").v2;
 const { createClient } = require("@supabase/supabase-js");
 const profileRouter = require("./profile");
+const setupFeedRouter = require("./routes/feed");
 const { processPost } = require("./services/createPostPipeline");
 const { getForYouFeed } = require("./services/recommendationService");
 const { processPostVectorPipeline } = require("./services/postVectorPipeline");
@@ -17,6 +18,145 @@ const { toggleLike, getUserLikes } = require("./services/likeService");
 
 const PORT = process.env.PORT || 4000;
 const app = express();
+
+// configure cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// supabase admin client (service_role key) — must be stored server-side only
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
+
+// ---- Helper: verify clerk token (Robust for Dev) ----
+async function verifyClerkToken(req) {
+  // 1. Check custom header (common in this dev setup)
+  const xUserId = req.header("x-user-id");
+  if (xUserId) return xUserId;
+
+  // 2. Check Authorization header
+  const auth = req.headers.authorization;
+  if (!auth) return null;
+  
+  const token = auth.split(" ")[1];
+  if (!token) return null;
+
+  // 3. Handle dev prefix
+  if (token.startsWith("dev:")) {
+    return token.split(":")[1];
+  }
+
+  // 4. Fallback: If it's a long string (JWT), try to extract user_id (sub)
+  // For now, in dev, we might just return the token itself if it looks like a user ID
+  // or return null if it looks like a real JWT that needs verification.
+  if (token.length < 50) return token; // Likely a raw user ID
+
+  return null;
+}
+
+async function fetchClerkUserById(clerkId) {
+  const secretRaw =
+    process.env.CLERK_SECRET_KEY ||
+    process.env.CLERK_API_KEY ||
+    process.env.EXPO_CLERK_SECRET_KEY ||
+    "";
+  const secret = String(secretRaw).trim();
+  if (!secret || !clerkId) return null;
+  try {
+    const resp = await fetch(
+      `${CLERK_API_BASE}/users/${encodeURIComponent(String(clerkId))}`,
+      { headers: { Authorization: `Bearer ${secret}` } },
+    );
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+function mapOwnerProfileFromClerk(clerkUser) {
+  if (!clerkUser) return null;
+  const firstName = clerkUser.first_name || "";
+  const lastName = clerkUser.last_name || "";
+  const fullName = `${firstName} ${lastName}`.trim() || null;
+  
+  // Generate username from first/last name if not set
+  let username = clerkUser.username || null;
+  if (!username && (firstName || lastName)) {
+    // Create username like "bhaviths.shetty" or just "bhaviths"
+    username = firstName.toLowerCase();
+    if (lastName) {
+      username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
+    }
+  }
+  
+  // Fallback: use email prefix if no name
+  let email = null;
+  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
+    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
+  } else if (clerkUser.primary_email_address?.email_address) {
+    email = clerkUser.primary_email_address.email_address;
+  }
+  
+  if (!username && email) {
+    username = email.split("@")[0];
+  }
+  
+  return {
+    clerk_id: clerkUser.id ? String(clerkUser.id) : null,
+    username: username ? String(username) : null,
+    full_name: fullName,
+    profile_image_url: clerkUser.image_url || clerkUser.profile_image_url || null,
+  };
+}
+
+// ---- Helper: normalize Clerk user data ----
+function normalizeClerkUser(clerkUser) {
+  if (!clerkUser || typeof clerkUser !== "object") return null;
+  
+  const firstName = clerkUser.first_name || "";
+  const lastName = clerkUser.last_name || "";
+  const fullName = `${firstName} ${lastName}`.trim() || null;
+  
+  // Generate username from first/last name if not set
+  let username = clerkUser.username || null;
+  if (!username && (firstName || lastName)) {
+    // Create username like "bhaviths.shetty" or just "bhaviths"
+    username = firstName.toLowerCase();
+    if (lastName) {
+      username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
+    }
+  }
+  
+  // Fallback: use email prefix if no name
+  let email = null;
+  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
+    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
+  } else if (clerkUser.primary_email_address?.email_address) {
+    email = clerkUser.primary_email_address.email_address;
+  }
+  
+  if (!username && email) {
+    username = email.split("@")[0];
+  }
+  
+  const profileImage = clerkUser.image_url || clerkUser.profile_image_url || null;
+  
+  const normalized = {
+    clerk_id: clerkUser.id ? String(clerkUser.id) : null,
+    username: username ? String(username) : null,
+    full_name: fullName ? String(fullName) : null,
+    profile_image_url: profileImage ? String(profileImage) : null,
+    role: null,
+    bio: null,
+  };
+  
+  return normalized;
+}
 
 // Outfit model: run from server's outfit_model directory
 const SERVER_DIR = __dirname;
@@ -49,6 +189,9 @@ app.use("/static", express.static(path.join(REPO_OUTFIT)));
 
 // Mount profile routes
 app.use("/api/profile", profileRouter);
+
+// Mount feed routes
+app.use("/api", setupFeedRouter(supabaseAdmin, fetchClerkUserById, mapOwnerProfileFromClerk, verifyClerkToken));
 
 // ---- endpoint: list posts for profile (Supabase) ----
 app.get("/api/profile/posts", async (req, res) => {
@@ -128,75 +271,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
 });
-
-// configure cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// supabase admin client (service_role key) — must be stored server-side only
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-);
-
-async function fetchClerkUserById(clerkId) {
-  const secretRaw =
-    process.env.CLERK_SECRET_KEY ||
-    process.env.CLERK_API_KEY ||
-    process.env.EXPO_CLERK_SECRET_KEY ||
-    "";
-  const secret = String(secretRaw).trim();
-  if (!secret || !clerkId) return null;
-  try {
-    const resp = await fetch(
-      `${CLERK_API_BASE}/users/${encodeURIComponent(String(clerkId))}`,
-      { headers: { Authorization: `Bearer ${secret}` } },
-    );
-    if (!resp.ok) return null;
-    return await resp.json();
-  } catch {
-    return null;
-  }
-}
-
-function mapOwnerProfileFromClerk(clerkUser) {
-  if (!clerkUser) return null;
-  const firstName = clerkUser.first_name || "";
-  const lastName = clerkUser.last_name || "";
-  const fullName = `${firstName} ${lastName}`.trim() || null;
-  
-  // Generate username from first/last name if not set
-  let username = clerkUser.username || null;
-  if (!username && (firstName || lastName)) {
-    // Create username like "bhaviths.shetty" or just "bhaviths"
-    username = firstName.toLowerCase();
-    if (lastName) {
-      username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
-    }
-  }
-  
-  // Fallback: use email prefix if no name
-  let email = null;
-  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
-    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
-  } else if (clerkUser.primary_email_address?.email_address) {
-    email = clerkUser.primary_email_address.email_address;
-  }
-  
-  if (!username && email) {
-    username = email.split("@")[0];
-  }
-  
-  return {
-    clerk_id: clerkUser.id ? String(clerkUser.id) : null,
-    username: username ? String(username) : null,
-    full_name: fullName,
-    profile_image_url: clerkUser.image_url || clerkUser.profile_image_url || null,
-  };
-}
 
 // ---- Start outfit model API (Python) from repo's outfit_model ----
 let outfitProcess = null;
@@ -344,76 +418,6 @@ function waitForOutfit(timeoutMs = 60000) {
   });
 }
 
-// ---- Helper: verify clerk token (Robust for Dev) ----
-async function verifyClerkToken(req) {
-  // 1. Check custom header (common in this dev setup)
-  const xUserId = req.header("x-user-id");
-  if (xUserId) return xUserId;
-
-  // 2. Check Authorization header
-  const auth = req.headers.authorization;
-  if (!auth) return null;
-  
-  const token = auth.split(" ")[1];
-  if (!token) return null;
-
-  // 3. Handle dev prefix
-  if (token.startsWith("dev:")) {
-    return token.split(":")[1];
-  }
-
-  // 4. Fallback: If it's a long string (JWT), try to extract user_id (sub)
-  // For now, in dev, we might just return the token itself if it looks like a user ID
-  // or return null if it looks like a real JWT that needs verification.
-  if (token.length < 50) return token; // Likely a raw user ID
-
-  return null;
-}
-
-// ---- Helper: normalize Clerk user data ----
-function normalizeClerkUser(clerkUser) {
-  if (!clerkUser || typeof clerkUser !== "object") return null;
-  
-  const firstName = clerkUser.first_name || "";
-  const lastName = clerkUser.last_name || "";
-  const fullName = `${firstName} ${lastName}`.trim() || null;
-  
-  // Generate username from first/last name if not set
-  let username = clerkUser.username || null;
-  if (!username && (firstName || lastName)) {
-    // Create username like "bhaviths.shetty" or just "bhaviths"
-    username = firstName.toLowerCase();
-    if (lastName) {
-      username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
-    }
-  }
-  
-  // Fallback: use email prefix if no name
-  let email = null;
-  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
-    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
-  } else if (clerkUser.primary_email_address?.email_address) {
-    email = clerkUser.primary_email_address.email_address;
-  }
-  
-  if (!username && email) {
-    username = email.split("@")[0];
-  }
-  
-  const profileImage = clerkUser.image_url || clerkUser.profile_image_url || null;
-  
-  const normalized = {
-    clerk_id: clerkUser.id ? String(clerkUser.id) : null,
-    username: username ? String(username) : null,
-    full_name: fullName ? String(fullName) : null,
-    profile_image_url: profileImage ? String(profileImage) : null,
-    role: null,
-    bio: null,
-  };
-  
-  return normalized;
-}
-
 // ---- endpoint: get Cloudinary signature for upload ----
 app.post("/api/cloudinary-sign", async (req, res) => {
   try {
@@ -547,92 +551,6 @@ app.post("/api/create-post", async (req, res) => {
     res.json({ ok: true, post: data });
   } catch (err) {
     console.error("create-post error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
-  }
-});
-
-// ---- endpoint: for-you feed (personalized) ----
-app.get("/api/for-you", async (req, res) => {
-  try {
-    const userId = await verifyClerkToken(req);
-    console.log(`[for-you] Request from user: ${userId}`);
-    
-    // Get recommendations (personalized if userId exists, otherwise recency-based)
-    const data = await getForYouFeed(supabaseAdmin, userId);
-
-    // Build owner profiles map from Clerk
-    const ownerIds = Array.from(
-      new Set((data || []).map((p) => p.owner_clerk_id).filter(Boolean)),
-    );
-    const ownerMap = new Map();
-    await Promise.all(
-      ownerIds.map(async (id) => {
-        const clerkUser = await fetchClerkUserById(id);
-        ownerMap.set(String(id), mapOwnerProfileFromClerk(clerkUser));
-      }),
-    );
-
-    // Rewrite URLs
-    const nodeBase = `${req.protocol}://${req.get("host")}`;
-    const posts = (data || []).map((p) => {
-      const rawImg = p.image_url || p.image_path;
-      // Handle both Cloudinary (starts with http) and local /static/ paths
-      if (
-        rawImg &&
-        rawImg.match(
-          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
-        )
-      ) {
-        const fixedImg = rawImg.replace(
-          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
-          `${nodeBase}/static/`,
-        );
-        p.image_url = fixedImg;
-        p.image_path = fixedImg;
-      } else if (rawImg) {
-        p.image_url = rawImg;
-        p.image_path = rawImg;
-      }
-      p.owner_profile = ownerMap.get(String(p.owner_clerk_id)) || null;
-      return p;
-    });
-
-    // Fetch comment counts and user likes
-    const postIds = (data || []).map((p) => p.id);
-    const commentCounts = {};
-    let likedPostIds = [];
-
-    if (postIds.length > 0) {
-      // Fetch comment counts
-      const { data: countsData } = await supabaseAdmin
-        .from("comments")
-        .select("post_id")
-        .in("post_id", postIds);
-      
-      if (countsData) {
-        countsData.forEach(c => {
-          commentCounts[c.post_id] = (commentCounts[c.post_id] || 0) + 1;
-        });
-      }
-
-      // Fetch viewer's likes to show correct heart state
-      if (userId) {
-        likedPostIds = await getUserLikes(userId);
-      }
-    }
-
-    const likedIdsSet = new Set(likedPostIds.map(String));
-
-    // Add comment counts and is_liked status
-    const postsWithCounts = posts.map((p) => ({
-      ...p,
-      comments_count: commentCounts[p.id] || 0,
-      is_liked: likedIdsSet.has(String(p.id)),
-    }));
-
-    res.json({ posts: postsWithCounts });
-  } catch (err) {
-    console.error("for-you error", err);
     res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
@@ -887,10 +805,12 @@ app.post("/api/recommend-zara", upload.any(), async (req, res) => {
     const userId =
       req.header("x-user-id") || req.body.user_id || "zara_official";
     const query = req.body.query || "";
+    const mode = req.body.mode || "";
 
     const form = new FormData();
     form.append("user_id", userId);
     if (query) form.append("query", query);
+    if (mode) form.append("mode", mode);
 
     // Support both `files` (current frontend) and legacy `file`.
     const uploads = Array.isArray(req.files) ? req.files : [];

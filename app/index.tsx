@@ -43,7 +43,11 @@ export default function Index() {
         }
 
         // 2. DB check
-        const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000";
+        let apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000";
+        if (apiBase.endsWith("/")) {
+          apiBase = apiBase.slice(0, -1);
+        }
+        
         const res = await fetch(
           `${apiBase}/api/profile/preferences/${encodeURIComponent(userId)}`,
           { headers: { "x-user-id": userId } }
