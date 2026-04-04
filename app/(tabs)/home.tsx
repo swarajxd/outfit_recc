@@ -654,18 +654,18 @@ useEffect(() => {
         image_url: String(p.image_url),
         caption: p.caption ?? null,
         owner_clerk_id: String(p.owner_clerk_id ?? ""),
-        owner_profile: p.owner_profile ?? null,
+        owner_profile: p.owner_profile,
         tags: Array.isArray(p.tags) ? p.tags.map((t: any) => String(t)) : null,
         created_at: String(p.created_at ?? ""),
-        score: typeof p.score === "number" ? p.score : undefined,
-        likes_count: 0,
-        comments_count: p.comments_count ?? 0,
+        score: typeof p.score === "number" ? Math.round(p.score * 100) : undefined,
+        liked: p.liked === true,
+        comments_count: p.comments_count || 0,
       }));
       
-      // Update likedItems map for local heart states
+      // Update likedItems map for local heart states from backend
       const newLikedMap: Record<string, boolean> = {};
       normalized.forEach(p => {
-        if (p.isLiked) newLikedMap[p.id] = true;
+        if (p.liked) newLikedMap[p.id] = true;
       });
       setLikedItems(newLikedMap);
       
@@ -991,21 +991,15 @@ useEffect(() => {
           ) : (
             posts.map((p: any) => {
               const owner = p.owner_profile || {};
+              const isPostLiked = !!likedItems[p.id];
+
               const derivedItem = {
                 id: p.id,
                 image: p.image_url,
-                matchPercent: 90,
-                username:
-                  p.owner_clerk_id === user?.id
-                    ? currentUserName
-                    : p.owner_profile?.username ||
-                      p.owner_profile?.full_name ||
-                      p.owner_clerk_id,
-                avatar:
-                  p.owner_clerk_id === user?.id
-                    ? currentUserAvatar
-                    : p.owner_profile?.profile_image_url || DEFAULT_AVATAR,
-                liked: false,
+                matchPercent: typeof p.score === 'number' ? p.score : 0,
+                username: owner.username || (p.owner_clerk_id === user?.id ? currentUserName : "Unknown"),
+                avatar: owner.profile_image_url || (p.owner_clerk_id === user?.id ? currentUserAvatar : DEFAULT_AVATAR),
+                liked: isPostLiked,
                 caption: p.caption ?? "",
                 tag: p.tags?.[0] ? `#${p.tags[0]}` : "",
               } as (typeof FEED_ITEMS)[0];
@@ -1014,7 +1008,7 @@ useEffect(() => {
                 <FeedCard
                   key={p.id}
                   item={derivedItem}
-                  liked={!!likedItems[p.id]}
+                  liked={isPostLiked}
                   onLike={() => handleLike(p.id)}
                   likesCount={likeCounts[p.id] || 0}
                   commentsCount={p.comments_count || 0}
