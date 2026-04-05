@@ -425,6 +425,8 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
   try {
     const { userId, itemId } = req.params;
 
+    console.log(`[delete-item] Received: userId="${userId}", itemId="${itemId}"`);
+
     if (!userId || !itemId) {
       return res
         .status(400)
@@ -432,12 +434,15 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
     }
 
     // ── 1. Fetch the item so we know the image_url before deleting ─────────
+    console.log(`[delete-item] Querying Supabase: user_id="${userId}", item_id="${itemId}"`);
     const { data: existing, error: fetchErr } = await supabaseAdmin
       .from("wardrobe_items")
       .select("item_id, image_url, attributes")
       .eq("user_id", userId)
       .eq("item_id", itemId)
       .single();
+
+    console.log(`[delete-item] Fetch result: error=${fetchErr ? fetchErr.message : 'null'}, data=${existing ? JSON.stringify(existing).substring(0, 100) : 'null'}`);
 
     if (fetchErr || !existing) {
       return res.status(404).json({ success: false, error: "item not found" });

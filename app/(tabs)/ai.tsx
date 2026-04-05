@@ -74,7 +74,7 @@ export default function AIScreen() {
   const [input, setInput] = useState("");
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [hasImagesUploaded, setHasImagesUploaded] = useState(false);
+  const [showModeCards, setShowModeCards] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const userAvatar =
@@ -93,14 +93,37 @@ export default function AIScreen() {
     if (!result.canceled) {
       const newUris = result.assets.map((a) => a.uri);
       setSelectedImages((prev) => [...prev, ...newUris]);
-      setHasImagesUploaded(true);
+      setShowModeCards(true);
     }
   };
 
-  // Note: 3 option cards appear automatically when image is uploaded (hasImagesUploaded = true)
-  // User then types a prompt and selects one of the 3 modes to get recommendations
+  // Called when user hits send or submit with a prompt (with or without image).
+  // Shows the 3 mode cards so the user can pick Build Look / Wardrobe / Find Similar.
   const handleSendPrompt = () => {
-    // This function exists for future use - currently the 3 cards appear after image upload
+    if (!input.trim() && selectedImages.length === 0) return;
+    setShowModeCards(true);
+  };
+
+  /**
+   * Always use the unified /recommend-zara endpoint on the main server.
+   * The server will forward the "mode" parameter to the Python AI model,
+   * which handles dataset selection (Wardrobe, Zara, or Both).
+   */
+  const resolveEndpoint = (mode?: string): string => {
+    return `${SERVER_BASE}/api/recommend-zara`;
+  };
+
+  const modeLabel = (mode?: string): string => {
+    switch (mode) {
+      case "build":
+        return "Build Look";
+      case "wardrobe":
+        return "My Wardrobe";
+      case "similar":
+        return "Find Similar";
+      default:
+        return "Recommend";
+    }
   };
 
   const sendMessage = async (
@@ -120,7 +143,7 @@ export default function AIScreen() {
       {
         id: userMsgId,
         role: "user",
-        content: text || (mode ? `Mode: ${mode}` : ""),
+        content: text || `[${modeLabel(mode)}]`,
         time,
         imageUris,
       },
@@ -134,10 +157,14 @@ export default function AIScreen() {
     ]);
 
     try {
+      const endpoint = resolveEndpoint(mode);
+
+      // Always use POST for the unified recommendation endpoint
       const formData = new FormData();
       formData.append("user_id", user?.id || "anonymous");
       if (text) formData.append("query", text);
       if (mode) formData.append("mode", mode);
+
       if (imageUris?.length) {
         imageUris.forEach((uri, i) => {
           const filename = uri.split("/").pop();
@@ -145,35 +172,50 @@ export default function AIScreen() {
           formData.append("files", {
             uri,
             name: filename || `img_${i}.jpg`,
-            type: match ? `image/${match[1]}` : "image",
+            type: match ? `image/${match[1]}` : "image/jpeg",
           } as any);
         });
       }
-      const response = await fetch(`${SERVER_BASE}/api/recommend-zara`, {
+
+      const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
       });
+
       if (!response.ok) throw new Error(`Server ${response.status}`);
       const result = await response.json();
+
       if (result.success && result.outfits?.length > 0) {
         const best = result.outfits[0];
+        const sourceLabel =
+          mode === "wardrobe"
+            ? "your wardrobe"
+            : mode === "build"
+              ? "your wardrobe and Zara"
+              : "Zara";
         setMessages((prev) =>
           prev.map((m) =>
             m.id === aiMsgId
               ? {
                   ...m,
                   isTyping: false,
-                  content: `I've found some amazing pieces that perfectly match your style! Here's a curated look featuring ${best.reasons?.[0]?.toLowerCase() ?? "the perfect blend"}.`,
+                  content: `I've curated a look from ${sourceLabel} that perfectly matches your style! ${
+                    best.reasons?.[0]
+                      ? `Featuring ${best.reasons[0].toLowerCase()}.`
+                      : ""
+                  }`,
                   outfitCard: true,
                   outfitData: best,
                 }
               : m,
           ),
         );
-        // Clear images after successful recommendation
         setSelectedImages([]);
-        setInput(""); // Clear input too
-      } else throw new Error(result.error || "No outfits found.");
+        setInput("");
+        setShowModeCards(false);
+      } else {
+        throw new Error(result.error || "No outfits found.");
+      }
     } catch (err: any) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -193,14 +235,11 @@ export default function AIScreen() {
   };
 
   const handleRecommendationSourceSelect = (mode: string) => {
-    // Store the current input and images for the recommendation call
     const prompt = input || "Recommend an outfit for me";
     const images = selectedImages.length > 0 ? selectedImages : undefined;
-
-    // Clear input and selection after selection
     setInput("");
     setSelectedImages([]);
-
+    setShowModeCards(false);
     sendMessage(prompt, images, mode);
   };
 
@@ -256,7 +295,7 @@ export default function AIScreen() {
           </Text>
 
           <View style={S.actionGrid}>
-            {!hasImagesUploaded ? (
+            {!showModeCards ? (
               <ActionCard icon="📤" label="Upload Outfit" onPress={pickImage} />
             ) : (
               <>

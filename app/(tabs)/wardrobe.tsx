@@ -4,33 +4,36 @@ import { BlurView } from "expo-blur";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { SERVER_BASE } from "../utils/config";
 import {
-    buildWardrobeFromItems,
-    FALLBACK_WARDROBE,
-    GeneratedOutfit,
-    getOrCreateDailyOutfit,
+  buildWardrobeFromItems,
+  FALLBACK_WARDROBE,
+  GeneratedOutfit,
+  getOrCreateDailyOutfit,
 } from "../utils/outfitEngine";
 
+// ── FIX: Always resolve to a real http:// backend URL.
+// Uses EXPO_PUBLIC_API_BASE_URL env var or falls back to localhost:4000.
+// The imported SERVER_BASE from utils/config was resolving to the Expo
+// dev-server URL (exp://...) which is not HTTP and causes CORS failures.
 const DEFAULT_SERVER_BASE: string =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   (Constants.expoConfig?.extra as any)?.API_BASE_URL ||
@@ -61,9 +64,11 @@ export default function WardrobeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
 
-  const [serverBase, setServerBase] = useState<string>(SERVER_BASE);
+  // ── FIX: Use DEFAULT_SERVER_BASE (resolves to http://) instead of the
+  // imported SERVER_BASE which was resolving to exp:// on device.
+  const [serverBase, setServerBase] = useState<string>(DEFAULT_SERVER_BASE);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [tempServerBase, setTempServerBase] = useState<string>(SERVER_BASE);
+  const [tempServerBase, setTempServerBase] = useState<string>(DEFAULT_SERVER_BASE);
 
   // Upload mode picker
   const [showModePicker, setShowModePicker] = useState(false);
@@ -100,14 +105,19 @@ export default function WardrobeScreen() {
       const fetched: WardrobeItem[] = [];
       for (const key of Object.keys(w)) {
         const arr = Array.isArray(w[key]) ? w[key] : [];
+        console.log(`[Wardrobe] Category "${key}": ${arr.length} items`);
         for (const item of arr) {
+          const itemId = item.id || (item.attributes?.item_id ? String(item.attributes.item_id) : null);
+          const finalId = String(itemId || Math.random());
           fetched.push({
-            id: item.id || String(Math.random()),
+            id: finalId,
             image: item.image,
             category: item.category || key.replace(/s$/, "") || "other",
           });
+          console.log(`[Wardrobe]   Item id="${finalId.substring(0, 8)}..." category="${item.category}"`);
         }
       }
+      console.log(`[Wardrobe] Total items fetched: ${fetched.length}`);
       setItems(fetched);
     } catch (err) {
       console.warn("wardrobe fetch error:", err);
@@ -116,6 +126,7 @@ export default function WardrobeScreen() {
     }
   }, [userId, serverBase]);
 
+  // Load persisted server base from AsyncStorage on mount
   useEffect(() => {
     (async () => {
       try {
@@ -166,58 +177,58 @@ export default function WardrobeScreen() {
   // ── Delete selected ─────────────────────────────────────────────────────
   const deleteSelected = () => {
     if (selectedIds.size === 0) return;
-    Alert.alert(
-      "Delete Items",
-      `Remove ${selectedIds.size} item${selectedIds.size > 1 ? "s" : ""} from your wardrobe?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            setIsDeleting(true);
-            console.log(`[Wardrobe] Deleting ${selectedIds.size} items...`);
-            try {
-              const responses = await Promise.all(
-                Array.from(selectedIds).map(async (id) => {
-                  const url = `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}/item/${encodeURIComponent(id)}`;
-                  console.log(`[Wardrobe] DELETE request to: ${url}`);
-                  try {
-                    const res = await fetch(url, { method: "DELETE" });
-                    if (!res.ok) {
-                      const errData = await res.json().catch(() => ({}));
-                      throw new Error(
-                        errData.error ||
-                          `Failed to delete item ${id} (Status: ${res.status})`,
-                      );
-                    }
-                    return id;
-                  } catch (e) {
-                    console.warn(`[Wardrobe] Delete ${id} failed:`, e);
-                    throw e;
-                  }
-                }),
-              );
 
-              // Optimistically remove from UI
-              setItems((prev) =>
-                prev.filter((item) => !selectedIds.has(item.id)),
+    console.log(`[Wardrobe] deleteSelected: userId="${userId}"`);
+    console.log(`[Wardrobe] deleteSelected: selectedIds=${Array.from(selectedIds).join(", ")}`);
+
+    const executeDelete = async () => {
+      setIsDeleting(true);
+      console.log(`[Wardrobe] Deleting ${selectedIds.size} items...`);
+      try {
+        await Promise.all(
+          Array.from(selectedIds).map(async (id) => {
+            const url = `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}/item/${encodeURIComponent(id)}`;
+            console.log(`[Wardrobe] DELETE request to: ${url}`);
+
+            const res = await fetch(url, { method: "DELETE" });
+            console.log(`[Wardrobe] DELETE response status: ${res.status}`);
+
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(
+                errData.error || `Failed to delete item ${id} (Status: ${res.status})`
               );
-              exitSelectionMode();
-            } catch (err: any) {
-              Alert.alert(
-                "Delete Failed",
-                err.message || "Could not delete one or more items.",
-              );
-              // Refetch wardrobe to ensure UI is in sync with server if partial failure
-              fetchWardrobe();
-            } finally {
-              setIsDeleting(false);
             }
-          },
-        },
-      ],
-    );
+          }),
+        );
+
+        console.log(`[Wardrobe] Deletion successful! Removing from UI.`);
+        setItems((prev) => prev.filter((item) => !selectedIds.has(item.id)));
+        exitSelectionMode();
+      } catch (err: any) {
+        console.error(`[Wardrobe] Deletion Error:`, err);
+        Alert.alert(
+          "Delete Failed",
+          err.message || "Could not delete one or more items."
+        );
+        fetchWardrobe();
+      } finally {
+        setIsDeleting(false);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      executeDelete();
+    } else {
+      Alert.alert(
+        "Delete Items",
+        `Remove ${selectedIds.size} item${selectedIds.size > 1 ? "s" : ""} from your wardrobe?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: executeDelete },
+        ],
+      );
+    }
   };
 
   // ── Mode picker ─────────────────────────────────────────────────────────
@@ -271,7 +282,6 @@ export default function WardrobeScreen() {
       formData.append("user_id", userId);
       formData.append("use_imagen", chosenImagen3 ? "true" : "false");
 
-      // Helper to add timeout to fetch (30 seconds for upload)
       const fetchWithTimeout = (url: string, options: any, timeoutMs = 30000) =>
         Promise.race([
           fetch(url, options),
@@ -303,7 +313,7 @@ export default function WardrobeScreen() {
           const statusResp = await fetchWithTimeout(
             `${serverBase}/api/profile/job/${encodeURIComponent(jobId)}`,
             {},
-            15000  // 15 second timeout for polling
+            15000
           );
           const statusJson = await statusResp.json();
           if (statusJson.status === "completed") {
