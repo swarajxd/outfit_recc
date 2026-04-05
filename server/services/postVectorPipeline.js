@@ -33,10 +33,14 @@ async function processPostVectorPipeline(imageUrl, userId, postId, opts = {}) {
   const { outfitApiUrl } = opts;
   if (!outfitApiUrl) {
     console.error("[postVectorPipeline] ❌ CRITICAL: outfitApiUrl is missing from options");
+    // Ensure we mark as failed if we can
+    try {
+      await supabaseAdmin.from("posts").update({ embedding_status: 'failed' }).eq("id", postId);
+    } catch (e) {}
     return null;
   }
 
-  console.log(`[postVectorPipeline] 🚀 Pipeline STARTED | User: ${userId} | Post: ${postId}`);
+  console.log(`[postVectorPipeline] 🚀 Pipeline STARTED | User: ${userId} | Post: ${postId} | API: ${outfitApiUrl}`);
 
   try {
     // 1. Download image
@@ -60,10 +64,9 @@ async function processPostVectorPipeline(imageUrl, userId, postId, opts = {}) {
     const body = await formDataToBuffer(form);
     headers["Content-Length"] = String(body.length);
 
-    // Use a longer timeout for ML processing (default is usually 0, but some proxies/envs have 30s-60s)
-    // We'll set a manual timeout if possible, but fetch doesn't support it natively in standard way without AbortController
+    // Use a longer timeout for ML processing
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout for heavy ML
+    const timeout = setTimeout(() => controller.abort(), 300000); // Increased to 5 minutes for heavy SAM processing
 
     try {
         const mlResp = await fetch(`${outfitApiUrl}/analyze-post`, {
@@ -83,37 +86,34 @@ async function processPostVectorPipeline(imageUrl, userId, postId, opts = {}) {
         }
 
         const mlResult = await mlResp.json();
+        const results = mlResult.results || {};
+        
         if (!mlResult.success) {
-            console.error(`[postVectorPipeline] ❌ ML service APPLICATION ERROR: ${mlResult.error}`);
-            if (mlResult.traceback) console.error(mlResult.traceback);
-            throw new Error(mlResult.error || "ML pipeline failed internally");
+            console.error(`[postVectorPipeline] ❌ ML service APPLICATION ERROR: ${mlResult.error || results.error || "Unknown error"}`);
+            console.error(`[postVectorPipeline] Full results on failure: ${JSON.stringify(results)}`);
+            if (mlResult.traceback || results.traceback) {
+              console.error(mlResult.traceback || results.traceback);
+            }
+            throw new Error(mlResult.error || results.error || "ML pipeline failed internally");
         }
 
-        const outfitData = mlResult.results;
-        const itemCount = outfitData.items ? outfitData.items.length : 0;
-        console.log(`[postVectorPipeline] ✅ ML success: Found ${itemCount} items`);
+        console.log(`[postVectorPipeline] ✅ ML success: Aggregated post-level vectors returned`);
 
-        // 3. Store in Supabase Storage (post-vectors bucket)
-        console.log(`[postVectorPipeline] 💾 Step 3: Storing raw JSON in Supabase Storage`);
-        const vectorFilePath = `posts/${postId}.json`;
-        const { error: storageError } = await supabaseAdmin.storage
-            .from("post-vectors")
-            .upload(vectorFilePath, JSON.stringify(outfitData), {
-                contentType: "application/json",
-                upsert: true,
-            });
+        // 3. Update the post in the DB with separate columns
+        console.log(`[postVectorPipeline] 📝 Step 3: Updating post ${postId} with separate embedding columns`);
+        
+        const updateData = {
+          visual_embedding: results.visual_embedding,
+          text_embedding: results.text_embedding,
+          combined_embedding: results.combined_embedding,
+          attributes: results.attributes,
+          embedding_status: 'completed',
+          embedding_updated_at: new Date().toISOString()
+        };
 
-        if (storageError) {
-            console.warn(`[postVectorPipeline] ⚠️ Storage warning: ${storageError.message}`);
-        } else {
-            console.log(`[postVectorPipeline] ✅ Stored in storage: ${vectorFilePath}`);
-        }
-
-        // 4. Update the post in the DB with outfit_data
-        console.log(`[postVectorPipeline] 📝 Step 4: Updating post ${postId} in DB`);
         const { error: dbError } = await supabaseAdmin
             .from("posts")
-            .update({ outfit_data: outfitData })
+            .update(updateData)
             .eq("id", postId);
 
         if (dbError) {
@@ -122,11 +122,11 @@ async function processPostVectorPipeline(imageUrl, userId, postId, opts = {}) {
         }
 
         console.log(`[postVectorPipeline] 🎉 Pipeline COMPLETE for post=${postId}`);
-        return outfitData;
+        return results;
 
     } catch (fetchErr) {
         if (fetchErr.name === 'AbortError') {
-            console.error(`[postVectorPipeline] ❌ ML service TIMEOUT after 120s`);
+            console.error(`[postVectorPipeline] ❌ ML service TIMEOUT after 300s`);
             throw new Error("ML service timed out");
         }
         throw fetchErr;
@@ -135,8 +135,28 @@ async function processPostVectorPipeline(imageUrl, userId, postId, opts = {}) {
     }
 
   } catch (err) {
-    console.error(`[postVectorPipeline] 💥 PIPELINE CRASHED: ${err.message}`);
-    // Safe return null, the post creation still succeeded in the main thread
+    console.error(`[postVectorPipeline] 💥 PIPELINE ERROR for post ${postId}: ${err.message}`);
+    
+    // ✅ FIX: Ensure we mark the post as failed so it doesn't stay 'pending' forever
+    try {
+      console.log(`[postVectorPipeline] 🔄 Marking post ${postId} as failed in DB...`);
+      const { error: updateError } = await supabaseAdmin
+        .from("posts")
+        .update({ 
+          embedding_status: 'failed',
+          embedding_updated_at: new Date().toISOString()
+        })
+        .eq("id", postId);
+      
+      if (updateError) {
+        console.error(`[postVectorPipeline] ❌ Failed to mark post as failed: ${updateError.message}`);
+      } else {
+        console.log(`[postVectorPipeline] ✅ Post ${postId} marked as failed`);
+      }
+    } catch (dbErr) {
+      console.error(`[postVectorPipeline] ❌ Critical DB error during failure marking: ${dbErr.message}`);
+    }
+    
     return null;
   }
 }
