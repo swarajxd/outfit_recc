@@ -1,122 +1,119 @@
 const { createClient } = require("@supabase/supabase-js");
 
-// ✅ NEW: User Taste Vector System
-// This service handles incremental updates to the user's preference vector
-// based on their interactions (likes).
+// ✅ FIX: User taste vector system expanded
+// This service handles incremental updates to multi-signal taste data
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-/**
- * Updates the user's taste vector incrementally.
- * Uses a weighted average formula: updatedTaste = alpha * oldTaste + (1 - alpha) * newEmbedding
- * @param {string} userId - The Clerk user ID
- * @param {number[]} newEmbedding - The 512-dim embedding from the liked post
- * @returns {Promise<void>}
- */
-async function updateTasteVector(userId, newEmbedding) {
-  try {
-    console.log(`[tasteService] Updating taste vector for user: ${userId}`);
+function normalize(vec) {
+  if (!Array.isArray(vec) || vec.length === 0) return null;
+  const norm = Math.sqrt(vec.reduce((sum, val) => sum + val * val, 0));
+  return norm > 0 ? vec.map(v => v / norm) : vec;
+}
 
-    // STEP 3.1: VALIDATE INPUT
-    if (!newEmbedding || !Array.isArray(newEmbedding) || newEmbedding.length === 0) {
-      console.warn("[tasteService] Invalid embedding, skipping taste update");
+/**
+ * Updates the user's taste across multiple signals: combined, visual, text, and attributes.
+ * @param {string} userId - Clerk ID
+ * @param {object} post - Post object with embeddings and attributes
+ */
+async function updateUserTaste(userId, post) {
+  try {
+    console.log(`[tasteService] Updating multi-signal taste for user: ${userId}`);
+
+    const { 
+      combined_embedding: newComb, 
+      visual_embedding: newVis, 
+      text_embedding: newText,
+      attributes: newAttrs 
+    } = post;
+
+    if (!newComb || !Array.isArray(newComb)) {
+      console.warn("[tasteService] Missing combined embedding, skipping update");
       return;
     }
 
-    // STEP 3.2: FETCH EXISTING TASTE VECTOR
+    // Fetch existing taste
     const { data: profile, error: fetchError } = await supabaseAdmin
       .from("profiles")
-      .select("taste_vector")
+      .select("taste_vector, visual_taste_vector, text_taste_vector, attribute_preferences")
       .eq("clerk_id", userId)
       .maybeSingle();
 
-    if (fetchError) {
-      console.error(`[tasteService] Error fetching profile for ${userId}:`, fetchError);
-      return;
+    if (fetchError) throw fetchError;
+
+    const alpha = 0.8;
+    const updateVector = (old, latest) => {
+      if (!latest || !Array.isArray(latest)) return old;
+      if (!old) return latest;
+      if (old.length !== latest.length) return old;
+      const updated = old.map((v, i) => alpha * v + (1 - alpha) * latest[i]);
+      return normalize(updated);
+    };
+
+    const updatedComb = updateVector(profile?.taste_vector, newComb);
+    const updatedVis = updateVector(profile?.visual_taste_vector, newVis);
+    const updatedText = updateVector(profile?.text_taste_vector, newText);
+
+    // Merge attributes (Step 10: Frequency tracking)
+    let updatedAttrPrefs = profile?.attribute_preferences || { categories: {}, colors: {}, styles: {} };
+    
+    if (newAttrs) {
+      const cats = newAttrs.categories || [];
+      const cols = newAttrs.colors || [];
+      
+      cats.forEach(c => {
+        updatedAttrPrefs.categories[c] = (updatedAttrPrefs.categories[c] || 0) + 1;
+      });
+      cols.forEach(c => {
+        updatedAttrPrefs.colors[c] = (updatedAttrPrefs.colors[c] || 0) + 1;
+      });
     }
 
-    const oldTaste = profile?.taste_vector;
-    let updatedTaste;
-
-    // STEP 3.3: HANDLE FIRST TIME USER
-    if (!oldTaste) {
-      console.log(`[tasteService] No existing taste vector for ${userId}, initializing with new embedding`);
-      updatedTaste = [...newEmbedding];
-    } else {
-      // STEP 3.5: VALIDATE VECTOR LENGTH
-      if (oldTaste.length !== newEmbedding.length) {
-        console.warn(`[tasteService] Embedding size mismatch (old: ${oldTaste.length}, new: ${newEmbedding.length}), skipping update`);
-        return;
-      }
-
-      // STEP 3.4: APPLY WEIGHTED UPDATE (CRITICAL)
-      // alpha = 0.8 (preserves 80% of old taste, incorporates 20% of new)
-      const alpha = 0.8;
-      updatedTaste = oldTaste.map((val, i) => alpha * val + (1 - alpha) * newEmbedding[i]);
-    }
-
-    // STEP 3.6: NORMALIZE VECTOR (VERY IMPORTANT)
-    const norm = Math.sqrt(updatedTaste.reduce((sum, val) => sum + val * val, 0));
-    if (norm > 0) {
-      updatedTaste = updatedTaste.map(val => val / norm);
-    } else {
-      console.warn("[tasteService] Calculated norm is 0, skipping normalization");
-    }
-
-    // STEP 3.7: SAVE TO DATABASE
+    // Save
     const { error: updateError } = await supabaseAdmin
       .from("profiles")
       .update({
-        taste_vector: updatedTaste,
+        taste_vector: updatedComb,
+        visual_taste_vector: updatedVis,
+        text_taste_vector: updatedText,
+        attribute_preferences: updatedAttrPrefs,
         taste_updated_at: new Date().toISOString()
       })
       .eq("clerk_id", userId);
 
-    if (updateError) {
-      console.error(`[tasteService] Error saving updated taste vector for ${userId}:`, updateError);
-      return;
-    }
+    if (updateError) throw updateError;
 
-    // STEP 3.8: ADD LOGGING
-    console.log(`[tasteService] Successfully updated taste for ${userId}`);
-    // console.log("Old taste:", oldTaste); // Avoid logging huge arrays in production logs usually
-    // console.log("New embedding:", newEmbedding);
-    // console.log("Updated taste:", updatedTaste);
+    console.log("Updated user taste:", userId);
   } catch (err) {
-    console.error(`[tasteService] Taste update failed for user ${userId}:`, err.message);
-    // DO NOT crash server
+    console.error(`[tasteService] 💥 CRITICAL: updateUserTaste failed for ${userId}:`, err.message);
   }
 }
 
 /**
- * Fetches the user's taste vector from the profiles table.
- * @param {string} userId - The Clerk user ID
- * @returns {Promise<number[] | null>}
+ * Fetches the full taste profile for a user.
  */
-async function getTasteVector(userId) {
+async function getFullTasteProfile(userId) {
   try {
     const { data, error } = await supabaseAdmin
       .from("profiles")
-      .select("taste_vector")
+      .select("taste_vector, visual_taste_vector, text_taste_vector, attribute_preferences")
       .eq("clerk_id", userId)
       .maybeSingle();
 
-    if (error) {
-      console.error(`[tasteService] Error fetching taste vector for ${userId}:`, error);
-      return null;
-    }
-
-    return data?.taste_vector || null;
+    if (error) throw error;
+    return data;
   } catch (err) {
-    console.error(`[tasteService] Error in getTasteVector for ${userId}:`, err.message);
+    console.error(`[tasteService] Error fetching full taste profile for ${userId}:`, err.message);
     return null;
   }
 }
 
 module.exports = {
-  updateTasteVector,
-  getTasteVector
+  updateUserTaste,
+  getFullTasteProfile,
+  // Keep legacy for backward compatibility if needed
+  getTasteVector: async (id) => (await getFullTasteProfile(id))?.taste_vector
 };
