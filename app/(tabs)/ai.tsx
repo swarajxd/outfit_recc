@@ -235,7 +235,9 @@ export default function AIScreen() {
   };
 
   const handleRecommendationSourceSelect = (mode: string) => {
-    const prompt = input || "Recommend an outfit for me";
+    // ✅ IMPORTANT: Only use input if user actually typed something
+    // Don't add default prompt if user uploaded image only
+    const prompt = input || "";
     const images = selectedImages.length > 0 ? selectedImages : undefined;
     setInput("");
     setSelectedImages([]);

@@ -54,91 +54,130 @@ async function getForYouFeed(supabaseAdmin, user_id) {
 
     // 2. Fetch user taste vector
     const taste_vector = user_id ? await getTasteVector(user_id) : null;
-    console.log("User taste:", taste_vector);
+    console.log("User taste:", taste_vector ? "Taste vector loaded" : "No taste vector");
 
-    // 3. Fetch a pool of posts
+    // 3. Fetch a pool of posts (only those with embeddings)
+    // ✅ FIX: Posts pipeline separation & ranking logic
     const { data: posts, error } = await supabaseAdmin
       .from("posts")
-      .select("id,image_url,caption,owner_clerk_id,tags,outfit_data,created_at")
+      .select("id,image_url,caption,owner_clerk_id,tags,combined_embedding,created_at,embedding_status")
+      .eq("embedding_status", "completed") // Only show processed posts
       .order("created_at", { ascending: false })
       .limit(100);
     
     if (error) throw error;
     if (!posts || posts.length === 0) return [];
 
-    console.log("Ranking posts...");
+    console.log("Fetched posts:", posts.length);
 
     // 4. Score posts
     const now = Date.now();
-    const scored = posts
-      .filter(p => p.outfit_data && extractItemEmbeddings(p.outfit_data).length > 0)
-      .map((post) => {
-        let similarity = 0;
-        if (taste_vector) {
-          const items = extractItemEmbeddings(post.outfit_data);
-          // Use best matching item for similarity
-          let best_sim = 0;
-          for (const emb of items) {
-            const sim = dot(taste_vector, normalize(emb) || emb);
-            if (sim > best_sim) best_sim = sim;
-          }
-          similarity = best_sim;
-        }
+    const scored = posts.map((post) => {
+      let similarity = 0;
+      if (taste_vector && post.combined_embedding) {
+        // ✅ FIX: Use combined_embedding from the new column
+        similarity = dot(taste_vector, normalize(post.combined_embedding) || post.combined_embedding) || 0;
+      }
 
-        // Recency score: 1 / (current_time - created_at_ms + 1)
-        // Normalize time to days or hours to keep score meaningful
-        const ageMs = Math.max(0, now - new Date(post.created_at).getTime());
-        const ageHours = ageMs / (1000 * 60 * 60);
-        const recency_score = 1 / (ageHours + 1);
+      // Recency score: 1 / (age_in_hours + 1)
+      const ageMs = Math.max(0, now - new Date(post.created_at).getTime());
+      const ageHours = ageMs / (1000 * 60 * 60);
+      const recency_score = 1 / (ageHours + 1);
 
-        // Final score: 0.7 * similarity + 0.3 * recency
-        // If no taste vector, use recency only (similarity = 0)
-        const score = taste_vector ? (0.7 * similarity + 0.3 * recency_score) : recency_score;
+      // ✅ FIX: Score = 0.7 * similarity + 0.3 * recency (Part 4, Step 18)
+      const score = taste_vector ? (0.7 * similarity + 0.3 * recency_score) : recency_score;
 
-        return {
-          id: post.id,
-          image_url: post.image_url,
-          caption: post.caption,
-          owner_clerk_id: post.owner_clerk_id,
-          tags: post.tags,
-          created_at: post.created_at,
-          liked: likedIdsSet.has(String(post.id)),
-          score,
-          similarity
-        };
-      });
+      return {
+        id: post.id,
+        image_url: post.image_url,
+        caption: post.caption,
+        owner_clerk_id: post.owner_clerk_id,
+        tags: post.tags,
+        created_at: post.created_at,
+        liked: likedIdsSet.has(String(post.id)),
+        score,
+        similarity
+      };
+    });
 
-    // 5. Sort by final score
+    // 5. Sort by final score (Part 4, Step 19)
     scored.sort((a, b) => b.score - a.score);
 
     if (taste_vector && scored.length > 0) {
       console.log("Feed ranked using taste + recency");
       console.log("Top post score:", scored[0].score);
     } else {
-      console.log("Feed using recency-based fallback");
+      console.log("Feed using recency-based fallback (new user)");
     }
 
     return scored.slice(0, 20);
   } catch (err) {
     console.error("[for-you] Error generating For You feed:", err);
-    // Fallback to latest posts
-    const { data } = await supabaseAdmin
+    return [];
+  }
+}
+
+/**
+ * Explore page feed ranking logic: 0.6 * recency + 0.4 * diversity
+ * ✅ FIX: Part 5
+ */
+async function getExploreFeed(supabaseAdmin, user_id = null) {
+  let likedIdsSet = new Set();
+  try {
+    if (user_id) {
+      const likedPostIds = await getUserLikes(user_id);
+      likedIdsSet = new Set(likedPostIds.map(String));
+    }
+
+    // Fetch pool
+    const { data: posts, error } = await supabaseAdmin
       .from("posts")
-      .select("id,image_url,caption,owner_clerk_id,tags,created_at")
+      .select("id,image_url,caption,owner_clerk_id,tags,combined_embedding,created_at,embedding_status")
+      .eq("embedding_status", "completed")
       .order("created_at", { ascending: false })
-      .limit(20);
-    
-    return (data || []).map(p => ({
-      ...p,
-      liked: likedIdsSet.has(String(p.id)),
-      score: 0
-    }));
+      .limit(100);
+
+    if (error) throw error;
+    if (!posts) return [];
+
+    console.log("Fetched posts (Explore):", posts.length);
+
+    const now = Date.now();
+    const scored = posts.map((post) => {
+      // Recency (0.6)
+      const ageMs = Math.max(0, now - new Date(post.created_at).getTime());
+      const ageHours = ageMs / (1000 * 60 * 60);
+      const recency = 1 / (ageHours + 1);
+
+      // Diversity/Randomness (0.4)
+      const diversity = Math.random();
+
+      // Final Explore Score (Part 5, Step 22)
+      const score = 0.6 * recency + 0.4 * diversity;
+
+      return {
+        id: post.id,
+        image_url: post.image_url,
+        caption: post.caption,
+        owner_clerk_id: post.owner_clerk_id,
+        tags: post.tags,
+        created_at: post.created_at,
+        liked: likedIdsSet.has(String(post.id)),
+        score
+      };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 20);
+  } catch (err) {
+    console.error("[explore] Error generating Explore feed:", err);
+    return [];
   }
 }
 
 module.exports = {
   getForYouFeed,
+  getExploreFeed,
   dot,
   normalize,
 };
-
