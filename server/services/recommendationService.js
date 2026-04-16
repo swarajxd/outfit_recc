@@ -3,6 +3,19 @@ const { getUserLikes } = require("./likeService");
 
 // ✅ FIX: Feed ranking using multi-signal similarity
 
+// Extracts only public-safe fields from a post row
+function postToPublic(post) {
+  return {
+    id: post.id,
+    image_url: post.image_url,
+    caption: post.caption,
+    owner_clerk_id: post.owner_clerk_id,
+    tags: post.tags,
+    created_at: post.created_at,
+    attributes: post.attributes,
+  };
+}
+
 function dot(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
   let s = 0;
@@ -26,18 +39,18 @@ function normalize(vec) {
 function getAttributeScore(userPrefs, postAttrs) {
   if (!userPrefs || !postAttrs) return 0;
   let score = 0;
-  
+
   const postCats = postAttrs.categories || [];
   const postCols = postAttrs.colors || [];
-  
+
   // Weight based on frequency in user preferences
-  postCats.forEach(c => {
+  postCats.forEach((c) => {
     if (userPrefs.categories?.[c]) score += 1;
   });
-  postCols.forEach(c => {
+  postCols.forEach((c) => {
     if (userPrefs.colors?.[c]) score += 1;
   });
-  
+
   return score > 0 ? Math.min(1, score / 5) : 0;
 }
 
@@ -50,73 +63,113 @@ async function getForYouFeed(supabaseAdmin, user_id) {
 
     // 2. Fetch user taste profile (Part 4, Step 17)
     const taste = user_id ? await getFullTasteProfile(user_id) : null;
-    
+
     if (taste) {
       console.log("User taste vector length:", taste.taste_vector?.length);
     }
 
     // 3. Fetch posts (only those with embeddings)
+    // ✅ FIX: Include posts that have combined_embedding even if other signals are null
+    // This ensures new posts appear immediately once combined embedding is ready
     const { data: posts, error } = await supabaseAdmin
       .from("posts")
-      .select("id,image_url,caption,owner_clerk_id,tags,combined_embedding,visual_embedding,text_embedding,attributes,created_at,embedding_status")
-      .eq("embedding_status", "completed")
+      .select(
+        "id,image_url,caption,owner_clerk_id,tags,combined_embedding,visual_embedding,text_embedding,attributes,created_at,embedding_status",
+      )
+      .not("combined_embedding", "is", null) // must have at least combined
+      .in("embedding_status", ["completed", "partial"]) // accept partial too
       .order("created_at", { ascending: false })
       .limit(100);
-    
+
     if (error) throw error;
     if (!posts || posts.length === 0) return [];
 
     console.log("Fetched posts:", posts.length);
 
     // 4. Score posts (Part 4, Step 19-21)
+    // ✅ FIX: Graceful multi-signal scoring — weights adjust when signals are missing
     const now = Date.now();
     const scored = posts.map((post) => {
-      let similarity_combined = 0;
-      let similarity_visual = 0;
-      let similarity_text = 0;
-      let attribute_score = 0;
-
-      if (taste) {
-        similarity_combined = dot(taste.taste_vector, normalize(post.combined_embedding) || post.combined_embedding);
-        similarity_visual = dot(taste.visual_taste_vector, normalize(post.visual_embedding) || post.visual_embedding);
-        similarity_text = dot(taste.text_taste_vector, normalize(post.text_embedding) || post.text_embedding);
-        attribute_score = getAttributeScore(taste.attribute_preferences, post.attributes);
-      }
-
       const ageMs = Math.max(0, now - new Date(post.created_at).getTime());
       const ageHours = ageMs / (1000 * 60 * 60);
       const recency_score = 1 / (ageHours + 1);
 
-      // ✅ FIX: Multi-signal final score (Part 4, Step 21)
-      // score = 0.5*comb + 0.2*vis + 0.1*text + 0.1*attr + 0.1*recency
-      const score = taste ? (
-        0.5 * similarity_combined +
-        0.2 * similarity_visual +
-        0.1 * similarity_text +
-        0.1 * attribute_score +
-        0.1 * recency_score
-      ) : recency_score;
+      if (!taste) {
+        return {
+          ...postToPublic(post),
+          score: recency_score,
+          liked: likedIdsSet.has(String(post.id)),
+        };
+      }
+
+      // Compute whichever signals are available
+      const hasCombined =
+        Array.isArray(post.combined_embedding) &&
+        post.combined_embedding.length > 0;
+      const hasVisual =
+        Array.isArray(post.visual_embedding) &&
+        post.visual_embedding.length > 0;
+      const hasText =
+        Array.isArray(post.text_embedding) && post.text_embedding.length > 0;
+
+      const sim_combined = hasCombined
+        ? dot(normalize(taste.taste_vector), normalize(post.combined_embedding))
+        : null;
+      const sim_visual = hasVisual
+        ? dot(
+            normalize(taste.visual_taste_vector),
+            normalize(post.visual_embedding),
+          )
+        : null;
+      const sim_text = hasText
+        ? dot(
+            normalize(taste.text_taste_vector),
+            normalize(post.text_embedding),
+          )
+        : null;
+      const attr_score = getAttributeScore(
+        taste.attribute_preferences,
+        post.attributes,
+      );
+
+      // Dynamic weights: if only combined is available, use it fully
+      let score;
+      if (sim_combined !== null && sim_visual !== null && sim_text !== null) {
+        // All signals present — full formula
+        score =
+          0.5 * sim_combined +
+          0.2 * sim_visual +
+          0.1 * sim_text +
+          0.1 * attr_score +
+          0.1 * recency_score;
+      } else if (sim_combined !== null) {
+        // Only combined available — fallback weights
+        score = 0.7 * sim_combined + 0.2 * attr_score + 0.1 * recency_score;
+      } else {
+        // No embeddings — recency only
+        score = recency_score;
+      }
 
       return {
-        id: post.id,
-        image_url: post.image_url,
-        caption: post.caption,
-        owner_clerk_id: post.owner_clerk_id,
-        tags: post.tags,
-        created_at: post.created_at,
+        ...postToPublic(post),
         liked: likedIdsSet.has(String(post.id)),
         score,
-        similarity_combined // For logging
+        _debug: {
+          sim_combined,
+          sim_visual,
+          sim_text,
+          attr_score,
+          recency_score,
+        },
       };
     });
 
     // 5. Sort by final score (Part 4, Step 22)
     scored.sort((a, b) => b.score - a.score);
 
-    console.log("Top scores:", scored.slice(0, 3).map(s => ({ id: s.id, score: s.score.toFixed(4) })));
-    if (scored.length > 0) {
-      console.log("Similarity sample:", scored[0].similarity_combined?.toFixed(4));
-    }
+    console.log("User taste:", taste ? "present" : "absent");
+    console.log("Top post score:", scored[0]?.score?.toFixed(4));
+    console.log("Fetched posts:", posts.length);
 
     return scored.slice(0, 20);
   } catch (err) {
@@ -138,8 +191,11 @@ async function getExploreFeed(supabaseAdmin, user_id = null) {
 
     const { data: posts, error } = await supabaseAdmin
       .from("posts")
-      .select("id,image_url,caption,owner_clerk_id,tags,combined_embedding,created_at,embedding_status")
-      .eq("embedding_status", "completed")
+      .select(
+        "id,image_url,caption,owner_clerk_id,tags,combined_embedding,attributes,created_at,embedding_status",
+      )
+      .not("combined_embedding", "is", null) // must have at least combined
+      .in("embedding_status", ["completed", "partial"]) // accept partial too
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -157,14 +213,9 @@ async function getExploreFeed(supabaseAdmin, user_id = null) {
       const score = 0.6 * recency + 0.4 * diversity;
 
       return {
-        id: post.id,
-        image_url: post.image_url,
-        caption: post.caption,
-        owner_clerk_id: post.owner_clerk_id,
-        tags: post.tags,
-        created_at: post.created_at,
+        ...postToPublic(post),
         liked: likedIdsSet.has(String(post.id)),
-        score
+        score,
       };
     });
 
@@ -176,7 +227,7 @@ async function getExploreFeed(supabaseAdmin, user_id = null) {
   }
 }
 
-module.exports = { 
+module.exports = {
   getForYouFeed,
   getExploreFeed,
   dot,

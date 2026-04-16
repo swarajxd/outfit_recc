@@ -7,8 +7,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import LikeButton from '../../components/LikeButton';
 import CommentModal from '../../components/CommentModal';
+import LikeButton from '../../components/LikeButton';
 
 import {
   ActivityIndicator,

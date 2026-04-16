@@ -23,5 +23,10 @@
     "follower_clerk_id": "user_3A6cbKXiObviEF0lmZSQqHUjzvx",
     "following_clerk_id": "user_39WqI6s2NpkXXwDcyUQ5POiJBiL",
     "created_at": "2026-04-04T07:08:06.869Z"
+  },
+  {
+    "follower_clerk_id": "user_39WqI6s2NpkXXwDcyUQ5POiJBiL",
+    "following_clerk_id": "user_3A6cbKXiObviEF0lmZSQqHUjzvx",
+    "created_at": "2026-04-16T15:58:33.685Z"
   }
 ]
