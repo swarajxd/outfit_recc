@@ -30,14 +30,32 @@ import {
   getOrCreateDailyOutfit,
 } from "../utils/outfitEngine";
 
-// ── FIX: Always resolve to a real http:// backend URL.
-// Uses EXPO_PUBLIC_API_BASE_URL env var or falls back to localhost:4000.
-// The imported SERVER_BASE from utils/config was resolving to the Expo
-// dev-server URL (exp://...) which is not HTTP and causes CORS failures.
-const DEFAULT_SERVER_BASE: string =
-  process.env.EXPO_PUBLIC_API_BASE_URL ||
-  (Constants.expoConfig?.extra as any)?.API_BASE_URL ||
-  "http://localhost:4000";
+// ── Resolve a safe http:// backend base URL ─────────────────────────────────
+// Expo's Constants / linking URIs use the exp:// scheme which is NOT HTTP.
+// Any candidate that doesn't start with http:// or https:// is rejected so we
+// never accidentally fire fetch() at an exp:// address (which the browser
+// blocks with a CORS / non-HTTP error).
+function resolveServerBase(): string {
+  const isHttp = (v: unknown): v is string =>
+    typeof v === "string" &&
+    v.trim().length > 0 &&
+    /^https?:\/\//i.test(v.trim());
+
+  const candidates = [
+    process.env.EXPO_PUBLIC_API_BASE_URL,
+    (Constants.expoConfig?.extra as any)?.API_BASE_URL,
+    (Constants.expoConfig?.extra as any)?.SERVER_BASE,
+  ];
+
+  for (const c of candidates) {
+    if (isHttp(c)) return c.trim().replace(/\/$/, "");
+  }
+
+  // Hard fallback — works on iOS/Android simulator and web on the same machine.
+  return "http://localhost:4000";
+}
+
+const DEFAULT_SERVER_BASE: string = resolveServerBase();
 
 const API_BASE_STORAGE_KEY = "fitsense_api_base_url";
 
@@ -96,6 +114,11 @@ export default function WardrobeScreen() {
   const fetchWardrobe = useCallback(async () => {
     setIsLoading(true);
     try {
+      if (!/^https?:\/\//i.test(serverBase)) {
+        throw new Error(
+          `Invalid server URL "${serverBase}". Open the IP config (tap IP in the header) and set it to http://YOUR_IP:4000`
+        );
+      }
       const resp = await fetch(
         `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}`,
       );
@@ -126,12 +149,22 @@ export default function WardrobeScreen() {
     }
   }, [userId, serverBase]);
 
-  // Load persisted server base from AsyncStorage on mount
+  // Load persisted server base from AsyncStorage on mount.
+  // Validates the stored value — if it's not a real http:// URL (e.g. an old
+  // exp:// value was saved), it is deleted and DEFAULT_SERVER_BASE is kept.
   useEffect(() => {
     (async () => {
       try {
         const stored = await AsyncStorage.getItem(API_BASE_STORAGE_KEY);
-        if (stored?.trim()) setServerBase(stored.trim());
+        const trimmed = stored?.trim() ?? "";
+        if (trimmed && /^https?:\/\//i.test(trimmed)) {
+          console.log(`[Wardrobe] Loaded serverBase from storage: ${trimmed}`);
+          setServerBase(trimmed);
+        } else if (trimmed) {
+          // Bad value saved previously (e.g. exp://...) — purge it
+          console.warn(`[Wardrobe] Clearing invalid stored serverBase: "${trimmed}"`);
+          await AsyncStorage.removeItem(API_BASE_STORAGE_KEY);
+        }
       } catch {}
     })();
   }, []);
@@ -185,6 +218,11 @@ export default function WardrobeScreen() {
       setIsDeleting(true);
       console.log(`[Wardrobe] Deleting ${selectedIds.size} items...`);
       try {
+        if (!/^https?:\/\//i.test(serverBase)) {
+          throw new Error(
+            `Invalid server URL "${serverBase}". Tap the IP button in the header and set it to http://YOUR_IP:4000`
+          );
+        }
         await Promise.all(
           Array.from(selectedIds).map(async (id) => {
             const url = `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}/item/${encodeURIComponent(id)}`;

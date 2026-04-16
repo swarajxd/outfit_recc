@@ -1,7 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
-const { updateTasteVector } = require("./tasteService");
+const { updateUserTaste } = require("./tasteService");
 
-// ✅ NEW: Like Service
+// ✅ FIX: User taste vector system expanded
 // This service handles all logic related to post likes, including adding,
 // removing, and fetching likes from Supabase.
 
@@ -36,13 +36,13 @@ async function addLike(userId, postId) {
 
     console.log(`[likeService] ✅ Like added successfully to DB`);
 
-    // ✅ FIX: Taste vector update
-    // Fetch post embedding and update user taste vector asynchronously
+    // ✅ FIX: Taste vector update (Part 3, Step 14)
+    // Fetch post with all embeddings and update user taste vector asynchronously
     (async () => {
       try {
         const { data: post, error: postError } = await supabaseAdmin
           .from("posts")
-          .select("outfit_data")
+          .select("visual_embedding, text_embedding, combined_embedding, attributes")
           .eq("id", postId)
           .maybeSingle();
 
@@ -51,15 +51,13 @@ async function addLike(userId, postId) {
           return;
         }
 
-        const embedding = post?.outfit_data?.combined_embedding;
-        if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
-          console.warn("Skipping taste update: No embedding found");
+        if (!post || !post.combined_embedding) {
+          console.warn("Skipping taste update: No embeddings found for post", postId);
           return;
         }
 
-        console.log(`[likeService] Calling updateTasteVector for user ${userId}`);
-        await updateTasteVector(userId, embedding);
-        console.log("Taste vector updated");
+        console.log(`[likeService] Calling updateUserTaste for user ${userId}`);
+        await updateUserTaste(userId, post);
       } catch (err) {
         console.error(`[likeService] Taste update failed:`, err.message);
       }
