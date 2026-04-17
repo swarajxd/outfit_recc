@@ -3,7 +3,7 @@ import { useUser } from "@clerk/clerk-expo";
 import { BlurView } from 'expo-blur';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from "expo-router";
+import { router, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -426,7 +426,16 @@ function FeedCardComponent({
         <View style={styles.cardRow}>
           <View style={styles.userRow}>
             <Image source={{ uri: item.avatar }} style={styles.avatarSmall} />
+            <TouchableOpacity
+           onPress={() =>
+          router.push({
+            pathname: "/profile",
+            params: { userId: item.id },
+          })
+        }
+          >
             <Text style={styles.username}>{item.username}</Text>
+          </TouchableOpacity>
           </View>
           <View style={styles.actions}>
             <LikeButton
@@ -475,6 +484,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<"foryou" | "following">("foryou");
+  const isFollowingTab = activeTab === "following";
   const [likedItems, setLikedItems] = useState<Record<string, boolean>>({});
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -498,17 +508,13 @@ export default function HomeScreen() {
 useEffect(() => {
   const loadPersistedData = async () => {
     if (!user?.id) {
-      console.log('User not loaded yet, skipping load');
       return;
     }
     try {
       const likedKey = `fitsense_liked_${user?.id}`;
       const savedKey = `fitsense_saved_${user?.id}`;
-      console.log('Loading persisted data from keys:', likedKey, savedKey);
       const likedJson = await AsyncStorage.getItem(likedKey);
       const savedJson = await AsyncStorage.getItem(savedKey);
-      console.log('Loaded likedJson:', likedJson);
-      console.log('Loaded savedJson:', savedJson);
       if (likedJson) setLikedItems(JSON.parse(likedJson));
       if (savedJson) setSavedItems(JSON.parse(savedJson));
       setPersistedDataLoaded(true);
@@ -537,20 +543,7 @@ useEffect(() => {
 }, [likedItems, user?.id, persistedDataLoaded]);
 
 // Persist saved items whenever they change (but only AFTER loading initial data)
-useEffect(() => {
-  if (!persistedDataLoaded) return; // Don't persist until data is loaded
-  const persistSavedItems = async () => {
-    try {
-      const key = `fitsense_saved_${user?.id}`;
-      console.log('Persisting saved items to key:', key, 'value:', savedItems);
-      await AsyncStorage.setItem(key, JSON.stringify(savedItems));
-      console.log('Successfully persisted saved items');
-    } catch (e) {
-      console.warn('Error saving saved items:', e);
-    }
-  };
-  if (user?.id) persistSavedItems();
-}, [savedItems, user?.id, persistedDataLoaded]);
+
 
 useEffect(() => {
   const loadSavedOutfits = async () => {
@@ -598,25 +591,47 @@ useEffect(() => {
     // Use dev-token (works with current server verifyClerkToken)
     return `Bearer dev:${user.id}`;
   }
+async function handleSave(post_id: string) {
+  if (!user?.id) return;
 
+  try {
+    const resp = await fetch(`${SERVER_BASE}/api/save-post`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Id": user.id,
+      },
+      body: JSON.stringify({ post_id }),
+    });
+
+    const text = await resp.text(); // 👈 IMPORTANT
+    const json = JSON.parse(text); // will fail if not JSON
+
+    setSavedItems((prev) => ({
+      ...prev,
+      [post_id]: json.saved,
+    }));
+  } catch (err) {
+    console.error("SAVE ERROR:", err);
+  }
+}
   async function fetchPosts() {
     if (postsFetchInFlight.current) return;
     postsFetchInFlight.current = true;
     try {
       setPostsError(null);
+      setLoading(true);
+      setPosts([]);
       if (!user?.id) {
-        setPosts([]);
         return;
       }
 
       const authHeader = await getAuthHeader();
       if (!authHeader) {
-        setPosts([]);
         return;
       }
 
-      const endpoint =
-        activeTab === "foryou" ? "/api/for-you" : "/api/for-you";
+      const endpoint = isFollowingTab ? "/api/following" : "/api/for-you";
       const resp = await fetch(`${SERVER_BASE}${endpoint}`, {
         headers: { Authorization: authHeader },
       });
@@ -636,7 +651,23 @@ useEffect(() => {
         likes_count: 0,
         comments_count: p.comments_count ?? 0,
       }));
-      setPosts(normalized);
+      let normalizedPosts = normalized;
+
+    if (activeTab === "foryou") {
+      normalizedPosts = [...normalized].sort((a, b) => {
+        const likeDiff =
+          (likeCounts[b.id] || 0) - (likeCounts[a.id] || 0);
+
+        if (likeDiff !== 0) return likeDiff;
+
+        return (
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+        );
+      });
+    }
+
+    setPosts(normalizedPosts);
 
       // Fetch like counts for all posts
       const postIds = normalized.map((p) => p.id);
@@ -956,7 +987,9 @@ useEffect(() => {
 
         {/* ── Feed ── */}
         <View style={styles.sectionPad}>
-          <Text style={styles.sectionLabel}>Trending Fits</Text>
+          <Text style={styles.sectionLabel}>
+            {isFollowingTab ? "Following Fits" : "Trending Fits"}
+          </Text>
           {loading ? (
             <View style={{ paddingVertical: 24, alignItems: "center" }}>
               <ActivityIndicator color="#fff" />
@@ -970,13 +1003,15 @@ useEffect(() => {
           ) : posts.length === 0 ? (
             <View style={{ paddingVertical: 16 }}>
               <Text style={{ color: "rgba(255,255,255,0.55)" }}>
-                No posts yet. Pull to refresh.
+                {isFollowingTab
+                  ? "No posts from people you follow yet. Pull to refresh."
+                  : "No posts yet. Pull to refresh."}
               </Text>
             </View>
           ) : (
             posts.map((p) => {
               const derivedItem = {
-                id: p.id,
+               id: p.owner_clerk_id,// NOT post id
                 image: p.image_url,
                 matchPercent: 90,
                 username:
@@ -1007,12 +1042,7 @@ useEffect(() => {
                     setCommentModalVisible(true);
                   }}
                   saved={!!savedItems[p.id]}
-                  onSave={() => {
-                    setSavedItems((prev) => {
-                      const newState = { ...prev, [p.id]: !prev[p.id] };
-                      return newState;
-                    });
-                  }}
+                  onSave={() => handleSave(p.id)}
                 />
               );
             })

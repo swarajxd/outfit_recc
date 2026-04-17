@@ -20,6 +20,19 @@ const REPO_OUTFIT = path.join(SERVER_DIR, "outfit_model");
 const OUTFIT_PORT = parseInt(process.env.OUTFIT_PORT || "8000", 10);
 const OUTFIT_API_URL = `http://127.0.0.1:${OUTFIT_PORT}`;
 const CLERK_API_BASE = "https://api.clerk.com/v1";
+const FOLLOWS_STORE_PATH = path.join(__dirname, "data", "follows.json");
+
+function readFollowsStore() {
+  try {
+    if (!fs.existsSync(FOLLOWS_STORE_PATH)) return [];
+    const raw = fs.readFileSync(FOLLOWS_STORE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.warn("[follows-store] read error:", e.message);
+    return [];
+  }
+}
 
 // Enable CORS for local dev clients (Expo web/native + localhost ports).
 const allowedOriginRegex =
@@ -109,7 +122,206 @@ app.get("/api/profile/posts", async (req, res) => {
     res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
+app.get("/api/following", async (req, res) => {
+  try {
+    const auth = req.headers.authorization;
+    if (!auth) return res.status(401).json({ error: "missing auth" });
 
+    const clerkUserId = auth.replace("Bearer dev:", "");
+    if (!clerkUserId)
+      return res.status(401).json({ error: "invalid token" });
+
+    // 1️⃣ Get users you follow
+    const { data: following, error: followError } = await supabaseAdmin
+      .from("follows")
+      .select("following_clerk_id")
+      .eq("follower_clerk_id", clerkUserId);
+
+    if (followError) throw followError;
+
+    let followingIds = following.map((f) => f.following_clerk_id);
+    const fallbackFollowingIds = readFollowsStore()
+      .filter((r) => String(r.follower_clerk_id) === String(clerkUserId))
+      .map((r) => r.following_clerk_id)
+      .filter(Boolean);
+    followingIds = Array.from(new Set([...followingIds, ...fallbackFollowingIds]));
+
+    if (followingIds.length === 0) {
+      return res.json({ posts: [] });
+    }
+
+    // 2️⃣ Get posts from those users
+    const { data: posts, error: postsError } = await supabaseAdmin
+      .from("posts")
+      .select("*")
+      .in("owner_clerk_id", followingIds)
+      .order("created_at", { ascending: false });
+
+    if (postsError) throw postsError;
+
+    const ownerIds = Array.from(
+      new Set((posts || []).map((p) => p.owner_clerk_id).filter(Boolean)),
+    );
+    const ownerMap = new Map();
+    await Promise.all(
+      ownerIds.map(async (id) => {
+        const clerkUser = await fetchClerkUserById(id);
+        ownerMap.set(String(id), mapOwnerProfileFromClerk(clerkUser));
+      }),
+    );
+
+    const nodeBase = `${req.protocol}://${req.get("host")}`;
+    const normalizedPosts = (posts || []).map((p) => {
+      const rawImg = p.image_url || p.image_path;
+      if (
+        rawImg &&
+        rawImg.match(
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+        )
+      ) {
+        const fixedImg = rawImg.replace(
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+          `${nodeBase}/static/`,
+        );
+        p.image_url = fixedImg;
+        p.image_path = fixedImg;
+      } else if (rawImg) {
+        p.image_url = rawImg;
+        p.image_path = rawImg;
+      }
+      p.owner_profile = ownerMap.get(String(p.owner_clerk_id)) || null;
+      return p;
+    });
+
+    res.json({ posts: normalizedPosts });
+  } catch (err) {
+    console.error("FOLLOWING ERROR:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/save-post", async (req, res) => {
+  try {
+    const { post_id } = req.body;
+    const userId = req.headers["x-user-id"];
+
+    if (!userId || !post_id) {
+      return res.status(400).json({ error: "missing data" });
+    }
+
+    // check if already saved
+    const { data: existing } = await supabaseAdmin
+      .from("saved_posts")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("post_id", post_id)
+      .single();
+
+    if (existing) {
+      // UNSAVE
+      await supabaseAdmin
+        .from("saved_posts")
+        .delete()
+        .eq("user_id", userId)
+        .eq("post_id", post_id);
+
+      return res.json({ saved: false });
+    }
+
+    // SAVE
+    await supabaseAdmin.from("saved_posts").insert({
+      user_id: userId,
+      post_id,
+    });
+
+    res.json({ saved: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || err });
+  }
+});
+app.post("/api/save-post", async (req, res) => {
+  try {
+    const { post_id } = req.body;
+    const userId = req.headers["x-user-id"];
+
+    if (!userId || !post_id) {
+      return res.status(400).json({ error: "missing data" });
+    }
+
+    // check if already saved
+    const { data: existing, error: checkError } = await supabaseAdmin
+      .from("saved_posts")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("post_id", post_id)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+
+    if (existing) {
+      // UNSAVE
+      const { error } = await supabaseAdmin
+        .from("saved_posts")
+        .delete()
+        .eq("user_id", userId)
+        .eq("post_id", post_id);
+
+      if (error) throw error;
+
+      return res.json({ saved: false });
+    }
+
+    // SAVE
+    const { error } = await supabaseAdmin.from("saved_posts").insert({
+      user_id: userId,
+      post_id,
+    });
+
+    if (error) throw error;
+
+    res.json({ saved: true });
+  } catch (err) {
+    console.error("SAVE POST ERROR:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.get("/api/profile/saved", async (req, res) => {
+  try {
+    const userId = req.query.user_id;
+
+    if (!userId) {
+      return res.status(400).json({ error: "missing user_id" });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("saved_posts")
+      .select(`
+        post_id,
+        posts (
+          id,
+          image_url,
+          caption,
+          owner_clerk_id,
+          created_at
+        )
+      `)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const posts = (data || [])
+      .map((item) => item.posts)
+      .filter(Boolean);
+
+    res.json({ posts });
+  } catch (err) {
+    console.error("FETCH SAVED ERROR:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
 // Multer for outfit-analysis (store in memory to forward to Python)
 
 const upload = multer({
