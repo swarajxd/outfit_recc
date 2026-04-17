@@ -425,7 +425,7 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
   try {
     const { userId, itemId } = req.params;
 
-    console.log(`[delete-item] Received: userId="${userId}", itemId="${itemId}"`);
+    console.log(`[delete-item] START: userId="${userId}", itemId="${itemId}"`);
 
     if (!userId || !itemId) {
       return res
@@ -434,17 +434,30 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
     }
 
     // ── 1. Fetch the item so we know the image_url before deleting ─────────
+    // We check both item_id (UUID) and potentially attributes->item_id if it's stored there
     console.log(`[delete-item] Querying Supabase: user_id="${userId}", item_id="${itemId}"`);
+    
+    // Robust UUID check - if it's not a UUID, Supabase query will crash
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(itemId)) {
+      console.warn(`[delete-item] itemId "${itemId}" is not a valid UUID format`);
+      return res.status(400).json({ success: false, error: "invalid item id format (must be UUID)" });
+    }
+
     const { data: existing, error: fetchErr } = await supabaseAdmin
       .from("wardrobe_items")
       .select("item_id, image_url, attributes")
       .eq("user_id", userId)
       .eq("item_id", itemId)
-      .single();
+      .maybeSingle(); // Use maybeSingle to avoid 406 if no rows
 
-    console.log(`[delete-item] Fetch result: error=${fetchErr ? fetchErr.message : 'null'}, data=${existing ? JSON.stringify(existing).substring(0, 100) : 'null'}`);
+    if (fetchErr) {
+      console.error("[delete-item] Supabase fetch error:", fetchErr);
+      return res.status(500).json({ success: false, error: fetchErr.message });
+    }
 
-    if (fetchErr || !existing) {
+    if (!existing) {
+      console.warn(`[delete-item] Item ${itemId} not found for user ${userId}`);
       return res.status(404).json({ success: false, error: "item not found" });
     }
 
@@ -454,6 +467,7 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
       null;
 
     // ── 2. Delete from Supabase ────────────────────────────────────────────
+    console.log(`[delete-item] Deleting from Supabase table...`);
     const { error: deleteErr } = await supabaseAdmin
       .from("wardrobe_items")
       .delete()
@@ -461,7 +475,7 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
       .eq("item_id", itemId);
 
     if (deleteErr) {
-      console.error("supabase delete error", deleteErr);
+      console.error("[delete-item] Supabase delete error:", deleteErr);
       return res.status(500).json({
         success: false,
         error: deleteErr.message || String(deleteErr),
@@ -469,51 +483,57 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
     }
 
     // ── 3. Delete image file from disk (best-effort, local paths only) ─────
-    // Cloudinary / external URLs are skipped — only local /static/... paths
     if (imageUrl && !imageUrl.startsWith("http")) {
       try {
         let absPath = imageUrl;
-        // Convert /static/... URL to absolute path
         const staticMatch = imageUrl.match(/\/static\/(.+)$/);
-        if (staticMatch) absPath = path.join(OUTFIT_MODEL_DIR, staticMatch[1]);
-        if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+        if (staticMatch) {
+          absPath = path.join(OUTFIT_MODEL_DIR, staticMatch[1]);
+        }
+        console.log(`[delete-item] Attempting disk delete: ${absPath}`);
+        if (fs.existsSync(absPath)) {
+          fs.unlinkSync(absPath);
+          console.log(`[delete-item] Deleted file from disk`);
+        }
       } catch (e) {
-        console.warn("could not delete image file (non-fatal):", e.message);
+        console.warn("[delete-item] disk cleanup failed:", e.message);
       }
     }
 
     // ── 4. Remove from vector file (best-effort) ───────────────────────────
-    // This prevents the deleted item from ghost-matching future uploads.
-    const vectorPath = path.join(
-      OUTFIT_MODEL_DIR,
-      "..",
-      "wardrobe_vectors",
-      `${userId}.json`,
-    );
+    const vectorPath = path.join(OUTFIT_MODEL_DIR, "wardrobe_vectors", `${userId}.json`);
+    console.log(`[delete-item] Checking vector file: ${vectorPath}`);
+    
     if (fs.existsSync(vectorPath)) {
       try {
-        const vectors = JSON.parse(fs.readFileSync(vectorPath, "utf8")) || [];
-        const filename = imageUrl
-          ? path.basename(imageUrl.replace(/\\/g, "/"))
-          : null;
-        const filtered = filename
-          ? vectors.filter(
-              (v) =>
-                !String(v.image_path || "")
-                  .replace(/\\/g, "/")
-                  .endsWith(filename),
-            )
-          : vectors;
-        fs.writeFileSync(vectorPath, JSON.stringify(filtered, null, 2), "utf8");
+        const raw = fs.readFileSync(vectorPath, "utf8");
+        const vectors = JSON.parse(raw) || [];
+        const initialCount = vectors.length;
+        
+        // Filter by item_id or by image path filename
+        const filename = imageUrl ? path.basename(imageUrl.replace(/\\/g, "/")) : null;
+        
+        const filtered = vectors.filter((v) => {
+          // Check item_id match
+          if (v.item_id === itemId) return false;
+          // Check image_path match
+          if (filename && String(v.image_path || "").replace(/\\/g, "/").endsWith(filename)) return false;
+          return true;
+        });
+
+        if (filtered.length < initialCount) {
+          fs.writeFileSync(vectorPath, JSON.stringify(filtered, null, 2), "utf8");
+          console.log(`[delete-item] Removed ${initialCount - filtered.length} entry/entries from vector JSON`);
+        }
       } catch (e) {
-        console.warn("could not update vector file (non-fatal):", e.message);
+        console.warn("[delete-item] vector cleanup failed:", e.message);
       }
     }
 
-    console.log(`[wardrobe] deleted item ${itemId} for user ${userId}`);
+    console.log(`[delete-item] SUCCESS: item ${itemId} deleted`);
     res.json({ success: true, deleted: itemId });
   } catch (err) {
-    console.error("delete-item error", err);
+    console.error("[delete-item] CRITICAL error:", err);
     res.status(500).json({ success: false, error: err.message || String(err) });
   }
 });

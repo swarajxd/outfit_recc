@@ -18,11 +18,8 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
-<<<<<<< HEAD
-=======
   Animated,
   Dimensions,
->>>>>>> 3465357da30baca71781f9a0d46afc94a4078b27
   Image,
   Platform,
   ScrollView,
@@ -33,12 +30,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-<<<<<<< HEAD
-=======
 import { WardrobeSkeletonGrid } from "../../components/ui/SkeletonLoader";
 import { Colors, Radius, Shadows, Spacing } from "../../constants/theme";
 import { SERVER_BASE } from "../utils/config";
->>>>>>> 3465357da30baca71781f9a0d46afc94a4078b27
 import {
   buildWardrobeFromItems,
   FALLBACK_WARDROBE,
@@ -46,37 +40,8 @@ import {
   getOrCreateDailyOutfit,
 } from "../utils/outfitEngine";
 
-<<<<<<< HEAD
-// ── Resolve a safe http:// backend base URL ─────────────────────────────────
-// Expo's Constants / linking URIs use the exp:// scheme which is NOT HTTP.
-// Any candidate that doesn't start with http:// or https:// is rejected so we
-// never accidentally fire fetch() at an exp:// address (which the browser
-// blocks with a CORS / non-HTTP error).
-function resolveServerBase(): string {
-  const isHttp = (v: unknown): v is string =>
-    typeof v === "string" &&
-    v.trim().length > 0 &&
-    /^https?:\/\//i.test(v.trim());
-
-  const candidates = [
-    process.env.EXPO_PUBLIC_API_BASE_URL,
-    (Constants.expoConfig?.extra as any)?.API_BASE_URL,
-    (Constants.expoConfig?.extra as any)?.SERVER_BASE,
-  ];
-
-  for (const c of candidates) {
-    if (isHttp(c)) return c.trim().replace(/\/$/, "");
-  }
-
-  // Hard fallback — works on iOS/Android simulator and web on the same machine.
-  return "http://localhost:4000";
-}
-
-const DEFAULT_SERVER_BASE: string = resolveServerBase();
-=======
 const { width: SCREEN_W } = Dimensions.get("window");
 const CARD_W = (SCREEN_W - Spacing.lg * 2 - Spacing.sm) / 2;
->>>>>>> 3465357da30baca71781f9a0d46afc94a4078b27
 
 const API_BASE_STORAGE_KEY = "fitsense_api_base_url";
 const FILTER_CHIPS = ["Color", "Occasion", "Fit", "Season"];
@@ -120,16 +85,29 @@ function WardrobeCard({
   }, []);
 
   const pressIn = () =>
-    Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, friction: 8 }).start();
+    Animated.spring(scale, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      friction: 8,
+    }).start();
   const pressOut = () =>
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 5 }).start();
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 5,
+    }).start();
 
   return (
     <Animated.View
       style={{
         opacity: anim,
         transform: [
-          { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) },
+          {
+            translateY: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [20, 0],
+            }),
+          },
           { scale },
         ],
       }}
@@ -153,7 +131,11 @@ function WardrobeCard({
             />
           )}
           <View style={wc.imgWrap}>
-            <Image source={{ uri: item.image }} style={wc.img} resizeMode="cover" />
+            <Image
+              source={{ uri: item.image }}
+              style={wc.img}
+              resizeMode="cover"
+            />
             {selectionMode && !selected && <View style={wc.dim} />}
             {selectionMode && (
               <View style={wc.checkWrap}>
@@ -182,22 +164,37 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(floatY, { toValue: -8, duration: 2000, useNativeDriver: true }),
-        Animated.timing(floatY, { toValue: 0, duration: 2000, useNativeDriver: true }),
-      ])
+        Animated.timing(floatY, {
+          toValue: -8,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatY, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ]),
     ).start();
   }, []);
 
   return (
     <View style={es.wrap}>
-      <Animated.Text style={[es.emoji, { transform: [{ translateY: floatY }] }]}>
+      <Animated.Text
+        style={[es.emoji, { transform: [{ translateY: floatY }] }]}
+      >
         👔
       </Animated.Text>
       <Text style={es.title}>Your wardrobe is empty</Text>
       <Text style={es.sub}>
-        Upload your first clothing item to{"\n"}start getting AI-powered outfit recommendations
+        Upload your first clothing item to{"\n"}start getting AI-powered outfit
+        recommendations
       </Text>
-      <TouchableOpacity onPress={onUpload} style={es.btnWrap} activeOpacity={0.88}>
+      <TouchableOpacity
+        onPress={onUpload}
+        style={es.btnWrap}
+        activeOpacity={0.88}
+      >
         <LinearGradient
           colors={[Colors.accent, "#B84A00"]}
           start={{ x: 0, y: 0 }}
@@ -216,16 +213,10 @@ export default function WardrobeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
 
-<<<<<<< HEAD
-  // ── FIX: Use DEFAULT_SERVER_BASE (resolves to http://) instead of the
-  // imported SERVER_BASE which was resolving to exp:// on device.
-  const [serverBase, setServerBase] = useState<string>(DEFAULT_SERVER_BASE);
-=======
   // ── State (all logic from code 2) ─────────────────────────────────────────
   const [serverBase, setServerBase] = useState<string>(SERVER_BASE);
->>>>>>> 3465357da30baca71781f9a0d46afc94a4078b27
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [tempServerBase, setTempServerBase] = useState<string>(DEFAULT_SERVER_BASE);
+  const [tempServerBase, setTempServerBase] = useState<string>(SERVER_BASE);
 
   const [showModePicker, setShowModePicker] = useState(false);
   const modeResolveRef = useRef<((v: boolean) => void) | null>(null);
@@ -259,11 +250,11 @@ export default function WardrobeScreen() {
     try {
       if (!/^https?:\/\//i.test(serverBase)) {
         throw new Error(
-          `Invalid server URL "${serverBase}". Open the IP config (tap IP in the header) and set it to http://YOUR_IP:4000`
+          `Invalid server URL "${serverBase}". Open the IP config (tap IP in the header) and set it to http://YOUR_IP:4000`,
         );
       }
       const resp = await fetch(
-        `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}`
+        `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}`,
       );
       if (!resp.ok) throw new Error("Failed to fetch wardrobe");
       const json = await resp.json();
@@ -273,14 +264,18 @@ export default function WardrobeScreen() {
         const arr = Array.isArray(w[key]) ? w[key] : [];
         console.log(`[Wardrobe] Category "${key}": ${arr.length} items`);
         for (const item of arr) {
-          const itemId = item.id || (item.attributes?.item_id ? String(item.attributes.item_id) : null);
-          const finalId = String(itemId || Math.random());
+          // Priority: 1. row.id (item_id from Supabase), 2. attributes.item_id, 3. random
+          const itemId = item.id || item.attributes?.item_id || item.item_id;
+          const finalId = itemId ? String(itemId) : `temp_${Math.random()}`;
+
           fetched.push({
             id: finalId,
             image: item.image,
             category: item.category || key.replace(/s$/, "") || "other",
           });
-          console.log(`[Wardrobe]   Item id="${finalId.substring(0, 8)}..." category="${item.category}"`);
+          console.log(
+            `[Wardrobe]   Mapped item: finalId="${finalId.substring(0, 8)}..." category="${item.category}"`,
+          );
         }
       }
       console.log(`[Wardrobe] Total items fetched: ${fetched.length}`);
@@ -305,7 +300,9 @@ export default function WardrobeScreen() {
           setServerBase(trimmed);
         } else if (trimmed) {
           // Bad value saved previously (e.g. exp://...) — purge it
-          console.warn(`[Wardrobe] Clearing invalid stored serverBase: "${trimmed}"`);
+          console.warn(
+            `[Wardrobe] Clearing invalid stored serverBase: "${trimmed}"`,
+          );
           await AsyncStorage.removeItem(API_BASE_STORAGE_KEY);
         }
       } catch {}
@@ -319,10 +316,14 @@ export default function WardrobeScreen() {
   // ── Today's outfit (logic from code 2) ───────────────────────────────────
   useEffect(() => {
     if (items.length === 0) {
-      getOrCreateDailyOutfit(FALLBACK_WARDROBE).then(setTodayOutfit).catch(() => {});
+      getOrCreateDailyOutfit(FALLBACK_WARDROBE)
+        .then(setTodayOutfit)
+        .catch(() => {});
       return;
     }
-    getOrCreateDailyOutfit(buildWardrobeFromItems(items)).then(setTodayOutfit).catch(() => {});
+    getOrCreateDailyOutfit(buildWardrobeFromItems(items))
+      .then(setTodayOutfit)
+      .catch(() => {});
   }, [items]);
 
   // ── Categories + filter (merged) ─────────────────────────────────────────
@@ -335,10 +336,14 @@ export default function WardrobeScreen() {
     let base =
       activeCategory === 0
         ? items
-        : items.filter((i) => displayCategory(i.category) === categories[activeCategory]);
+        : items.filter(
+            (i) => displayCategory(i.category) === categories[activeCategory],
+          );
     if (searchText.trim())
       base = base.filter((i) =>
-        displayCategory(i.category).toLowerCase().includes(searchText.toLowerCase())
+        displayCategory(i.category)
+          .toLowerCase()
+          .includes(searchText.toLowerCase()),
       );
     return base;
   }, [items, activeCategory, categories, searchText]);
@@ -370,68 +375,15 @@ export default function WardrobeScreen() {
   // ── Delete selected (logic from code 2) ───────────────────────────────────
   const deleteSelected = () => {
     if (selectedIds.size === 0) return;
-<<<<<<< HEAD
 
-    console.log(`[Wardrobe] deleteSelected: userId="${userId}"`);
-    console.log(`[Wardrobe] deleteSelected: selectedIds=${Array.from(selectedIds).join(", ")}`);
-
-    const executeDelete = async () => {
-      setIsDeleting(true);
-      console.log(`[Wardrobe] Deleting ${selectedIds.size} items...`);
-      try {
-        if (!/^https?:\/\//i.test(serverBase)) {
-          throw new Error(
-            `Invalid server URL "${serverBase}". Tap the IP button in the header and set it to http://YOUR_IP:4000`
-          );
-        }
-        await Promise.all(
-          Array.from(selectedIds).map(async (id) => {
-            const url = `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}/item/${encodeURIComponent(id)}`;
-            console.log(`[Wardrobe] DELETE request to: ${url}`);
-
-            const res = await fetch(url, { method: "DELETE" });
-            console.log(`[Wardrobe] DELETE response status: ${res.status}`);
-
-            if (!res.ok) {
-              const errData = await res.json().catch(() => ({}));
-              throw new Error(
-                errData.error || `Failed to delete item ${id} (Status: ${res.status})`
-              );
-            }
-          }),
-        );
-
-        console.log(`[Wardrobe] Deletion successful! Removing from UI.`);
-        setItems((prev) => prev.filter((item) => !selectedIds.has(item.id)));
-        exitSelectionMode();
-      } catch (err: any) {
-        console.error(`[Wardrobe] Deletion Error:`, err);
-        Alert.alert(
-          "Delete Failed",
-          err.message || "Could not delete one or more items."
-        );
-        fetchWardrobe();
-      } finally {
-        setIsDeleting(false);
-      }
-    };
-
-    if (Platform.OS === "web") {
-      executeDelete();
-    } else {
-      Alert.alert(
-        "Delete Items",
-        `Remove ${selectedIds.size} item${selectedIds.size > 1 ? "s" : ""} from your wardrobe?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Delete", style: "destructive", onPress: executeDelete },
-        ],
-      );
+    if (!userId || userId === "default_user") {
+      Alert.alert("Error", "You must be logged in to delete items.");
+      return;
     }
-=======
+
     Alert.alert(
       "Delete Items",
-      `Remove ${selectedIds.size} item${selectedIds.size > 1 ? "s" : ""} from your wardrobe?`,
+      `Are you sure you want to delete ${selectedIds.size} item(s)?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -439,41 +391,69 @@ export default function WardrobeScreen() {
           style: "destructive",
           onPress: async () => {
             setIsDeleting(true);
-            console.log(`[Wardrobe] Deleting ${selectedIds.size} items...`);
+            const ids = Array.from(selectedIds);
+            let successCount = 0;
+            let lastError = "";
+
             try {
-              await Promise.all(
-                Array.from(selectedIds).map(async (id) => {
-                  const url = `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}/item/${encodeURIComponent(id)}`;
-                  console.log(`[Wardrobe] DELETE request to: ${url}`);
-                  try {
-                    const res = await fetch(url, { method: "DELETE" });
-                    if (!res.ok) {
-                      const errData = await res.json().catch(() => ({}));
-                      throw new Error(
-                        errData.error || `Failed to delete item ${id} (Status: ${res.status})`
-                      );
-                    }
-                    return id;
-                  } catch (e) {
-                    console.warn(`[Wardrobe] Delete ${id} failed:`, e);
-                    throw e;
-                  }
-                })
-              );
-              setItems((prev) => prev.filter((item) => !selectedIds.has(item.id)));
-              exitSelectionMode();
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              for (const itemId of ids) {
+                console.log(
+                  `[Wardrobe] Deleting item: ${itemId} for user ${userId}`,
+                );
+                const url = `${serverBase}/api/profile/wardrobe/${encodeURIComponent(userId)}/item/${encodeURIComponent(itemId)}`;
+
+                const res = await fetch(url, {
+                  method: "DELETE",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-user-id": userId, // Pass userId in header as well for consistency
+                  },
+                });
+
+                if (res.ok) {
+                  successCount++;
+                } else {
+                  const errData = await res.json().catch(() => ({}));
+                  lastError =
+                    errData.error || res.statusText || "Unknown error";
+                  console.error(
+                    `[Wardrobe] Failed to delete ${itemId}:`,
+                    lastError,
+                  );
+                }
+              }
+
+              if (successCount > 0) {
+                // Refresh local state
+                setItems((prev) =>
+                  prev.filter((item) => !selectedIds.has(item.id)),
+                );
+                exitSelectionMode();
+                Haptics.notificationAsync(
+                  Haptics.NotificationFeedbackType.Success,
+                );
+              }
+
+              if (successCount < ids.length) {
+                Alert.alert(
+                  "Delete Failed",
+                  `Deleted ${successCount} of ${ids.length} items.${lastError ? `\n\nError: ${lastError}` : ""}`,
+                );
+              }
             } catch (err: any) {
-              Alert.alert("Delete Failed", err.message || "Could not delete one or more items.");
+              console.error("[Wardrobe] Delete error:", err);
+              Alert.alert(
+                "Network Error",
+                "Could not connect to the server. Please check your connection and IP settings.",
+              );
               fetchWardrobe();
             } finally {
               setIsDeleting(false);
             }
           },
         },
-      ]
+      ],
     );
->>>>>>> 3465357da30baca71781f9a0d46afc94a4078b27
   };
 
   // ── Mode picker (logic from code 2) ───────────────────────────────────────
@@ -508,7 +488,9 @@ export default function WardrobeScreen() {
     setIsUploading(true);
     setUploadStep(10);
     setUploadProgress(
-      chosenAI ? "Uploading · AI mannequin mode (~60s)…" : "Uploading · Fast mode…"
+      chosenAI
+        ? "Uploading · AI mannequin mode (~60s)…"
+        : "Uploading · Fast mode…",
     );
 
     try {
@@ -530,24 +512,32 @@ export default function WardrobeScreen() {
         Promise.race([
           fetch(url, options),
           new Promise<Response>((_, reject) =>
-            setTimeout(() => reject(new Error("Upload request timeout")), timeoutMs)
+            setTimeout(
+              () => reject(new Error("Upload request timeout")),
+              timeoutMs,
+            ),
           ),
         ]);
 
-      console.log(`[uploadToWardrobe] Starting upload to ${serverBase}/api/profile/upload-wardrobe`);
+      console.log(
+        `[uploadToWardrobe] Starting upload to ${serverBase}/api/profile/upload-wardrobe`,
+      );
       setUploadStep(30);
       const uploadResp = await fetchWithTimeout(
         `${serverBase}/api/profile/upload-wardrobe`,
         { method: "POST", body: formData },
-        30000
+        30000,
       );
-      if (!uploadResp.ok) throw new Error(`Upload failed: ${uploadResp.status}`);
+      if (!uploadResp.ok)
+        throw new Error(`Upload failed: ${uploadResp.status}`);
       const { job_id: jobId } = await uploadResp.json();
       if (!jobId) throw new Error("No job_id returned");
 
       setUploadStep(55);
       setUploadProgress(
-        chosenAI ? "Generating AI mannequin images…" : "Detecting & segmenting items…"
+        chosenAI
+          ? "Generating AI mannequin images…"
+          : "Detecting & segmenting items…",
       );
 
       let attempts = 0;
@@ -557,7 +547,7 @@ export default function WardrobeScreen() {
           const statusResp = await fetchWithTimeout(
             `${serverBase}/api/profile/job/${encodeURIComponent(jobId)}`,
             {},
-            15000
+            15000,
           );
           const statusJson = await statusResp.json();
           if (statusJson.status === "completed") {
@@ -574,8 +564,8 @@ export default function WardrobeScreen() {
               isDup
                 ? "These items are already in your wardrobe."
                 : chosenAI
-                ? `${added} item(s) added with AI mannequin images (${ai} generated).`
-                : `${added} item(s) added in fast mode.`
+                  ? `${added} item(s) added with AI mannequin images (${ai} generated).`
+                  : `${added} item(s) added in fast mode.`,
             );
             fetchWardrobe();
             return;
@@ -636,14 +626,15 @@ export default function WardrobeScreen() {
                   style={[
                     S.headerBtn,
                     S.headerBtnDanger,
-                    selectedIds.size === 0 && { opacity: 0.4 },
+                    (selectedIds.size === 0 || isDeleting) && { opacity: 0.4 },
                   ]}
                 >
                   {isDeleting ? (
                     <ActivityIndicator size="small" color="#FF4D4D" />
                   ) : (
                     <Text style={S.headerBtnDangerTxt}>
-                      Delete {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
+                      Delete{" "}
+                      {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -656,7 +647,13 @@ export default function WardrobeScreen() {
                 }}
                 style={S.iconBtn}
               >
-                <Text style={{ color: Colors.textMuted, fontSize: 12, fontWeight: "700" }}>
+                <Text
+                  style={{
+                    color: Colors.textMuted,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
                   IP
                 </Text>
               </TouchableOpacity>
@@ -715,7 +712,11 @@ export default function WardrobeScreen() {
                     style={StyleSheet.absoluteFill}
                   />
                 )}
-                <Text style={[S.catTxt, activeCategory === i && S.catTxtActive]}>{cat}</Text>
+                <Text
+                  style={[S.catTxt, activeCategory === i && S.catTxtActive]}
+                >
+                  {cat}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -734,7 +735,12 @@ export default function WardrobeScreen() {
                 onPress={() => setActiveFilter(activeFilter === f ? null : f)}
                 style={[S.filterChip, activeFilter === f && S.filterChipActive]}
               >
-                <Text style={[S.filterTxt, activeFilter === f && { color: Colors.accent }]}>
+                <Text
+                  style={[
+                    S.filterTxt,
+                    activeFilter === f && { color: Colors.accent },
+                  ]}
+                >
                   {f}
                 </Text>
               </TouchableOpacity>
@@ -761,7 +767,8 @@ export default function WardrobeScreen() {
           <>
             {!selectionMode && (
               <Text style={S.hintTxt}>
-                {filtered.length} item{filtered.length !== 1 ? "s" : ""} · Long press to select
+                {filtered.length} item{filtered.length !== 1 ? "s" : ""} · Long
+                press to select
               </Text>
             )}
             <View style={S.grid}>
@@ -817,7 +824,10 @@ export default function WardrobeScreen() {
                       colors={[Colors.accent, "#B84A00"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
-                      style={[S.progressFill, { width: `${uploadStep}%` as any }]}
+                      style={[
+                        S.progressFill,
+                        { width: `${uploadStep}%` as any },
+                      ]}
                     />
                   </View>
                   <Text style={S.progressTxt} numberOfLines={1}>
@@ -856,11 +866,17 @@ export default function WardrobeScreen() {
             activeOpacity={1}
             onPress={() => confirmMode(false)}
           />
-          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+          <BlurView
+            intensity={30}
+            tint="dark"
+            style={StyleSheet.absoluteFill}
+          />
           <View style={S.modeSheet}>
             <View style={S.sheetHandle} />
             <Text style={S.sheetTitle}>How should we process your outfit?</Text>
-            <Text style={S.sheetSub}>Choose a mode. You can pick differently each time.</Text>
+            <Text style={S.sheetSub}>
+              Choose a mode. You can pick differently each time.
+            </Text>
 
             <TouchableOpacity
               style={S.modeCard}
@@ -868,7 +884,12 @@ export default function WardrobeScreen() {
               activeOpacity={0.85}
             >
               <View style={S.modeTop}>
-                <View style={[S.modeIcon, { backgroundColor: "rgba(255,255,255,0.08)" }]}>
+                <View
+                  style={[
+                    S.modeIcon,
+                    { backgroundColor: "rgba(255,255,255,0.08)" },
+                  ]}
+                >
                   <Text style={S.modeIconTxt}>⚡</Text>
                 </View>
                 <View style={S.modeBadge}>
@@ -877,11 +898,15 @@ export default function WardrobeScreen() {
               </View>
               <Text style={S.modeTitle}>Fast Mode</Text>
               <Text style={S.modeDesc}>
-                Detects and saves items instantly. No AI generation — your actual clothing image
-                is used directly.
+                Detects and saves items instantly. No AI generation — your
+                actual clothing image is used directly.
               </Text>
               <View style={S.modePros}>
-                {["✓ Instant results", "✓ Uses real photo", "✓ No extra cost"].map((p) => (
+                {[
+                  "✓ Instant results",
+                  "✓ Uses real photo",
+                  "✓ No extra cost",
+                ].map((p) => (
                   <Text key={p} style={S.modePro}>
                     {p}
                   </Text>
@@ -899,17 +924,31 @@ export default function WardrobeScreen() {
                 style={StyleSheet.absoluteFill}
               />
               <View style={S.modeTop}>
-                <View style={[S.modeIcon, { backgroundColor: "rgba(232,98,10,0.15)" }]}>
+                <View
+                  style={[
+                    S.modeIcon,
+                    { backgroundColor: "rgba(232,98,10,0.15)" },
+                  ]}
+                >
                   <Text style={S.modeIconTxt}>✦</Text>
                 </View>
-                <View style={[S.modeBadge, { backgroundColor: "rgba(232,98,10,0.18)" }]}>
-                  <Text style={[S.modeBadgeTxt, { color: Colors.accent }]}>~60 sec</Text>
+                <View
+                  style={[
+                    S.modeBadge,
+                    { backgroundColor: "rgba(232,98,10,0.18)" },
+                  ]}
+                >
+                  <Text style={[S.modeBadgeTxt, { color: Colors.accent }]}>
+                    ~60 sec
+                  </Text>
                 </View>
               </View>
-              <Text style={[S.modeTitle, { color: Colors.accent }]}>AI Mannequin</Text>
+              <Text style={[S.modeTitle, { color: Colors.accent }]}>
+                AI Mannequin
+              </Text>
               <Text style={S.modeDesc}>
-                Gemini Vision analyses your clothing then Imagen3 generates a professional
-                product photo on a clean white mannequin.
+                Gemini Vision analyses your clothing then Imagen3 generates a
+                professional product photo on a clean white mannequin.
               </Text>
               <View style={S.modePros}>
                 {[
@@ -917,7 +956,10 @@ export default function WardrobeScreen() {
                   "✦ Clean white background",
                   "✦ Consistent wardrobe look",
                 ].map((p) => (
-                  <Text key={p} style={[S.modePro, { color: "rgba(232,98,10,0.85)" }]}>
+                  <Text
+                    key={p}
+                    style={[S.modePro, { color: "rgba(232,98,10,0.85)" }]}
+                  >
                     {p}
                   </Text>
                 ))}
@@ -967,7 +1009,10 @@ export default function WardrobeScreen() {
                   const trimmed = tempServerBase.trim();
                   if (!trimmed) return;
                   setServerBase(trimmed);
-                  await AsyncStorage.setItem(API_BASE_STORAGE_KEY, trimmed).catch(() => {});
+                  await AsyncStorage.setItem(
+                    API_BASE_STORAGE_KEY,
+                    trimmed,
+                  ).catch(() => {});
                   setIsConfigOpen(false);
                 }}
                 style={S.overlaySaveBtn}
@@ -1013,8 +1058,18 @@ const S = StyleSheet.create({
     borderWidth: 2,
     borderColor: `${Colors.accent}44`,
   },
-  headerTitle: { color: Colors.text, fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
-  headerSub: { color: Colors.accent, fontSize: 9, fontWeight: "700", letterSpacing: 1.8 },
+  headerTitle: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  headerSub: {
+    color: Colors.accent,
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 1.8,
+  },
 
   cancelBtn: {
     paddingHorizontal: 14,
@@ -1111,13 +1166,25 @@ const S = StyleSheet.create({
     gap: 10,
   },
   fabTouch: { borderRadius: 30, overflow: "hidden", ...Shadows.accentLg },
-  fab: { width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" },
+  fab: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   fabLoading: {
     backgroundColor: Colors.surface3,
     borderWidth: 1,
     borderColor: Colors.border2,
   },
-  fabIcon: { color: "#fff", fontSize: 28, fontWeight: "300", lineHeight: 30, marginTop: -2 },
+  fabIcon: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "300",
+    lineHeight: 30,
+    marginTop: -2,
+  },
 
   progressWrap: {
     borderRadius: Radius.lg,
@@ -1159,7 +1226,12 @@ const S = StyleSheet.create({
     alignSelf: "center",
     marginBottom: Spacing.sm,
   },
-  sheetTitle: { color: Colors.text, fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
+  sheetTitle: {
+    color: Colors.text,
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
   sheetSub: { color: Colors.textMuted, fontSize: 13 },
 
   modeCard: {
@@ -1172,7 +1244,11 @@ const S = StyleSheet.create({
     gap: 8,
   },
   modeCardAI: { borderColor: `${Colors.accent}33` },
-  modeTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  modeTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   modeIcon: {
     width: 40,
     height: 40,
@@ -1240,10 +1316,11 @@ const S = StyleSheet.create({
     borderColor: Colors.border2,
     alignItems: "center",
   },
-<<<<<<< HEAD
-  overlayButtonTextPrimary: { color: "#fff", fontSize: 12, fontWeight: "700" },
-=======
-  overlayCancelTxt: { color: Colors.textMuted, fontSize: 14, fontWeight: "600" },
+  overlayCancelTxt: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    fontWeight: "600",
+  },
   overlaySaveBtn: { flex: 1, borderRadius: Radius.lg, overflow: "hidden" },
   overlaySaveGrad: { paddingVertical: 12, alignItems: "center" },
   overlaySaveTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
@@ -1299,12 +1376,31 @@ const wc = StyleSheet.create({
 });
 
 const es = StyleSheet.create({
-  wrap: { alignItems: "center", paddingTop: 80, paddingHorizontal: 40, gap: 16 },
+  wrap: {
+    alignItems: "center",
+    paddingTop: 80,
+    paddingHorizontal: 40,
+    gap: 16,
+  },
   emoji: { fontSize: 72 },
-  title: { color: Colors.text, fontSize: 20, fontWeight: "800", textAlign: "center" },
-  sub: { color: Colors.textMuted, fontSize: 14, textAlign: "center", lineHeight: 22 },
-  btnWrap: { width: "100%", borderRadius: Radius.full, overflow: "hidden", marginTop: 8 },
+  title: {
+    color: Colors.text,
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  sub: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  btnWrap: {
+    width: "100%",
+    borderRadius: Radius.full,
+    overflow: "hidden",
+    marginTop: 8,
+  },
   btn: { paddingVertical: 16, alignItems: "center" },
   btnTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },
->>>>>>> 3465357da30baca71781f9a0d46afc94a4078b27
 });
