@@ -2,16 +2,16 @@ import { useUser } from "@clerk/clerk-expo";
 import * as ImagePicker from "expo-image-picker";
 import React, { useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SERVER_BASE } from "../utils/config";
@@ -105,12 +105,12 @@ export default function AIScreen() {
   };
 
   /**
-   * Always use the unified /recommend-zara endpoint on the main server.
+   * Always use the unified /recommend-styled endpoint on the main server.
    * The server will forward the "mode" parameter to the Python AI model,
    * which handles dataset selection (Wardrobe, Zara, or Both).
    */
   const resolveEndpoint = (mode?: string): string => {
-    return `${SERVER_BASE}/api/recommend-zara`;
+    return `${SERVER_BASE}/api/recommend-styled`;
   };
 
   const modeLabel = (mode?: string): string => {
@@ -166,15 +166,30 @@ export default function AIScreen() {
       if (mode) formData.append("mode", mode);
 
       if (imageUris?.length) {
-        imageUris.forEach((uri, i) => {
-          const filename = uri.split("/").pop();
-          const match = /\.(\w+)$/.exec(filename || "");
-          formData.append("files", {
-            uri,
-            name: filename || `img_${i}.jpg`,
-            type: match ? `image/${match[1]}` : "image/jpeg",
-          } as any);
-        });
+        if (Platform.OS === "web") {
+          // Web: we must append real Blob/File objects (uri-based objects don't upload bytes)
+          await Promise.all(
+            imageUris.map(async (uri, i) => {
+              const filename = uri.split("/").pop() || `img_${i}.jpg`;
+              const resp = await fetch(uri);
+              const blob = await resp.blob();
+              const type = blob.type || "image/jpeg";
+              const file = new File([blob], filename, { type });
+              formData.append("files", file);
+            }),
+          );
+        } else {
+          // Native: RN fetch understands {uri, name, type}
+          imageUris.forEach((uri, i) => {
+            const filename = uri.split("/").pop();
+            const match = /\.(\w+)$/.exec(filename || "");
+            formData.append("files", {
+              uri,
+              name: filename || `img_${i}.jpg`,
+              type: match ? `image/${match[1]}` : "image/jpeg",
+            } as any);
+          });
+        }
       }
 
       const response = await fetch(endpoint, {
@@ -185,37 +200,67 @@ export default function AIScreen() {
       if (!response.ok) throw new Error(`Server ${response.status}`);
       const result = await response.json();
 
-      if (result.success && result.outfits?.length > 0) {
-        const best = result.outfits[0];
-        const sourceLabel =
-          mode === "wardrobe"
-            ? "your wardrobe"
-            : mode === "build"
-              ? "your wardrobe and Zara"
-              : "Zara";
+      if (!result.success) throw new Error(result.error || "No outfits found.");
+
+      const scenario = result.scenario;
+      const sourceLabel =
+        mode === "wardrobe"
+          ? "your wardrobe"
+          : mode === "build"
+            ? "your wardrobe and Zara"
+            : "Zara";
+
+      if (scenario === "IMAGE_UPPER_LOWER") {
+        const hasUpper = (result.upper_outfits?.length ?? 0) > 0;
+        const hasLower = (result.lower_outfits?.length ?? 0) > 0;
+        const hasFallback = (result.outfits?.length ?? 0) > 0;
+
+        if (!hasUpper && !hasLower && !hasFallback) {
+          throw new Error("No matching outfits found.");
+        }
+
         setMessages((prev) =>
           prev.map((m) =>
             m.id === aiMsgId
               ? {
                   ...m,
                   isTyping: false,
-                  content: `I've curated a look from ${sourceLabel} that perfectly matches your style! ${
-                    best.reasons?.[0]
-                      ? `Featuring ${best.reasons[0].toLowerCase()}.`
-                      : ""
-                  }`,
+                  content: `Here are styled recommendations from ${sourceLabel} for your look.`,
                   outfitCard: true,
-                  outfitData: best,
+                  outfitData: {
+                    upper: result.upper_outfits?.[0] ?? null,
+                    lower: result.lower_outfits?.[0] ?? null,
+                    scenario,
+                  },
                 }
               : m,
           ),
         );
-        setSelectedImages([]);
-        setInput("");
-        setShowModeCards(false);
       } else {
-        throw new Error(result.error || "No outfits found.");
+        if (!result.outfits?.length) throw new Error("No outfits found.");
+        const best = result.outfits[0];
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMsgId
+              ? {
+                  ...m,
+                  isTyping: false,
+                  content: `I've curated a look from ${sourceLabel} that matches your style.`,
+                  outfitCard: true,
+                  outfitData: {
+                    upper: best,
+                    lower: null,
+                    scenario,
+                  },
+                }
+              : m,
+          ),
+        );
       }
+
+      setSelectedImages([]);
+      setInput("");
+      setShowModeCards(false);
     } catch (err: any) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -509,121 +554,165 @@ function AIResponse({ msg }: { msg: Message }) {
 
 // ─── Outfit Card ──────────────────────────────────────────────────────────────
 function OutfitCard({ data }: { data: any }) {
-  if (!data?.outfit) return null;
-  const { outfit, score } = data;
-  const { top, bottom, shoes, outerwear, accessory } = outfit;
-  const mainPiece = outerwear || top;
+  if (!data) return null;
+
+  const { upper, lower, scenario } = data;
+
+  const OutfitSection = ({ outfitWrap }: { outfitWrap: any }) => {
+    if (!outfitWrap?.outfit) return null;
+    const { outfit, score } = outfitWrap;
+    const { top, bottom, shoes, outerwear, accessory } = outfit;
+    const mainPiece = outerwear || top;
+
+    return (
+      <>
+        {/* Large hero image */}
+        <View style={OC.imageWrap}>
+          {mainPiece?.image_path ? (
+            <Image
+              source={{ uri: mainPiece.image_path }}
+              style={OC.mainImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={[OC.mainImage, { backgroundColor: C.surfaceContainerHigh }]}
+            />
+          )}
+          {/* Match badge */}
+          <View style={OC.matchBadge}>
+            <Text style={OC.matchIcon}>✦</Text>
+            <Text style={OC.matchText}>
+              {Math.round((score ?? 0.98) * 100)}% Match
+            </Text>
+          </View>
+        </View>
+
+        {/* Body */}
+        <View style={OC.body}>
+          <View style={OC.titleRow}>
+            <Text style={OC.title} numberOfLines={1}>
+              {mainPiece?.name ?? "Structured Linen Silhouette"}
+            </Text>
+            <Text style={OC.price}>€{mainPiece?.price ?? "120"}</Text>
+          </View>
+
+          <View style={OC.tagsRow}>
+            <View style={OC.tag}>
+              <Text style={OC.tagText}>
+                {mainPiece?.attributes?.material?.toUpperCase() ?? "BESPOKE"}
+              </Text>
+            </View>
+            <View style={OC.tag}>
+              <Text style={OC.tagText}>
+                {mainPiece?.attributes?.style_category?.toUpperCase() ?? "LINEN"}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={OC.description} numberOfLines={3}>
+            {mainPiece?.description ??
+              mainPiece?.attributes?.description ??
+              `This ${mainPiece?.attributes?.color ?? ""} ${
+                mainPiece?.category ?? "piece"
+              } features a ${mainPiece?.attributes?.fit ?? "regular"} fit with ${
+                mainPiece?.attributes?.pattern ?? "solid"
+              } pattern, perfect for your ${
+                mainPiece?.attributes?.aesthetic ?? "modern"
+              } look.`}
+          </Text>
+
+          {/* Actions row */}
+          <View style={OC.actionsRow}>
+            <View style={OC.swatches}>
+              <View style={[OC.swatch, OC.swatchActive]} />
+              <View
+                style={[
+                  OC.swatch,
+                  { backgroundColor: C.tertiary, opacity: 0.5 },
+                ]}
+              />
+              <View
+                style={[
+                  OC.swatch,
+                  { backgroundColor: C.surfaceVariant, opacity: 0.5 },
+                ]}
+              />
+            </View>
+            <View style={OC.iconBtns}>
+              <TouchableOpacity>
+                <Text style={OC.iconBtn}>🔖</Text>
+              </TouchableOpacity>
+              <TouchableOpacity>
+                <Text style={OC.iconBtn}>♡</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={OC.buyBtn}>
+                <Text style={OC.buyText}>BUY</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Complete the look */}
+        <View style={OC.accessories}>
+          <Text style={OC.accTitle}>COMPLETE THE LOOK</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={OC.accScroll}
+          >
+            {[
+              { item: shoes, label: shoes?.name ?? "Vesta Sneakers" },
+              { item: accessory, label: accessory?.name ?? "Orbit Timepiece" },
+              { item: bottom, label: bottom?.name ?? "Nomad Carryall" },
+            ].map((acc, i) => (
+              <View key={i} style={OC.accItem}>
+                <View style={OC.accImgWrap}>
+                  {acc.item?.image_path ? (
+                    <Image
+                      source={{ uri: acc.item.image_path }}
+                      style={OC.accImg}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        OC.accImg,
+                        { backgroundColor: C.surfaceContainerHigh },
+                      ]}
+                    />
+                  )}
+                </View>
+                <Text style={OC.accLabel}>{acc.label}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </>
+    );
+  };
 
   return (
     <View style={OC.card}>
-      {/* Large hero image */}
-      <View style={OC.imageWrap}>
-        {mainPiece?.image_path ? (
-          <Image
-            source={{ uri: mainPiece.image_path }}
-            style={OC.mainImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View
-            style={[OC.mainImage, { backgroundColor: C.surfaceContainerHigh }]}
-          />
-        )}
-        {/* Match badge */}
-        <View style={OC.matchBadge}>
-          <Text style={OC.matchIcon}>✦</Text>
-          <Text style={OC.matchText}>
-            {Math.round((score ?? 0.98) * 100)}% Match
-          </Text>
+      {upper && (
+        <View>
+          {scenario === "IMAGE_UPPER_LOWER" && (
+            <Text style={OC.sectionLabel}>UPPER LOOK</Text>
+          )}
+          <OutfitSection outfitWrap={upper} />
         </View>
-      </View>
+      )}
 
-      {/* Body */}
-      <View style={OC.body}>
-        <View style={OC.titleRow}>
-          <Text style={OC.title}>
-            {mainPiece?.name ?? "Structured Linen Silhouette"}
-          </Text>
-          <Text style={OC.price}>€{mainPiece?.price ?? "420"}</Text>
+      {upper && lower && <View style={OC.sectionDivider} />}
+
+      {lower && (
+        <View>
+          {scenario === "IMAGE_UPPER_LOWER" && (
+            <Text style={OC.sectionLabel}>LOWER LOOK</Text>
+          )}
+          <OutfitSection outfitWrap={lower} />
         </View>
-
-        <View style={OC.tagsRow}>
-          <View style={OC.tag}>
-            <Text style={OC.tagText}>BESPOKE</Text>
-          </View>
-          <View style={OC.tag}>
-            <Text style={OC.tagText}>LINEN</Text>
-          </View>
-        </View>
-
-        <Text style={OC.description}>
-          {mainPiece?.description ??
-            "Architectural draping meets breathable weave. This piece captures the Monaco dusk with an effortless tonal shift."}
-        </Text>
-
-        {/* Actions row */}
-        <View style={OC.actionsRow}>
-          <View style={OC.swatches}>
-            <View style={[OC.swatch, OC.swatchActive]} />
-            <View
-              style={[OC.swatch, { backgroundColor: C.tertiary, opacity: 0.5 }]}
-            />
-            <View
-              style={[
-                OC.swatch,
-                { backgroundColor: C.surfaceVariant, opacity: 0.5 },
-              ]}
-            />
-          </View>
-          <View style={OC.iconBtns}>
-            <TouchableOpacity>
-              <Text style={OC.iconBtn}>🔖</Text>
-            </TouchableOpacity>
-            <TouchableOpacity>
-              <Text style={OC.iconBtn}>♡</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={OC.buyBtn}>
-              <Text style={OC.buyText}>BUY</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
-      {/* Complete the look */}
-      <View style={OC.accessories}>
-        <Text style={OC.accTitle}>COMPLETE THE LOOK</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={OC.accScroll}
-        >
-          {[
-            { item: shoes, label: shoes?.name ?? "Vesta Sneakers" },
-            { item: accessory, label: accessory?.name ?? "Orbit Timepiece" },
-            { item: bottom, label: bottom?.name ?? "Nomad Carryall" },
-          ].map((acc, i) => (
-            <View key={i} style={OC.accItem}>
-              <View style={OC.accImgWrap}>
-                {acc.item?.image_path ? (
-                  <Image
-                    source={{ uri: acc.item.image_path }}
-                    style={OC.accImg}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View
-                    style={[
-                      OC.accImg,
-                      { backgroundColor: C.surfaceContainerHigh },
-                    ]}
-                  />
-                )}
-              </View>
-              <Text style={OC.accLabel}>{acc.label}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
+      )}
     </View>
   );
 }
@@ -789,10 +878,7 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(53,52,55,0.4)",
     borderWidth: 1,
     borderColor: "rgba(71,70,74,0.2)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
+    boxShadow: "0px 10px 20px rgba(0,0,0,0.4)",
     elevation: 10,
   },
   inputIconBtn: { padding: 10 },
@@ -811,9 +897,7 @@ const S = StyleSheet.create({
     backgroundColor: C.primary,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: C.primary,
-    shadowRadius: 8,
-    shadowOpacity: 0.3,
+    boxShadow: `0px 0px 8px ${C.primary}4D`,
   },
   sendArrow: { color: C.onPrimaryFixed, fontSize: 18, fontWeight: "800" },
 });
@@ -850,9 +934,7 @@ const UB = StyleSheet.create({
     borderTopRightRadius: 4,
     // gradient-like: orange primary → dark orange
     backgroundColor: C.onPrimaryContainer,
-    shadowColor: C.primary,
-    shadowRadius: 8,
-    shadowOpacity: 0.15,
+    boxShadow: `0px 0px 8px ${C.primary}26`,
   },
   text: {
     color: C.onPrimaryFixed,
@@ -897,10 +979,7 @@ const OC = StyleSheet.create({
     backgroundColor: C.surfaceContainerHigh,
     borderRadius: 24,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowRadius: 20,
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 10 },
+    boxShadow: "0px 10px 20px rgba(0,0,0,0.4)",
     elevation: 8,
   },
 
@@ -981,9 +1060,7 @@ const OC = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 999,
     backgroundColor: C.primary,
-    shadowColor: C.primary,
-    shadowRadius: 8,
-    shadowOpacity: 0.3,
+    boxShadow: `0px 0px 8px ${C.primary}4D`,
   },
   buyText: {
     color: C.onPrimaryFixed,
@@ -1012,4 +1089,21 @@ const OC = StyleSheet.create({
   },
   accImg: { width: "100%", height: "100%" },
   accLabel: { color: C.onSurface, fontSize: 11, fontWeight: "500" },
+
+  sectionLabel: {
+    color: C.tertiary,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: "rgba(71,70,74,0.2)",
+    marginHorizontal: 20,
+    marginVertical: 8,
+  },
 });

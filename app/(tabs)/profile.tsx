@@ -21,6 +21,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { v4 as uuidv4 } from "uuid";
 import { SERVER_BASE } from "../utils/config";
 
+
+
 const PRIMARY = "#FF6B00";
 const BG = "#000000";
 const WIDTH = Dimensions.get("window").width;
@@ -38,7 +40,8 @@ const POST_IMAGES = [
   "https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=300&q=80",
 ];
 
-const PROFILE_TABS = ["Posts", "Saved", "Wardrobe"];
+const PROFILE_TABS_SELF = ["Posts", "Saved", "Wardrobe"];
+const PROFILE_TABS_OTHER = ["Posts", "Saved"];
 
 // Default values for profile
 const DEFAULT_NAME = "Style Enthusiast";
@@ -53,15 +56,15 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const { user, isLoaded } = useUser();
   const router = useRouter();
-  const searchParams = useLocalSearchParams<{ user_id?: string }>();
+  const searchParams = useLocalSearchParams<{ userId?: string }>();
 
   // Extract user data with defaults
   const userName =
     user?.firstName && user?.lastName
       ? `${user.firstName} ${user.lastName}`
       : user?.firstName || user?.lastName || user?.fullName || DEFAULT_NAME;
-  const userHandle = user?.user
-    ? `@${user.user}`
+  const userHandle = user?.username
+    ? `@${user.username}`
     : user?.emailAddresses?.[0]?.emailAddress
       ? `@${user.emailAddresses[0].emailAddress.split("@")[0]}`
       : "@stylesense_user";
@@ -133,16 +136,19 @@ export default function ProfileScreen() {
   const viewerUserId = user?.id || null;
   
   // Determine if we're viewing another user's profile from URL params
-  const isViewingOtherProfile = 
-    searchParams.user_id && typeof searchParams.user_id === "string";
-  
-  const profileUserId =
-    (searchParams.user_id && typeof searchParams.user_id === "string")
-      ? searchParams.user_id
-      : viewerUserId || "default_user";
+const isViewingOtherProfile =
+  searchParams.userId && typeof searchParams.userId === "string";
+
+const profileUserId =
+  (searchParams.userId && typeof searchParams.userId === "string")
+    ? searchParams.userId
+    : viewerUserId || "default_user";
   
   const isSelf = !!viewerUserId && String(profileUserId) === String(viewerUserId);
-
+  const PROFILE_TABS = isSelf ? PROFILE_TABS_SELF : PROFILE_TABS_OTHER;
+  useEffect(() => {
+  setActiveTab(0);
+}, [profileUserId]);
 
 
   // Auto-sync current user's Clerk data to Supabase on first load
@@ -159,7 +165,7 @@ export default function ProfileScreen() {
           },
           body: JSON.stringify({
             clerk_id: user.id,
-            username: user.user || undefined,
+            username: user.username || undefined,
             full_name: user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || undefined,
             profile_image_url: (user.unsafeMetadata as { profileImageUrl?: string })?.profileImageUrl || user.imageUrl || undefined,
             role: (user.unsafeMetadata as { role?: string })?.role || undefined,
@@ -253,59 +259,40 @@ export default function ProfileScreen() {
     }
   }, [activeTab, fetchPosts]);
 
-  const fetchSavedPosts = useCallback(async () => {
-    setIsPostsLoading(true);
-    try {
-      // Load saved post IDs from AsyncStorage
-      const savedJson = await AsyncStorage.getItem(
-        `fitsense_saved_${viewerUserId}`
-      );
-      if (!savedJson) {
-        setPosts([]);
-        return;
-      }
+const fetchSavedPosts = useCallback(async () => {
+  if (!profileUserId) return;
 
-      const savedItems = JSON.parse(savedJson) as Record<string, boolean>;
-      const savedPostIds = new Set(
-        Object.keys(savedItems).filter((id) => savedItems[id])
-      );
+  setIsPostsLoading(true);
 
-      if (savedPostIds.size === 0) {
-        setPosts([]);
-        return;
-      }
+  try {
+    const resp = await fetch(
+      `${SERVER_BASE}/api/profile/saved?user_id=${profileUserId}`
+    );
 
-      // Fetch all posts and filter by saved IDs
-      const headers: Record<string, string> = {};
-      if (viewerUserId) headers["X-User-Id"] = String(viewerUserId);
+    const text = await resp.text();
+    console.log("RAW SAVED RESPONSE:", text);
 
-      const resp = await fetch(`${SERVER_BASE}/api/for-you`, {
-        headers,
-      });
+    const json = JSON.parse(text);
 
-      if (!resp.ok) throw new Error("Failed to fetch posts");
-
-      const json = await resp.json();
-      const allPosts = json.posts || [];
-      
-      // Filter to only saved posts
-      const savedPostsData = allPosts.filter((p: any) =>
-        savedPostIds.has(String(p.id))
-      );
-
-      const items: PostItem[] = savedPostsData.map((p: any) => ({
-        id: String(p.id ?? uuidv4()),
-        image_url: p.image_url,
-        caption: p.caption ?? null,
-      }));
-      setPosts(items);
-    } catch (err) {
-      console.warn("fetch saved posts error:", err);
-      setPosts([]);
-    } finally {
-      setIsPostsLoading(false);
+    if (!resp.ok) {
+      throw new Error(json?.error || "Failed to fetch saved");
     }
-  }, [viewerUserId]);
+
+    const items = (json.posts || []).map((p:any) => ({
+      id: p.id,
+      image_url: p.image_url,
+      caption: p.caption ?? "",
+      owner_clerk_id: p.owner_clerk_id,
+    }));
+
+    setPosts(items);
+  } catch (err) {
+    console.error("PROFILE SAVED ERROR:", err);
+    setPosts([]);
+  } finally {
+    setIsPostsLoading(false);
+  }
+}, [profileUserId]);
 
   // ── Fetch wardrobe items (segmented images from uploads dir) ───────────
   const fetchWardrobe = useCallback(async () => {
@@ -483,7 +470,7 @@ export default function ProfileScreen() {
 
   // Load wardrobe when tab switches to "Wardrobe"
   useEffect(() => {
-    if (activeTab === 2) {
+    if (isSelf && activeTab === 2) {
       fetchWardrobe();
     }
   }, [activeTab, fetchWardrobe]);
@@ -598,7 +585,7 @@ export default function ProfileScreen() {
   const openEditModal = () => {
     setEditFirstName(user?.firstName || "");
     setEditLastName(user?.lastName || "");
-    setEditUsername(user?.user || "");
+    setEditUsername(user?.username || "");
     setEditRole(
       (user?.publicMetadata as { role?: string })?.role ||
         (user?.unsafeMetadata as { role?: string })?.role ||
@@ -940,7 +927,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Tab Content */}
-        {activeTab === 2 ? (
+        {isSelf && activeTab === 2 ? (
           /* ── Wardrobe Tab ─────────────────────────────────────────── */
           <View style={styles.wardrobeSection}>
             {/* Wardrobe grid */}
@@ -1225,9 +1212,9 @@ export default function ProfileScreen() {
                       if (!nextId) return;
                       setIsRelationModalOpen(false);
                       router.push({
-                        pathname: "/(tabs)/profile",
-                        params: { user_id: String(nextId) },
-                      });
+                      pathname: "/profile",
+                      params: { userId: String(nextId) },
+                    });
                     }}
                   >
                     <Image source={{ uri: avatarUri }} style={styles.relationAvatar} />

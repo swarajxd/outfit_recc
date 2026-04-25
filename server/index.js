@@ -19,6 +19,64 @@ const { toggleLike, getUserLikes } = require("./services/likeService");
 const PORT = process.env.PORT || 4000;
 const app = express();
 
+// Outfit model: run from server's outfit_model directory
+const SERVER_DIR = __dirname;
+const REPO_OUTFIT = path.join(SERVER_DIR, "outfit_model");
+const OUTFIT_PORT = parseInt(process.env.OUTFIT_PORT || "8000", 10);
+const OUTFIT_API_URL = `http://127.0.0.1:${OUTFIT_PORT}`;
+const CLERK_API_BASE = "https://api.clerk.com/v1";
+const FOLLOWS_STORE_PATH = path.join(__dirname, "data", "follows.json");
+
+function readFollowsStore() {
+  try {
+    if (!fs.existsSync(FOLLOWS_STORE_PATH)) return [];
+    const raw = fs.readFileSync(FOLLOWS_STORE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.warn("[follows-store] read error:", e.message);
+    return [];
+  }
+}
+
+// Enable CORS for local dev clients (Expo web/native + localhost ports).
+const allowedOriginRegex =
+  /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/;
+// Replace the corsOptions block in index.js with this:
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow requests with no origin (native mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+
+    const allowed =
+      /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(origin) ||
+      /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin) ||  // local Wi-Fi
+      /^https?:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/.test(origin);     // 10.x.x.x range
+
+    if (allowed) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-User-Id"],
+  optionsSuccessStatus: 204,
+};
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
+
+app.use(bodyParser.json({ limit: "10mb" }));
+
+// Serve outfit_model files as static assets (wardrobe images, uploads, etc.)
+app.use("/static", express.static(path.join(REPO_OUTFIT)));
+
+// Mount profile routes
+app.use("/api/profile", profileRouter);
+
+// Multer for outfit-analysis (store in memory to forward to Python)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
+
 // configure cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -41,7 +99,7 @@ async function verifyClerkToken(req) {
   // 2. Check Authorization header
   const auth = req.headers.authorization;
   if (!auth) return null;
-  
+
   const token = auth.split(" ")[1];
   if (!token) return null;
 
@@ -83,7 +141,7 @@ function mapOwnerProfileFromClerk(clerkUser) {
   const firstName = clerkUser.first_name || "";
   const lastName = clerkUser.last_name || "";
   const fullName = `${firstName} ${lastName}`.trim() || null;
-  
+
   // Generate username from first/last name if not set
   let username = clerkUser.username || null;
   if (!username && (firstName || lastName)) {
@@ -93,35 +151,42 @@ function mapOwnerProfileFromClerk(clerkUser) {
       username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
     }
   }
-  
+
   // Fallback: use email prefix if no name
   let email = null;
-  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
-    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
+  if (
+    clerkUser.email_addresses &&
+    Array.isArray(clerkUser.email_addresses) &&
+    clerkUser.email_addresses.length > 0
+  ) {
+    email =
+      clerkUser.email_addresses[0].email_address ||
+      clerkUser.email_addresses[0];
   } else if (clerkUser.primary_email_address?.email_address) {
     email = clerkUser.primary_email_address.email_address;
   }
-  
+
   if (!username && email) {
     username = email.split("@")[0];
   }
-  
+
   return {
     clerk_id: clerkUser.id ? String(clerkUser.id) : null,
     username: username ? String(username) : null,
     full_name: fullName,
-    profile_image_url: clerkUser.image_url || clerkUser.profile_image_url || null,
+    profile_image_url:
+      clerkUser.image_url || clerkUser.profile_image_url || null,
   };
 }
 
 // ---- Helper: normalize Clerk user data ----
 function normalizeClerkUser(clerkUser) {
   if (!clerkUser || typeof clerkUser !== "object") return null;
-  
+
   const firstName = clerkUser.first_name || "";
   const lastName = clerkUser.last_name || "";
   const fullName = `${firstName} ${lastName}`.trim() || null;
-  
+
   // Generate username from first/last name if not set
   let username = clerkUser.username || null;
   if (!username && (firstName || lastName)) {
@@ -131,21 +196,28 @@ function normalizeClerkUser(clerkUser) {
       username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
     }
   }
-  
+
   // Fallback: use email prefix if no name
   let email = null;
-  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
-    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
+  if (
+    clerkUser.email_addresses &&
+    Array.isArray(clerkUser.email_addresses) &&
+    clerkUser.email_addresses.length > 0
+  ) {
+    email =
+      clerkUser.email_addresses[0].email_address ||
+      clerkUser.email_addresses[0];
   } else if (clerkUser.primary_email_address?.email_address) {
     email = clerkUser.primary_email_address.email_address;
   }
-  
+
   if (!username && email) {
     username = email.split("@")[0];
   }
-  
-  const profileImage = clerkUser.image_url || clerkUser.profile_image_url || null;
-  
+
+  const profileImage =
+    clerkUser.image_url || clerkUser.profile_image_url || null;
+
   const normalized = {
     clerk_id: clerkUser.id ? String(clerkUser.id) : null,
     username: username ? String(username) : null,
@@ -154,44 +226,184 @@ function normalizeClerkUser(clerkUser) {
     role: null,
     bio: null,
   };
-  
+
   return normalized;
 }
 
-// Outfit model: run from server's outfit_model directory
-const SERVER_DIR = __dirname;
-const REPO_OUTFIT = path.join(SERVER_DIR, "outfit_model");
-const OUTFIT_PORT = parseInt(process.env.OUTFIT_PORT || "8000", 10);
-const OUTFIT_API_URL = `http://127.0.0.1:${OUTFIT_PORT}`;
-const CLERK_API_BASE = "https://api.clerk.com/v1";
-
-// Enable CORS for local dev clients (Expo web/native + localhost ports).
-const allowedOriginRegex =
-  /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/;
-const corsOptions = {
-  origin(origin, callback) {
-    // Allow non-browser requests (no Origin header).
-    if (!origin) return callback(null, true);
-    if (allowedOriginRegex.test(origin)) return callback(null, true);
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-User-Id"],
-  optionsSuccessStatus: 204,
-};
-app.use(cors(corsOptions));
-app.options(/.*/, cors(corsOptions));
-
-app.use(bodyParser.json({ limit: "10mb" }));
-
-// Serve outfit_model files as static assets (wardrobe images, uploads, etc.)
-app.use("/static", express.static(path.join(REPO_OUTFIT)));
-
-// Mount profile routes
-app.use("/api/profile", profileRouter);
-
 // Mount feed routes
-app.use("/api", setupFeedRouter(supabaseAdmin, fetchClerkUserById, mapOwnerProfileFromClerk, verifyClerkToken));
+app.use(
+  "/api",
+  setupFeedRouter(
+    supabaseAdmin,
+    fetchClerkUserById,
+    mapOwnerProfileFromClerk,
+    verifyClerkToken,
+  ),
+);
+
+// ---- endpoint: list posts for profile (Supabase) ----
+
+app.get("/api/following", async (req, res) => {
+  try {
+    const auth = req.headers.authorization;
+    if (!auth) return res.status(401).json({ error: "missing auth" });
+
+    const clerkUserId = auth.replace("Bearer dev:", "");
+    if (!clerkUserId) return res.status(401).json({ error: "invalid token" });
+
+    // 1️⃣ Get users you follow
+    const { data: following, error: followError } = await supabaseAdmin
+      .from("follows")
+      .select("following_clerk_id")
+      .eq("follower_clerk_id", clerkUserId);
+
+    if (followError) throw followError;
+
+    let followingIds = following.map((f) => f.following_clerk_id);
+    const fallbackFollowingIds = readFollowsStore()
+      .filter((r) => String(r.follower_clerk_id) === String(clerkUserId))
+      .map((r) => r.following_clerk_id)
+      .filter(Boolean);
+    followingIds = Array.from(
+      new Set([...followingIds, ...fallbackFollowingIds]),
+    );
+
+    if (followingIds.length === 0) {
+      return res.json({ posts: [] });
+    }
+
+    // 2️⃣ Get posts from those users
+    const { data: posts, error: postsError } = await supabaseAdmin
+      .from("posts")
+      .select("*")
+      .in("owner_clerk_id", followingIds)
+      .order("created_at", { ascending: false });
+
+    if (postsError) throw postsError;
+
+    const ownerIds = Array.from(
+      new Set((posts || []).map((p) => p.owner_clerk_id).filter(Boolean)),
+    );
+    const ownerMap = new Map();
+    await Promise.all(
+      ownerIds.map(async (id) => {
+        const clerkUser = await fetchClerkUserById(id);
+        ownerMap.set(String(id), mapOwnerProfileFromClerk(clerkUser));
+      }),
+    );
+
+    const nodeBase = `${req.protocol}://${req.get("host")}`;
+    const normalizedPosts = (posts || []).map((p) => {
+      const rawImg = p.image_url || p.image_path;
+      if (
+        rawImg &&
+        rawImg.match(
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+\/static\//,
+        )
+      ) {
+        const fixedImg = rawImg.replace(
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+\/static\//,
+          `${nodeBase}/static/`,
+        );
+        p.image_url = fixedImg;
+        p.image_path = fixedImg;
+      } else if (rawImg) {
+        p.image_url = rawImg;
+        p.image_path = rawImg;
+      }
+      p.owner_profile = ownerMap.get(String(p.owner_clerk_id)) || null;
+      return p;
+    });
+
+    res.json({ posts: normalizedPosts });
+  } catch (err) {
+    console.error("FOLLOWING ERROR:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/save-post", async (req, res) => {
+  try {
+    const { post_id } = req.body;
+    const userId = req.headers["x-user-id"];
+
+    if (!userId || !post_id) {
+      return res.status(400).json({ error: "missing data" });
+    }
+
+    // check if already saved
+    const { data: existing, error: checkError } = await supabaseAdmin
+      .from("saved_posts")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("post_id", post_id)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+
+    if (existing) {
+      // UNSAVE
+      const { error } = await supabaseAdmin
+        .from("saved_posts")
+        .delete()
+        .eq("user_id", userId)
+        .eq("post_id", post_id);
+
+      if (error) throw error;
+
+      return res.json({ saved: false });
+    }
+
+    // SAVE
+    const { error } = await supabaseAdmin.from("saved_posts").insert({
+      user_id: userId,
+      post_id,
+    });
+
+    if (error) throw error;
+
+    res.json({ saved: true });
+  } catch (err) {
+    console.error("SAVE POST ERROR:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.get("/api/profile/saved", async (req, res) => {
+  try {
+    const userId = req.query.user_id;
+
+    if (!userId) {
+      return res.status(400).json({ error: "missing user_id" });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("saved_posts")
+      .select(
+        `
+        post_id,
+        posts (
+          id,
+          image_url,
+          caption,
+          owner_clerk_id,
+          created_at
+        )
+      `,
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const posts = (data || []).map((item) => item.posts).filter(Boolean);
+
+    res.json({ posts });
+  } catch (err) {
+    console.error("FETCH SAVED ERROR:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
 
 // ---- endpoint: list posts for profile (Supabase) ----
 app.get("/api/profile/posts", async (req, res) => {
@@ -200,7 +412,7 @@ app.get("/api/profile/posts", async (req, res) => {
     // x-user-id is only the viewer identity and must not override target profile.
     const targetUserId = req.query.user_id;
     const viewerUserId = await verifyClerkToken(req);
-    
+
     const userId = targetUserId || viewerUserId;
     if (!userId) {
       return res.status(400).json({ error: "missing user id" });
@@ -240,11 +452,11 @@ app.get("/api/profile/posts", async (req, res) => {
       if (
         rawImg &&
         rawImg.match(
-          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+\/static\//,
         )
       ) {
         const fixedImg = rawImg.replace(
-          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+\/static\//,
           `${nodeBase}/static/`,
         );
         p.image_url = fixedImg;
@@ -261,15 +473,10 @@ app.get("/api/profile/posts", async (req, res) => {
     res.json({ posts: posts });
   } catch (err) {
     console.error("profile posts endpoint error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
-});
-
-// Multer for outfit-analysis (store in memory to forward to Python)
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 },
 });
 
 // ---- Start outfit model API (Python) from repo's outfit_model ----
@@ -317,18 +524,8 @@ async function startOutfitModel() {
   // then fall back to the other platform's path (for flexibility),
   // and finally fall back to bare "python" or "python3".
   const envPython = process.env.PYTHON_PATH;
-  const venvPythonUnix = path.join(
-    REPO_OUTFIT,
-    "venv",
-    "bin",
-    "python",
-  );
-  const venvPythonWin = path.join(
-    REPO_OUTFIT,
-    "venv",
-    "Scripts",
-    "python.exe",
-  );
+  const venvPythonUnix = path.join(REPO_OUTFIT, "venv", "bin", "python");
+  const venvPythonWin = path.join(REPO_OUTFIT, "venv", "Scripts", "python.exe");
 
   let python;
   if (envPython && fs.existsSync(envPython)) {
@@ -438,7 +635,9 @@ app.post("/api/cloudinary-sign", async (req, res) => {
     });
   } catch (err) {
     console.error("cloudinary-sign error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -497,7 +696,9 @@ app.post("/api/outfit-analysis", upload.single("image"), async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("outfit-analysis error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -519,7 +720,7 @@ app.post("/api/create-post", async (req, res) => {
       image_public_id: image_public_id ?? null,
       caption,
       tags: Array.isArray(tags) ? tags : [],
-      embedding_status: 'pending', // ✅ NEW: Explicitly set pending status
+      embedding_status: "pending", // ✅ NEW: Explicitly set pending status
     };
 
     const { data, error } = await supabaseAdmin
@@ -540,19 +741,28 @@ app.post("/api/create-post", async (req, res) => {
     })
       .then((outfitData) => {
         if (outfitData) {
-          console.log(`[create-post] Background vector pipeline success for post ${data.id}`);
+          console.log(
+            `[create-post] Background vector pipeline success for post ${data.id}`,
+          );
         } else {
-          console.warn(`[create-post] Background vector pipeline failed for post ${data.id}`);
+          console.warn(
+            `[create-post] Background vector pipeline failed for post ${data.id}`,
+          );
         }
       })
       .catch((err) => {
-        console.error(`[create-post] Background vector pipeline error for post ${data.id}:`, err);
+        console.error(
+          `[create-post] Background vector pipeline error for post ${data.id}:`,
+          err,
+        );
       });
 
     res.json({ ok: true, post: data });
   } catch (err) {
     console.error("create-post error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -561,9 +771,11 @@ app.post("/api/like-toggle", async (req, res) => {
   try {
     const clerkUserId = await verifyClerkToken(req);
     console.log(`[like-toggle] Request from user: ${clerkUserId}`);
-    
+
     if (!clerkUserId) {
-      console.warn("[like-toggle] ❌ Unauthenticated request (no userId found)");
+      console.warn(
+        "[like-toggle] ❌ Unauthenticated request (no userId found)",
+      );
       return res.status(401).json({ error: "unauthenticated" });
     }
 
@@ -573,13 +785,17 @@ app.post("/api/like-toggle", async (req, res) => {
       return res.status(400).json({ error: "missing post_id" });
     }
 
-    console.log(`[like-toggle] Toggling like for post ${post_id} by user ${clerkUserId}`);
+    console.log(
+      `[like-toggle] Toggling like for post ${post_id} by user ${clerkUserId}`,
+    );
     const result = await toggleLike(clerkUserId, post_id);
     console.log(`[like-toggle] Result: ${JSON.stringify(result)}`);
     res.json(result);
   } catch (err) {
     console.error("[like-toggle] 💥 ERROR:", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -606,10 +822,7 @@ app.get("/api/comments/:post_id", async (req, res) => {
       userIds.map(async (userId) => {
         const profile = await fetchClerkUserById(userId);
         if (profile) {
-          userMap.set(
-            String(userId),
-            normalizeClerkUser(profile),
-          );
+          userMap.set(String(userId), normalizeClerkUser(profile));
         }
       }),
     );
@@ -622,7 +835,9 @@ app.get("/api/comments/:post_id", async (req, res) => {
     res.json({ comments: enrichedComments });
   } catch (err) {
     console.error("get-comments error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -664,7 +879,9 @@ app.post("/api/comments", async (req, res) => {
     });
   } catch (err) {
     console.error("add-comment error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -675,7 +892,8 @@ app.delete("/api/comments/:comment_id", async (req, res) => {
     if (!clerkUserId) return res.status(401).json({ error: "unauthenticated" });
 
     const { comment_id } = req.params;
-    if (!comment_id) return res.status(400).json({ error: "missing comment_id" });
+    if (!comment_id)
+      return res.status(400).json({ error: "missing comment_id" });
 
     // Check if user owns the comment
     const { data: comment } = await supabaseAdmin
@@ -702,7 +920,9 @@ app.delete("/api/comments/:comment_id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error("delete-comment error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -740,7 +960,9 @@ app.get("/api/posts/likes-count", async (req, res) => {
     res.json({ likeCounts });
   } catch (err) {
     console.error("likes-count error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -795,7 +1017,9 @@ app.get("/api/recommend-outfit", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("recommend-outfit error", err);
-    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+    res
+      .status(500)
+      .json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });
 
@@ -869,6 +1093,81 @@ app.post("/api/recommend-zara", upload.any(), async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     console.error("recommend-zara error", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ---- endpoint: recommend styled (AI Tab) ----
+// Same as recommend-zara but forwards to Python /recommend-styled and supports
+// returning upper_outfits + lower_outfits for image-based styling.
+app.post("/api/recommend-styled", upload.any(), async (req, res) => {
+  try {
+    const userId = req.header("x-user-id") || req.body.user_id || "anonymous";
+    const query = req.body.query || "";
+    const mode = req.body.mode || "";
+
+    const form = new FormData();
+    form.append("user_id", userId);
+    if (query) form.append("query", query);
+    if (mode) form.append("mode", mode);
+
+    const uploads = Array.isArray(req.files) ? req.files : [];
+    for (const f of uploads) {
+      const field = f.fieldname === "file" ? "files" : f.fieldname;
+      if (field !== "files") continue;
+      form.append("files", f.buffer, {
+        filename: f.originalname || "query.jpg",
+        contentType: f.mimetype || "image/jpeg",
+      });
+    }
+
+    const pyUrl = `${OUTFIT_API_URL}/recommend-styled`;
+    const headers = form.getHeaders();
+    const body = await formDataToBuffer(form);
+    headers["Content-Length"] = String(body.length);
+
+    const pyResponse = await fetch(pyUrl, {
+      method: "POST",
+      body,
+      headers,
+    });
+
+    if (!pyResponse.ok) {
+      const errText = await pyResponse.text();
+      console.error("recommend-styled py error", pyResponse.status, errText);
+      return res.status(pyResponse.status).json({ error: errText });
+    }
+
+    const result = await pyResponse.json();
+    const nodeBase = `${req.protocol}://${req.get("host")}`;
+
+    // Rewrite image paths to Node /static URLs for all outfit sets.
+    ["outfits", "upper_outfits", "lower_outfits"].forEach((key) => {
+      const list = result[key];
+      if (!list || !Array.isArray(list)) return;
+      list.forEach((o) => {
+        const outfit = o.outfit || {};
+        ["top", "bottom", "shoes", "outerwear", "accessory"].forEach((slot) => {
+          const it = outfit[slot];
+          if (
+            it &&
+            it.image_path &&
+            it.image_path.match(
+              /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+            )
+          ) {
+            it.image_path = it.image_path.replace(
+              /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/static\//,
+              `${nodeBase}/static/`,
+            );
+          }
+        });
+      });
+    });
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error("recommend-styled error", err);
     res.status(500).json({ error: String(err) });
   }
 });

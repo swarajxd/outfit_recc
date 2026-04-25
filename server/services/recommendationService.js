@@ -54,6 +54,33 @@ function getAttributeScore(userPrefs, postAttrs) {
   return score > 0 ? Math.min(1, score / 5) : 0;
 }
 
+/**
+ * Safely computes cosine similarity between a taste vector and a post embedding.
+ *
+ * Returns null (not 0) when:
+ *   - The taste vector for this signal is missing (NULL in DB)
+ *   - The post doesn't have this embedding
+ *
+ * Returning null lets the scoring formula skip this signal entirely
+ * instead of penalising it with a 0.
+ *
+ * Bug fixed: previously `dot(normalize(null), normalize([...]))` returned 0,
+ * which was treated as a real signal (0 similarity) in the full formula,
+ * dragging the score down when visual/text taste vectors were null.
+ */
+function computeSimilarity(tasteVec, postEmb) {
+  // Both must be valid non-empty arrays
+  if (!Array.isArray(tasteVec) || tasteVec.length === 0) return null;
+  if (!Array.isArray(postEmb) || postEmb.length === 0) return null;
+
+  const normTaste = normalize(tasteVec);
+  const normPost = normalize(postEmb);
+
+  if (!normTaste || !normPost) return null;
+
+  return dot(normTaste, normPost);
+}
+
 async function getForYouFeed(supabaseAdmin, user_id) {
   let likedIdsSet = new Set();
   try {
@@ -86,15 +113,15 @@ async function getForYouFeed(supabaseAdmin, user_id) {
 
     console.log("Fetched posts:", posts.length);
 
-    // 4. Score posts (Part 4, Step 19-21)
-    // ✅ FIX: Graceful multi-signal scoring — weights adjust when signals are missing
+    // 4. Score posts using available taste signals
     const now = Date.now();
     const scored = posts.map((post) => {
       const ageMs = Math.max(0, now - new Date(post.created_at).getTime());
       const ageHours = ageMs / (1000 * 60 * 60);
       const recency_score = 1 / (ageHours + 1);
 
-      if (!taste) {
+      // No taste profile yet - rank by recency only
+      if (!taste || !Array.isArray(taste.taste_vector)) {
         return {
           ...postToPublic(post),
           score: recency_score,
@@ -102,51 +129,44 @@ async function getForYouFeed(supabaseAdmin, user_id) {
         };
       }
 
-      // Compute whichever signals are available
-      const hasCombined =
-        Array.isArray(post.combined_embedding) &&
-        post.combined_embedding.length > 0;
-      const hasVisual =
-        Array.isArray(post.visual_embedding) &&
-        post.visual_embedding.length > 0;
-      const hasText =
-        Array.isArray(post.text_embedding) && post.text_embedding.length > 0;
-
-      const sim_combined = hasCombined
-        ? dot(normalize(taste.taste_vector), normalize(post.combined_embedding))
-        : null;
-      const sim_visual = hasVisual
-        ? dot(
-            normalize(taste.visual_taste_vector),
-            normalize(post.visual_embedding),
-          )
-        : null;
-      const sim_text = hasText
-        ? dot(
-            normalize(taste.text_taste_vector),
-            normalize(post.text_embedding),
-          )
-        : null;
+      // ✅ FIX Bug 3: computeSimilarity returns null when either vector is missing.
+      // This means a null visual_taste_vector correctly falls back to combined-only,
+      // rather than contributing a 0 score to the full formula.
+      const sim_combined = computeSimilarity(
+        taste.taste_vector,
+        post.combined_embedding,
+      );
+      const sim_visual = computeSimilarity(
+        taste.visual_taste_vector,
+        post.visual_embedding,
+      );
+      const sim_text = computeSimilarity(
+        taste.text_taste_vector,
+        post.text_embedding,
+      );
       const attr_score = getAttributeScore(
         taste.attribute_preferences,
         post.attributes,
       );
 
-      // Dynamic weights: if only combined is available, use it fully
       let score;
+
       if (sim_combined !== null && sim_visual !== null && sim_text !== null) {
-        // All signals present — full formula
+        // All 3 signals present - full weighted formula
         score =
           0.5 * sim_combined +
           0.2 * sim_visual +
           0.1 * sim_text +
           0.1 * attr_score +
           0.1 * recency_score;
+
       } else if (sim_combined !== null) {
-        // Only combined available — fallback weights
+        // Only combined available (visual/text taste vectors not yet populated)
+        // This is the common case for new users or users with few likes
         score = 0.7 * sim_combined + 0.2 * attr_score + 0.1 * recency_score;
+
       } else {
-        // No embeddings — recency only
+        // No usable taste signal - fall back to recency
         score = recency_score;
       }
 
@@ -164,12 +184,17 @@ async function getForYouFeed(supabaseAdmin, user_id) {
       };
     });
 
-    // 5. Sort by final score (Part 4, Step 22)
+    // Sort descending by score
     scored.sort((a, b) => b.score - a.score);
 
-    console.log("User taste:", taste ? "present" : "absent");
-    console.log("Top post score:", scored[0]?.score?.toFixed(4));
-    console.log("Fetched posts:", posts.length);
+    console.log(
+      `[for-you] User taste: ${taste ? `present (${taste.like_count || "?"} likes)` : "absent"}`,
+    );
+    console.log(`[for-you] Posts scored: ${scored.length}`);
+    console.log(`[for-you] Top post score: ${scored[0]?.score?.toFixed(4)}`);
+    console.log(
+      `[for-you] Score signals: combined=${scored[0]?._debug?.sim_combined?.toFixed(3)}, visual=${scored[0]?._debug?.sim_visual?.toFixed(3) ?? "null"}, text=${scored[0]?._debug?.sim_text?.toFixed(3) ?? "null"}`,
+    );
 
     return scored.slice(0, 20);
   } catch (err) {

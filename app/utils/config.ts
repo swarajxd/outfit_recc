@@ -10,9 +10,9 @@ export const getServerBase = (): string => {
   // Use Platform.select to return the correct URL based on platform
   const platformUrl = Platform.select({
     web: "http://127.0.0.1:4000",
-    android: "http://10.0.2.2:4000",
+    android: "http://10.33.168.132:4000",
     ios: "http://127.0.0.1:4000",
-    default: "http://127.0.0.1:4000",
+    default: "http://10.33.168.132:4000",
   });
 
   // If we're on web, return the localhost URL immediately for safe same-machine dev
@@ -32,3 +32,9 @@ export const getServerBase = (): string => {
 };
 
 export const SERVER_BASE = getServerBase();
+
+// Expo Router scans files under app/ as routes.
+// Keep a no-op default export so this utility file does not error during route manifest generation.
+export default function ConfigUtilRoute() {
+  return null;
+}

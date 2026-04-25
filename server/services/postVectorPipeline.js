@@ -144,8 +144,10 @@ async function processPostVectorPipeline(imageUrl, userId, postId, opts = {}) {
 
       const mlResult = await mlResp.json();
       const results = mlResult.results || {};
+      const pipelineSuccess =
+        mlResult.success === true && (!results || results.success !== false);
 
-      if (!mlResult.success) {
+      if (!pipelineSuccess) {
         console.error(
           `[postVectorPipeline] ❌ ML service APPLICATION ERROR: ${mlResult.error || results.error || "Unknown error"}`,
         );
