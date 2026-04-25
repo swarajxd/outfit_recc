@@ -91,8 +91,39 @@ app.get("/api/profile/posts", async (req, res) => {
       }),
     );
 
-    // Rewrite URLs
-    const nodeBase = `${req.protocol}://${req.get("host")}`;
+    // Fetch like and comment counts for each post
+    const postIds = (data || []).map((p) => p.id);
+    const likeCounts = {};
+    const commentCounts = {};
+    const likedByViewer = new Set();
+    const viewerId = req.header("x-user-id");
+    
+    if (postIds.length > 0) {
+      await Promise.all(postIds.map(async (pid) => {
+        const { count: lCount } = await supabaseAdmin
+          .from("likes")
+          .select("*", { count: "exact", head: true })
+          .eq("post_id", pid);
+        likeCounts[pid] = lCount || 0;
+
+        const { count: cCount } = await supabaseAdmin
+          .from("comments")
+          .select("*", { count: "exact", head: true })
+          .eq("post_id", pid);
+        commentCounts[pid] = cCount || 0;
+
+        if (viewerId) {
+          const { data: hasLiked } = await supabaseAdmin
+            .from("likes")
+            .select("*")
+            .eq("post_id", pid)
+            .eq("user_id", viewerId)
+            .maybeSingle();
+          if (hasLiked) likedByViewer.add(pid);
+        }
+      }));
+    }
+
     const posts = (data || []).map((p) => {
       const rawImg = p.image_url || p.image_path;
       // Handle both Cloudinary (starts with http) and local /static/ paths
@@ -113,6 +144,9 @@ app.get("/api/profile/posts", async (req, res) => {
         p.image_path = rawImg;
       }
       p.owner_profile = ownerMap.get(String(p.owner_clerk_id)) || null;
+      p.likes_count = likeCounts[p.id] || 0;
+      p.comments_count = commentCounts[p.id] || 0;
+      p.is_liked = likedByViewer.has(p.id);
       return p;
     });
 
@@ -312,11 +346,50 @@ app.get("/api/profile/saved", async (req, res) => {
 
     if (error) throw error;
 
-    const posts = (data || [])
+    const rawPosts = (data || [])
       .map((item) => item.posts)
       .filter(Boolean);
 
-    res.json({ posts });
+    const postIds = rawPosts.map(p => p.id);
+    const viewerId = req.header("x-user-id");
+    const likedByViewer = new Set();
+    const likeCounts = {};
+    const commentCounts = {};
+
+    if (postIds.length > 0) {
+      await Promise.all(postIds.map(async (pid) => {
+        const { count: lCount } = await supabaseAdmin
+          .from("likes")
+          .select("*", { count: "exact", head: true })
+          .eq("post_id", pid);
+        likeCounts[pid] = lCount || 0;
+
+        const { count: cCount } = await supabaseAdmin
+          .from("comments")
+          .select("*", { count: "exact", head: true })
+          .eq("post_id", pid);
+        commentCounts[pid] = cCount || 0;
+
+        if (viewerId) {
+          const { data: hasLiked } = await supabaseAdmin
+            .from("likes")
+            .select("*")
+            .eq("post_id", pid)
+            .eq("user_id", viewerId)
+            .maybeSingle();
+          if (hasLiked) likedByViewer.add(pid);
+        }
+      }));
+    }
+
+    const postsWithCounts = rawPosts.map(p => ({
+      ...p,
+      likes_count: likeCounts[p.id] || 0,
+      comments_count: commentCounts[p.id] || 0,
+      is_liked: likedByViewer.has(p.id),
+    }));
+
+    res.json({ posts: postsWithCounts });
   } catch (err) {
     console.error("FETCH SAVED ERROR:", err);
     res.status(500).json({ error: String(err) });
@@ -716,6 +789,76 @@ app.post("/api/create-post", async (req, res) => {
     res.json({ ok: true, post: data });
   } catch (err) {
     console.error("create-post error", err);
+    res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
+  }
+});
+
+// ---- endpoint: delete post ----
+app.delete("/api/posts/:post_id", async (req, res) => {
+  try {
+    const clerkUserId = await verifyClerkToken(req);
+    if (!clerkUserId) {
+      return res.status(401).json({ error: "unauthenticated" });
+    }
+
+    const { post_id } = req.params;
+    if (!post_id) {
+      return res.status(400).json({ error: "missing post_id" });
+    }
+
+    // Check if post exists and belongs to user
+    const { data: post, error: fetchError } = await supabaseAdmin
+      .from("posts")
+      .select("owner_clerk_id, image_public_id")
+      .eq("id", post_id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!post) {
+      return res.status(404).json({ error: "post not found" });
+    }
+
+    if (String(post.owner_clerk_id) !== String(clerkUserId)) {
+      return res.status(403).json({ error: "unauthorized to delete this post" });
+    }
+
+    // Optional: Delete from Cloudinary if public_id exists
+    if (post.image_public_id) {
+      try {
+        await cloudinary.uploader.destroy(post.image_public_id);
+        console.log(`[DELETE POST] Cloudinary image ${post.image_public_id} deleted`);
+      } catch (cloudErr) {
+        console.warn("[DELETE POST] Cloudinary destroy error:", cloudErr);
+      }
+    }
+
+    // Delete from saved_posts first to ensure no orphan records (in case cascading is off)
+    await supabaseAdmin
+      .from("saved_posts")
+      .delete()
+      .eq("post_id", post_id);
+
+    // Delete post (cascading should handle likes/comments if set up)
+    const { data: deleteData, error: deleteError } = await supabaseAdmin
+      .from("posts")
+      .delete()
+      .eq("id", post_id)
+      .select();
+
+    if (deleteError) {
+      console.error("[DELETE POST] Supabase error:", deleteError);
+      throw deleteError;
+    }
+
+    if (!deleteData || deleteData.length === 0) {
+      console.warn(`[DELETE POST] No post was actually deleted for id ${post_id}`);
+    } else {
+      console.log(`[DELETE POST] Supabase delete successful for ${post_id}. Deleted record:`, deleteData[0]);
+    }
+
+    res.json({ ok: true, message: "post deleted successfully", deleted: deleteData?.[0] });
+  } catch (err) {
+    console.error("delete-post error", err);
     res.status(500).json({ error: err?.message || err?.toString?.() || String(err) });
   }
 });

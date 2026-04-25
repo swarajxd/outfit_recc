@@ -1,5 +1,8 @@
 import { useUser } from "@clerk/clerk-expo";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import LikeButton from "../../components/LikeButton";
+import CommentModal from "../../components/CommentModal";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useState } from "react";
@@ -131,6 +134,10 @@ export default function ProfileScreen() {
   }
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [isPostsLoading, setIsPostsLoading] = useState(false);
+  const [activePostMenuId, setActivePostMenuId] = useState<string | null>(null);
+  const [likedItems, setLikedItems] = useState<Record<string, boolean>>({});
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   // Derive user_id from Clerk
   const viewerUserId = user?.id || null;
@@ -239,8 +246,18 @@ const profileUserId =
         id: String(p.id ?? uuidv4()),
         image_url: p.image_url,
         caption: p.caption ?? null,
+        likes_count: Number(p.likes_count || 0),
+        comments_count: Number(p.comments_count || 0),
+        is_liked: !!p.is_liked,
       }));
       setPosts(items);
+
+      // Initialize liked items state
+      const initialLikes: Record<string, boolean> = {};
+      items.forEach((p) => {
+        if (p.is_liked) initialLikes[p.id] = true;
+      });
+      setLikedItems((prev) => ({ ...prev, ...initialLikes }));
     } catch (err) {
       console.warn("profile posts fetch error:", err);
     } finally {
@@ -283,9 +300,19 @@ const fetchSavedPosts = useCallback(async () => {
       image_url: p.image_url,
       caption: p.caption ?? "",
       owner_clerk_id: p.owner_clerk_id,
+      likes_count: Number(p.likes_count || 0),
+      comments_count: Number(p.comments_count || 0),
+      is_liked: !!p.is_liked,
     }));
 
     setPosts(items);
+
+    // Initialize liked items state
+    const initialLikes: Record<string, boolean> = {};
+    items.forEach((p: any) => {
+      if (p.is_liked) initialLikes[p.id] = true;
+    });
+    setLikedItems((prev) => ({ ...prev, ...initialLikes }));
   } catch (err) {
     console.error("PROFILE SAVED ERROR:", err);
     setPosts([]);
@@ -756,6 +783,92 @@ const fetchSavedPosts = useCallback(async () => {
     }
   };
 
+  const handleDeletePost = async (postId: string) => {
+    try {
+      const resp = await fetch(`${SERVER_BASE}/api/posts/${postId}`, {
+        method: "DELETE",
+        headers: {
+          "X-User-Id": String(user?.id),
+          Authorization: `Bearer dev:${user?.id}`,
+        },
+      });
+
+      if (resp.ok) {
+        // Remove from state immediately
+        setPosts((prev) => prev.filter((p) => p.id !== postId));
+        Alert.alert("Success", "Post deleted successfully");
+      } else {
+        const error = await resp.json();
+        Alert.alert("Error", error.error || "Failed to delete post");
+      }
+    } catch (err) {
+      console.error("Delete post error:", err);
+      Alert.alert("Error", "Something went wrong while deleting the post");
+    }
+  };
+
+  const handleLike = async (postId: string) => {
+    if (!user?.id) return;
+    try {
+      const isLiked = !!likedItems[postId];
+      // Optimistic update
+      setLikedItems((prev) => ({ ...prev, [postId]: !isLiked }));
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? { ...p, likes_count: (p.likes_count || 0) + (isLiked ? -1 : 1) }
+            : p,
+        ),
+      );
+
+      const resp = await fetch(`${SERVER_BASE}/api/like-toggle`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer dev:${user.id}`,
+        },
+        body: JSON.stringify({ post_id: postId }),
+      });
+
+      if (!resp.ok) {
+        // Rollback
+        setLikedItems((prev) => ({ ...prev, [postId]: isLiked }));
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId
+              ? { ...p, likes_count: (p.likes_count || 0) + (isLiked ? 1 : -1) }
+              : p,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error("Like error:", err);
+    }
+  };
+
+  const handleUnsavePost = async (postId: string) => {
+    try {
+      const resp = await fetch(`${SERVER_BASE}/api/save-post`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": String(user?.id),
+        },
+        body: JSON.stringify({ post_id: postId }),
+      });
+
+      if (resp.ok) {
+        const json = await resp.json();
+        // If it's unsaved, remove from current list (assuming we're in the Saved tab)
+        if (!json.saved && activeTab === 1) {
+          setPosts((prev) => prev.filter((p) => p.id !== postId));
+        }
+      }
+    } catch (err) {
+      console.error("Unsave error:", err);
+    }
+  };
+
   // Get role/bio from unsafeMetadata as fallback
   const displayRole =
     (user?.publicMetadata as { role?: string })?.role ||
@@ -1004,12 +1117,80 @@ const fetchSavedPosts = useCallback(async () => {
               </View>
             ) : (
               posts.map((post) => (
-                <TouchableOpacity key={post.id} style={styles.postItem}>
-                  <Image
-                    source={{ uri: post.image_url }}
-                    style={styles.postImage}
-                  />
-                </TouchableOpacity>
+                <View key={post.id} style={styles.postItem}>
+                  {/* Main post image area */}
+                  <TouchableOpacity 
+                    activeOpacity={0.9} 
+                    style={{ width: '100%', height: '100%' }}
+                    onPress={() => {
+                      // Optional: Navigate to post detail
+                    }}
+                  >
+                    <Image
+                      source={{ uri: post.image_url }}
+                      style={styles.postImage}
+                    />
+                    
+                    {/* Icons Overlay */}
+                    <View style={styles.postOverlay}>
+                      <LikeButton
+                        liked={!!likedItems[post.id]}
+                        likesCount={post.likes_count}
+                        onPress={() => handleLike(post.id)}
+                        style={styles.gridLikeBtn}
+                      />
+                      <TouchableOpacity
+                        style={styles.gridCommentBtn}
+                        onPress={() => {
+                          setSelectedPostId(post.id);
+                          setCommentModalVisible(true);
+                        }}
+                      >
+                        <Text style={{ fontSize: 14 }}>💬</Text>
+                        <Text style={styles.postOverlayText}>
+                          {post.comments_count || 0}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Absolute buttons on top */}
+                  {isSelf && activeTab === 0 && (
+                    <View style={{ position: 'absolute', top: 5, right: 5, zIndex: 10000 }}>
+                      <TouchableOpacity
+                        style={styles.deletePostBtnStatic}
+                        onPress={() => setActivePostMenuId(activePostMenuId === post.id ? null : post.id)}
+                        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                      >
+                        <Ionicons name="ellipsis-vertical" size={20} color="#fff" />
+                      </TouchableOpacity>
+                      
+                      {activePostMenuId === post.id && (
+                        <View style={styles.dropdownMenu}>
+                          <TouchableOpacity 
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setActivePostMenuId(null);
+                              handleDeletePost(post.id);
+                            }}
+                          >
+                            <Text style={styles.dropdownText}>🗑️ Delete</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {isSelf && activeTab === 1 && (
+                    <TouchableOpacity
+                      style={[styles.deletePostBtn, { zIndex: 9999 }]}
+                      onPress={() => handleUnsavePost(post.id)}
+                      hitSlop={{ top: 30, bottom: 30, left: 30, right: 30 }}
+                    >
+                      <Text style={{ fontSize: 20 }}>🔖</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               ))
             )}
           </View>
@@ -1240,9 +1421,24 @@ const fetchSavedPosts = useCallback(async () => {
           </ScrollView>
         </View>
       </Modal>
-    </View>
-  );
-}
+
+        {selectedPostId && (
+          <CommentModal
+            visible={commentModalVisible}
+            postId={selectedPostId}
+            onClose={() => {
+              setCommentModalVisible(false);
+              setSelectedPostId(null);
+              // Refresh counts when closing
+              if (activeTab === 0) fetchPosts();
+              else fetchSavedPosts();
+            }}
+            serverBase={SERVER_BASE}
+          />
+        )}
+      </View>
+    );
+  }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
@@ -1413,6 +1609,92 @@ const styles = StyleSheet.create({
     borderColor: BG,
   },
   postImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  postOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    flexDirection: "row",
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    gap: 8,
+    alignItems: "center",
+  },
+  postOverlayItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  postOverlayText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  deletePostBtn: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+    elevation: 5,
+  },
+  deletePostBtnStatic: {
+    backgroundColor: "rgba(0,0,0,0.5)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 36,
+    right: 0,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    minWidth: 110,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 20,
+    zIndex: 10001,
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dropdownText: {
+    color: '#FF4444',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  gridLikeBtn: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    width: 'auto',
+    height: 'auto',
+  },
+  gridCommentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 4,
+  },
   // Modal Styles
   modalContainer: {
     flex: 1,
