@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-tertiary-fixed": "#221b0b",
+                        "on-secondary-fixed-variant": "#47464a",
+                        "on-primary-fixed": "#321200",
+                        "primary-container": "#190600",
+                        "tertiary": "#d3c5ad",
+                        "primary-fixed": "#ffdbc8",
+                        "surface-variant": "#353437",
+                        "secondary-fixed": "#e4e1e6",
+                        "on-secondary": "#303033",
+                        "outline": "#919095",
+                        "on-surface": "#e5e1e4",
+                        "surface": "#131315",
+                        "primary": "#ffb68b",
+                        "inverse-on-surface": "#313032",
+                        "secondary-fixed-dim": "#c8c5ca",
+                        "on-primary": "#522300",
+                        "error-container": "#93000a",
+                        "surface-dim": "#131315",
+                        "on-secondary-fixed": "#1b1b1e",
+                        "error": "#ffb4ab",
+                        "surface-container-high": "#2a2a2c",
+                        "surface-container-low": "#1c1b1d",
+                        "on-tertiary-container": "#847864",
+                        "on-tertiary": "#382f1e",
+                        "secondary": "#c8c5ca",
+                        "primary-fixed-dim": "#ffb68b",
+                        "surface-tint": "#ffb68b",
+                        "tertiary-fixed-dim": "#d3c5ad",
+                        "outline-variant": "#47464a",
+                        "surface-container": "#201f21",
+                        "on-primary-container": "#c45c00",
+                        "tertiary-fixed": "#f0e0c8",
+                        "surface-container-highest": "#353437",
+                        "secondary-container": "#47464a",
+                        "on-error": "#690005",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary-container": "#b6b4b8",
+                        "on-primary-fixed-variant": "#753400",
+                        "inverse-primary": "#994700",
+                        "surface-bright": "#39393b",
+                        "tertiary-container": "#110a01",
+                        "on-tertiary-fixed-variant": "#4f4533",
+                        "inverse-surface": "#e5e1e4",
+                        "on-surface-variant": "#c8c5ca",
+                        "on-background": "#e5e1e4",
+                        "surface-container-lowest": "#0e0e10",
+                        "background": "#131315"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-effect {
+            background: rgba(53, 52, 55, 0.4);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+        }
+        .vignette {
+            background: radial-gradient(circle, transparent 40%, rgba(19, 19, 21, 0.8) 100%);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        ::-webkit-scrollbar { display: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary selection:text-on-primary min-h-screen">
+<!-- TopAppBar Shell -->
+<header class="fixed top-0 left-0 right-0 z-50 flex flex-col pt-6 bg-transparent">
+<div class="flex justify-between items-center px-8 w-full">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-container-high border-none">
+<img class="w-full h-full object-cover" data-alt="high-fashion editorial portrait of a young woman with soft cinematic lighting and elegant styling" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAEDB3aVSKoU5VcBYasP9RRqgQdMN9YEWAul2xw1xzmalQ2j3hbWeZWjhd-TZts6p_PGIfqnwejQiscXdfJwS2JCS1jWK-10Li4fuMgbLm1Q7q2BHKGoV8OdWAA0x67Fsa1GiylCS9LVcI93Hr5kkP_pag7e39K75gF15nr75QkFXgbLvKZVoDjEyCrzDV5eBBqwN7tFAJ6ZbOud_-BeAsfnyQhq8DgDhq3mWMw8ivjoCELkcSOpgbhB7cLE4uausyfWNq-cFapSL4"/>
+</div>
+<h1 class="Manrope display-lg tracking-tight font-bold text-[#E5E1E4]">Sense AI</h1>
+</div>
+<button class="material-symbols-outlined text-[#FFB68B] hover:opacity-80 transition-opacity Active: scale-95 transition-transform" data-icon="notifications">notifications</button>
+</div>
+<!-- Suggestion Pills (Header sub-section) -->
+<div class="flex gap-2 px-8 mt-4 overflow-x-auto whitespace-nowrap pb-2">
+<button class="px-4 py-1.5 rounded-full border border-outline-variant/20 glass-effect text-secondary-fixed text-xs tracking-widest uppercase font-medium hover:bg-surface-container-high transition-colors">Party</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant/20 glass-effect text-secondary-fixed text-xs tracking-widest uppercase font-medium hover:bg-surface-container-high transition-colors">Minimal</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant/20 glass-effect text-secondary-fixed text-xs tracking-widest uppercase font-medium hover:bg-surface-container-high transition-colors">Date Night</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant/20 glass-effect text-secondary-fixed text-xs tracking-widest uppercase font-medium hover:bg-surface-container-high transition-colors">Business</button>
+</div>
+</header>
+<main class="relative pt-36 pb-40 px-6 max-w-lg mx-auto">
+<!-- Vignette Background Overlay -->
+<div class="fixed inset-0 pointer-events-none vignette z-10"></div>
+<!-- Welcome Section -->
+<section class="mb-10 relative z-20">
+<span class="font-label text-tertiary text-xs uppercase tracking-widest mb-2 block">Good Evening, Bhavith</span>
+<h2 class="font-headline text-3xl font-bold tracking-tight text-on-surface mb-8 leading-tight">What would you like to wear today?</h2>
+<div class="grid grid-cols-2 gap-3">
+<button class="flex flex-col items-start p-4 rounded-xl glass-effect border border-outline-variant/10 text-left transition-all active:scale-95 group">
+<span class="material-symbols-outlined text-primary mb-3" data-icon="upload_file">upload_file</span>
+<span class="text-on-surface font-medium text-sm">Upload Outfit</span>
+</button>
+<button class="flex flex-col items-start p-4 rounded-xl glass-effect border border-outline-variant/10 text-left transition-all active:scale-95 group">
+<span class="material-symbols-outlined text-primary mb-3" data-icon="auto_fix_high">auto_fix_high</span>
+<span class="text-on-surface font-medium text-sm">Build Look</span>
+</button>
+<button class="flex flex-col items-start p-4 rounded-xl glass-effect border border-outline-variant/10 text-left transition-all active:scale-95 group">
+<span class="material-symbols-outlined text-primary mb-3" data-icon="checkroom">checkroom</span>
+<span class="text-on-surface font-medium text-sm">Wardrobe</span>
+</button>
+<button class="flex flex-col items-start p-4 rounded-xl glass-effect border border-outline-variant/10 text-left transition-all active:scale-95 group">
+<span class="material-symbols-outlined text-primary mb-3" data-icon="travel_explore">travel_explore</span>
+<span class="text-on-surface font-medium text-sm">Find Similar</span>
+</button>
+</div>
+</section>
+<!-- Smart Context Widget -->
+<div class="mb-10 relative z-20 overflow-hidden rounded-full glass-effect border border-outline-variant/5">
+<div class="flex items-center gap-4 px-6 py-2.5 text-[11px] tracking-widest uppercase font-semibold text-tertiary">
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px]" data-icon="location_on">location_on</span>Monaco · 28°C</span>
+<span class="opacity-20">|</span>
+<span>Linen recommended</span>
+<span class="opacity-20">|</span>
+<span>SPF suggested</span>
+</div>
+</div>
+<!-- Chat Area -->
+<section class="space-y-8 relative z-20">
+<!-- User Message -->
+<div class="flex justify-end">
+<div class="max-w-[80%] rounded-2xl rounded-tr-none px-5 py-3 bg-gradient-to-br from-primary to-on-primary-container text-on-primary-fixed shadow-lg shadow-primary/10">
+<p class="text-sm font-medium leading-relaxed">Show me something effortless for a Mediterranean dinner.</p>
+</div>
+</div>
+<!-- AI Response Card -->
+<div class="flex flex-col gap-3">
+<div class="flex items-center gap-2 mb-1">
+<span class="w-1 h-4 bg-tertiary-fixed-dim rounded-full"></span>
+<span class="text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant">Sense AI Curator</span>
+</div>
+<!-- Fashion Card -->
+<div class="bg-surface-container-high rounded-3xl overflow-hidden shadow-2xl">
+<div class="relative h-96 w-full">
+<img class="w-full h-full object-cover" data-alt="elegant linen summer suit on a man standing by a turquoise pool in Monaco, soft dusk lighting, minimalist aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAFY0GLV4HbHyTpOU-ekUFsH5WvLrpmD8laA7aDdokhm6imm93v4sHGhXY0sy7JRw3blU5q3G196fB5abtRlLE0KKH0TTmWOWiyuPXwpbbcVYe3l8G6qlwV8wrBKdCLen9oEIuAJmxKOa5gkeSKiNEzZn0xL6ruAqyBQw2CwzLPw4oeyR0yZaASGtbTh-lJMQcTiFNYGLqvD9N1fYw5Xxl0ZcKwUTAGE6ySAWqivgoWrVpYtiRCCMhFUP73J_BwLNJVWV9FegQOx6w"/>
+<div class="absolute top-4 left-4">
+<span class="px-3 py-1.5 rounded-full glass-effect text-primary font-bold text-xs shadow-lg flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="verified" style="font-variation-settings: 'FILL' 1;">verified</span>
+                                98% Match
+                            </span>
+</div>
+</div>
+<div class="p-6">
+<div class="flex justify-between items-start mb-3">
+<h3 class="font-headline text-xl font-bold text-on-surface tracking-tight">Structured Linen Silhouette</h3>
+<span class="font-label text-tertiary text-lg font-medium">€420</span>
+</div>
+<div class="flex gap-2 mb-4">
+<span class="px-3 py-1 bg-surface-container-lowest text-secondary-fixed text-[10px] tracking-widest uppercase rounded-full">Bespoke</span>
+<span class="px-3 py-1 bg-surface-container-lowest text-secondary-fixed text-[10px] tracking-widest uppercase rounded-full">Linen</span>
+</div>
+<p class="text-on-surface-variant text-sm leading-relaxed mb-6">
+                            Architectural draping meets breathable weave. This piece captures the Monaco dusk with an effortless tonal shift.
+                        </p>
+<div class="flex items-center justify-between pt-6 border-t border-outline-variant/10">
+<div class="flex gap-2">
+<div class="w-4 h-4 rounded-full bg-[#E5E1E4] ring-2 ring-offset-2 ring-offset-surface-container-high ring-primary"></div>
+<div class="w-4 h-4 rounded-full bg-[#D3C5AD] opacity-40"></div>
+<div class="w-4 h-4 rounded-full bg-[#353437] opacity-40"></div>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors" data-icon="bookmark">bookmark</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-error transition-colors" data-icon="favorite">favorite</button>
+<button class="px-6 py-2 bg-gradient-to-br from-primary to-on-primary-container text-on-primary-fixed rounded-full text-xs font-bold tracking-widest uppercase shadow-lg shadow-primary/20">Buy</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Accessory Carousel -->
+<div class="mt-4">
+<h4 class="text-[10px] uppercase tracking-[0.2em] font-bold text-tertiary mb-4 ml-2">Complete the look</h4>
+<div class="flex gap-6 overflow-x-auto pb-4 px-2">
+<div class="flex-shrink-0 flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-surface-container-lowest overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="minimalist white designer sneakers against a dark charcoal background, studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuApOvAsC_7dnUBPkgz9VydJYtea74Rp5tzR8dH6jnQ4fBeZfrHitJxKafn6aGrYecx3-JYk_KKavm1uzP52NdXipqyntZYmOsSwu47BRCnrnFJ2ozWlssEDFwuZlZeOX5p2EKDAjJqXL7PN9T0q--o5t03ePi2QIAagXcF8Oeg_5WNLY3MVCvF1an7P_3TEjz5irCkEbDvE0Gsh4LfOlofeSr1GaMPS0IygertqKinU26jsNNRovpmt6ZHkBFY6g5HXoZ1VpVBzvHQ"/>
+</div>
+<span class="text-[11px] font-medium text-on-surface">Vesta Sneakers</span>
+</div>
+<div class="flex-shrink-0 flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-surface-container-lowest overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="modern minimalist gold watch with black leather strap, editorial product shot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWhcHq4ch39uoIztK58lZLrXo1pX-XSYyHj1iLgnt12GfrPgVKfPiHDBR9GUxuZ-3Wr8enA8DUw07xVxMjpa_6RoAIpB4yydZhg33Q6mMjN6Z8e9HafxUKxhrQeA074vpFdMP94UmMSGuhejfDPDfGnVK9Jrfqr7lIyKoX9IpBVZIOEMKw8GNu8qw1u8I7QGThu_8TfAxQsldMgu6JNlCjc550xnppxDLdKzZO2ZbnRcldXsQSg7T4abmgDofXiyfy6giA-ouvwAM"/>
+</div>
+<span class="text-[11px] font-medium text-on-surface">Orbit Timepiece</span>
+</div>
+<div class="flex-shrink-0 flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-surface-container-lowest overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="premium leather carryall bag in tan, architectural design, minimalist lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABBHzgdzowgmRxfE6Jcs8TFat31VPkATnLwoI7D-wN5gFiG-GFWDqWzZ9BbKezRiYK1_F1st5Vhu2Jd1oItFwcan33-t1uqNHEKjiJPSH3R6haOwHIOOPHE9TEFIzvt-Vy9lPDNZ3_KsjkXc4L83pux5LZG51Li_YzWwzanLQeDUNSAuNvGVrJTajBzid64aH4JDVPfqjd1xxhsaS9nbrMsTfV-CpTmWWshBLunxsxaVeeXwONa-u3zKa5Tz72neUJXuKvhKk6kJg"/>
+</div>
+<span class="text-[11px] font-medium text-on-surface">Nomad Carryall</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Spacer for Bottom Shell -->
+<div class="h-24"></div>
+</main>
+<!-- Bottom Interface Area -->
+<div class="fixed bottom-0 left-0 right-0 z-50 px-6 pb-8 bg-gradient-to-t from-surface via-surface/90 to-transparent">
+<!-- Context Suggestion Chips -->
+<div class="flex gap-2 mb-4 overflow-x-auto pb-1 max-w-lg mx-auto">
+<button class="px-4 py-2 rounded-full bg-surface-container-high border border-outline-variant/10 text-xs text-on-surface-variant whitespace-nowrap hover:bg-surface-container-highest transition-colors">Style with blazer</button>
+<button class="px-4 py-2 rounded-full bg-surface-container-high border border-outline-variant/10 text-xs text-on-surface-variant whitespace-nowrap hover:bg-surface-container-highest transition-colors">Casual alternative</button>
+<button class="px-4 py-2 rounded-full bg-surface-container-high border border-outline-variant/10 text-xs text-on-surface-variant whitespace-nowrap hover:bg-surface-container-highest transition-colors">Change color</button>
+</div>
+<!-- Floating Input Field -->
+<div class="max-w-md mx-auto relative">
+<div class="flex items-center gap-2 p-1.5 rounded-full glass-effect border border-outline-variant/10 shadow-[0px_20px_40px_rgba(0,0,0,0.4)]">
+<button class="p-3 text-secondary-fixed opacity-60 hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined" data-icon="add_circle">add_circle</span>
+</button>
+<input class="flex-grow bg-transparent border-none focus:ring-0 text-sm text-on-surface placeholder:text-on-surface-variant/40 px-2" placeholder="Describe a mood or style..." type="text"/>
+<button class="p-3 text-secondary-fixed opacity-60 hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined" data-icon="mic">mic</span>
+</button>
+<button class="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-on-primary-container text-on-primary-fixed flex items-center justify-center shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-transform">
+<span class="material-symbols-outlined" data-icon="arrow_upward">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bottom Navigation Bar (Hidden on deep task screens as per rule, but rendered for structure if requested) -->
+<nav class="fixed bottom-0 left-0 right-0 z-50 flex justify-around items-center px-6 pb-4 md:hidden invisible pointer-events-none">
+<div class="bg-[#2A2A2C]/60 backdrop-blur-xl rounded-full mb-8 mx-auto w-[90%] max-w-md flex justify-around items-center px-6 py-1 shadow-[0px_20px_40px_rgba(0,0,0,0.4)] pointer-events-auto">
+<div class="flex flex-col items-center justify-center text-[#E5E1E4]/60 p-3 hover:text-[#E5E1E4] transition-colors">
+<span class="material-symbols-outlined" data-icon="auto_awesome_motion">auto_awesome_motion</span>
+<span class="Inter label-sm tracking-widest uppercase text-[9px] mt-1">Studio</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#E5E1E4]/60 p-3 hover:text-[#E5E1E4] transition-colors">
+<span class="material-symbols-outlined" data-icon="checkroom">checkroom</span>
+<span class="Inter label-sm tracking-widest uppercase text-[9px] mt-1">Wardrobe</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#FFB68B] shadow-[0_0_15px_rgba(255,182,139,0.3)] bg-surface-container-high rounded-full p-3 scale-110">
+<span class="material-symbols-outlined" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<span class="Inter label-sm tracking-widest uppercase text-[9px] mt-1">Sense AI</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#E5E1E4]/60 p-3 hover:text-[#E5E1E4] transition-colors">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+<span class="Inter label-sm tracking-widest uppercase text-[9px] mt-1">Search</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#E5E1E4]/60 p-3 hover:text-[#E5E1E4] transition-colors">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="Inter label-sm tracking-widest uppercase text-[9px] mt-1">Profile</span>
+</div>
+</div>
+</nav>
+</body></html>

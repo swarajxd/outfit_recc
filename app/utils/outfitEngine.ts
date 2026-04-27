@@ -892,3 +892,9 @@ function scoreOutfit(outfit: Omit<GeneratedOutfit, "generatedAt">) {
 
   return score;
 }
+
+// Expo Router scans files under app/ as routes.
+// Keep a no-op default export so this utility file does not error during route manifest generation.
+export default function OutfitEngineUtilRoute() {
+  return null;
+}

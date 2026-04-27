@@ -1,5 +1,23 @@
+const { getFullTasteProfile } = require("./tasteService");
+const { getUserLikes } = require("./likeService");
+
+// ✅ FIX: Feed ranking using multi-signal similarity
+
+// Extracts only public-safe fields from a post row
+function postToPublic(post) {
+  return {
+    id: post.id,
+    image_url: post.image_url,
+    caption: post.caption,
+    owner_clerk_id: post.owner_clerk_id,
+    tags: post.tags,
+    created_at: post.created_at,
+    attributes: post.attributes,
+  };
+}
+
 function dot(a, b) {
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return null;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
   let s = 0;
   for (let i = 0; i < a.length; i++) s += Number(a[i]) * Number(b[i]);
   return s;
@@ -14,176 +32,229 @@ function normalize(vec) {
   return nums.map((v) => v / norm);
 }
 
-function extractItemEmbeddings(outfit_data) {
-  if (!outfit_data || typeof outfit_data !== "object") return [];
+/**
+ * Calculates attribute overlap score (categories and colors).
+ * ✅ FIX: Part 4, Step 20
+ */
+function getAttributeScore(userPrefs, postAttrs) {
+  if (!userPrefs || !postAttrs) return 0;
+  let score = 0;
 
-  // Check new outfit_data format from postVectorPipeline.js
-  const items = Array.isArray(outfit_data.items) ? outfit_data.items : null;
-  if (items) {
-    return items
-      .map((it) => it?.embedding)
-      .filter((v) => Array.isArray(v) && v.length === 512);
-  }
+  const postCats = postAttrs.categories || [];
+  const postCols = postAttrs.colors || [];
 
-  // Backward compatibility with current wardrobe pipeline output.
-  const vectors = Array.isArray(outfit_data.wardrobe_vectors)
-    ? outfit_data.wardrobe_vectors
-    : null;
-  if (vectors) {
-    return vectors
-      .map((it) => it?.combined_embedding)
-      .filter((v) => Array.isArray(v) && v.length === 512);
-  }
+  // Weight based on frequency in user preferences
+  postCats.forEach((c) => {
+    if (userPrefs.categories?.[c]) score += 1;
+  });
+  postCols.forEach((c) => {
+    if (userPrefs.colors?.[c]) score += 1;
+  });
 
-  return [];
+  return score > 0 ? Math.min(1, score / 5) : 0;
 }
 
-async function getUserLikedPosts(supabaseAdmin, user_id) {
-  console.log("[for-you] USER ID:", user_id);
-  const { data: likes, error: likesErr } = await supabaseAdmin
-    .from("likes")
-    .select("*")
-    .eq("user_id", user_id);
-  if (likesErr) throw likesErr;
-  console.log("[for-you] LIKES COUNT:", (likes || []).length);
+/**
+ * Safely computes cosine similarity between a taste vector and a post embedding.
+ *
+ * Returns null (not 0) when:
+ *   - The taste vector for this signal is missing (NULL in DB)
+ *   - The post doesn't have this embedding
+ *
+ * Returning null lets the scoring formula skip this signal entirely
+ * instead of penalising it with a 0.
+ *
+ * Bug fixed: previously `dot(normalize(null), normalize([...]))` returned 0,
+ * which was treated as a real signal (0 similarity) in the full formula,
+ * dragging the score down when visual/text taste vectors were null.
+ */
+function computeSimilarity(tasteVec, postEmb) {
+  // Both must be valid non-empty arrays
+  if (!Array.isArray(tasteVec) || tasteVec.length === 0) return null;
+  if (!Array.isArray(postEmb) || postEmb.length === 0) return null;
 
-  const likedPostIds = (likes || []).map((l) => l.post_id).filter(Boolean);
-  if (likedPostIds.length === 0) return { likedRows: likes || [], likedPosts: [] };
+  const normTaste = normalize(tasteVec);
+  const normPost = normalize(postEmb);
 
-  const { data: likedPosts, error: lpErr } = await supabaseAdmin
-    .from("posts")
-    .select("id,outfit_data")
-    .in("id", likedPostIds);
-  if (lpErr) throw lpErr;
-  console.log("[for-you] LIKED POSTS COUNT:", (likedPosts || []).length);
-  return { likedRows: likes || [], likedPosts: likedPosts || [] };
-}
+  if (!normTaste || !normPost) return null;
 
-function buildUserVector(likedPosts) {
-  let all_embeddings = [];
-  for (const post of likedPosts || []) {
-    const embs = extractItemEmbeddings(post?.outfit_data);
-    all_embeddings.push(...embs.map((e) => e.map((v) => Number(v))));
-  }
-  
-  console.log("[for-you] TOTAL EMBEDDINGS USED:", all_embeddings.length);
-  if (all_embeddings.length === 0) return null;
-
-  const dim = all_embeddings[0].length;
-  const mean = new Array(dim).fill(0);
-  for (const emb of all_embeddings) {
-    for (let i = 0; i < dim; i++) mean[i] += emb[i];
-  }
-  for (let i = 0; i < dim; i++) mean[i] /= all_embeddings.length;
-
-  const user_vector = normalize(mean);
-  if (user_vector) {
-    console.log("[for-you] USER VECTOR BUILT, length:", user_vector.length);
-  }
-  return user_vector;
-}
-
-function computeSimilarity(user_vector, post) {
-  if (!user_vector) return 0;
-  const items = extractItemEmbeddings(post?.outfit_data);
-  let best_score = 0;
-  for (const emb of items) {
-    const embNorm = normalize(emb) || emb;
-    const score = dot(user_vector, embNorm);
-    if (typeof score === "number" && Number.isFinite(score)) {
-      if (score > best_score) best_score = score;
-    }
-  }
-  return best_score;
-}
-
-async function latestPosts(supabaseAdmin, limit = 20, likedIdsSet = new Set()) {
-  const { data, error } = await supabaseAdmin
-    .from("posts")
-    .select("id,image_url,caption,owner_clerk_id,tags,created_at,outfit_data")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  
-  return (data || []).map(p => ({
-    ...p,
-    is_liked: likedIdsSet.has(String(p.id)),
-    similarity_score: 0
-  }));
+  return dot(normTaste, normPost);
 }
 
 async function getForYouFeed(supabaseAdmin, user_id) {
   let likedIdsSet = new Set();
   try {
-    const { likedRows, likedPosts } = await getUserLikedPosts(supabaseAdmin, user_id);
-    const likedPostIds = (likedRows || []).map((r) => r.post_id).filter(Boolean);
+    // 1. Fetch user likes for persistence
+    const likedPostIds = user_id ? await getUserLikes(user_id) : [];
     likedIdsSet = new Set(likedPostIds.map(String));
-    
-    console.log("[for-you] Processing for-you feed for user:", user_id);
 
-    const user_vector = buildUserVector(likedPosts);
-    
-    // Fetch a pool of posts to recommend from
+    // 2. Fetch user taste profile (Part 4, Step 17)
+    const taste = user_id ? await getFullTasteProfile(user_id) : null;
+
+    if (taste) {
+      console.log("User taste vector length:", taste.taste_vector?.length);
+    }
+
+    // 3. Fetch posts (only those with embeddings)
+    // ✅ FIX: Include posts that have combined_embedding even if other signals are null
+    // This ensures new posts appear immediately once combined embedding is ready
     const { data: posts, error } = await supabaseAdmin
       .from("posts")
-      .select("id,image_url,caption,owner_clerk_id,tags,outfit_data,created_at")
+      .select(
+        "id,image_url,caption,owner_clerk_id,tags,combined_embedding,visual_embedding,text_embedding,attributes,created_at,embedding_status",
+      )
+      .not("combined_embedding", "is", null) // must have at least combined
+      .in("embedding_status", ["completed", "partial"]) // accept partial too
       .order("created_at", { ascending: false })
       .limit(100);
-    
+
     if (error) throw error;
     if (!posts || posts.length === 0) return [];
 
-    // Score and filter
+    console.log("Fetched posts:", posts.length);
+
+    // 4. Score posts using available taste signals
+    const now = Date.now();
     const scored = posts.map((post) => {
-      // If we have a user vector, compute similarity
-      let similarity_score = 0;
-      if (user_vector) {
-        similarity_score = computeSimilarity(user_vector, post);
+      const ageMs = Math.max(0, now - new Date(post.created_at).getTime());
+      const ageHours = ageMs / (1000 * 60 * 60);
+      const recency_score = 1 / (ageHours + 1);
+
+      // No taste profile yet - rank by recency only
+      if (!taste || !Array.isArray(taste.taste_vector)) {
+        return {
+          ...postToPublic(post),
+          score: recency_score,
+          liked: likedIdsSet.has(String(post.id)),
+        };
       }
-      
+
+      // ✅ FIX Bug 3: computeSimilarity returns null when either vector is missing.
+      // This means a null visual_taste_vector correctly falls back to combined-only,
+      // rather than contributing a 0 score to the full formula.
+      const sim_combined = computeSimilarity(
+        taste.taste_vector,
+        post.combined_embedding,
+      );
+      const sim_visual = computeSimilarity(
+        taste.visual_taste_vector,
+        post.visual_embedding,
+      );
+      const sim_text = computeSimilarity(
+        taste.text_taste_vector,
+        post.text_embedding,
+      );
+      const attr_score = getAttributeScore(
+        taste.attribute_preferences,
+        post.attributes,
+      );
+
+      let score;
+
+      if (sim_combined !== null && sim_visual !== null && sim_text !== null) {
+        // All 3 signals present - full weighted formula
+        score =
+          0.5 * sim_combined +
+          0.2 * sim_visual +
+          0.1 * sim_text +
+          0.1 * attr_score +
+          0.1 * recency_score;
+
+      } else if (sim_combined !== null) {
+        // Only combined available (visual/text taste vectors not yet populated)
+        // This is the common case for new users or users with few likes
+        score = 0.7 * sim_combined + 0.2 * attr_score + 0.1 * recency_score;
+
+      } else {
+        // No usable taste signal - fall back to recency
+        score = recency_score;
+      }
+
       return {
-        ...post,
-        similarity_score,
-        is_liked: likedIdsSet.has(String(post.id))
+        ...postToPublic(post),
+        liked: likedIdsSet.has(String(post.id)),
+        score,
+        _debug: {
+          sim_combined,
+          sim_visual,
+          sim_text,
+          attr_score,
+          recency_score,
+        },
       };
     });
 
-    // Sort: 
-    // 1. If user has preferences (user_vector), sort by similarity
-    // 2. Otherwise, just by recency (already done by SQL query)
-    if (user_vector) {
-      scored.sort((a, b) => {
-        // First, push already liked posts to the bottom to show new content
-        const aLiked = a.is_liked ? 1 : 0;
-        const bLiked = b.is_liked ? 1 : 0;
-        if (aLiked !== bLiked) return aLiked - bLiked;
+    // Sort descending by score
+    scored.sort((a, b) => b.score - a.score);
 
-        // Then, sort by similarity score (descending)
-        if (b.similarity_score !== a.similarity_score) {
-          return b.similarity_score - a.similarity_score;
-        }
-        // Recency as final fallback
-        return new Date(b.created_at) - new Date(a.created_at);
-      });
-      console.log("[for-you] Personalized sort complete. Top score:", scored[0]?.similarity_score);
-    } else {
-      console.log("[for-you] No user preferences found, using recency-based feed");
-    }
+    console.log(
+      `[for-you] User taste: ${taste ? `present (${taste.like_count || "?"} likes)` : "absent"}`,
+    );
+    console.log(`[for-you] Posts scored: ${scored.length}`);
+    console.log(`[for-you] Top post score: ${scored[0]?.score?.toFixed(4)}`);
+    console.log(
+      `[for-you] Score signals: combined=${scored[0]?._debug?.sim_combined?.toFixed(3)}, visual=${scored[0]?._debug?.sim_visual?.toFixed(3) ?? "null"}, text=${scored[0]?._debug?.sim_text?.toFixed(3) ?? "null"}`,
+    );
 
-    // Limit to 20 for the feed
     return scored.slice(0, 20);
   } catch (err) {
     console.error("[for-you] Error generating For You feed:", err);
-    // Fallback to latest posts, passing the likedIdsSet if we managed to fetch it
-    return latestPosts(supabaseAdmin, 20, likedIdsSet);
+    return [];
   }
 }
+
+/**
+ * Explore page feed ranking logic: 0.6 * recency + 0.4 * diversity
+ */
+async function getExploreFeed(supabaseAdmin, user_id = null) {
+  let likedIdsSet = new Set();
+  try {
+    if (user_id) {
+      const likedPostIds = await getUserLikes(user_id);
+      likedIdsSet = new Set(likedPostIds.map(String));
+    }
+
+    const { data: posts, error } = await supabaseAdmin
+      .from("posts")
+      .select(
+        "id,image_url,caption,owner_clerk_id,tags,combined_embedding,attributes,created_at,embedding_status",
+      )
+      .not("combined_embedding", "is", null) // must have at least combined
+      .in("embedding_status", ["completed", "partial"]) // accept partial too
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+    if (!posts) return [];
+
+    const now = Date.now();
+    const scored = posts.map((post) => {
+      const ageMs = Math.max(0, now - new Date(post.created_at).getTime());
+      const ageHours = ageMs / (1000 * 60 * 60);
+      const recency = 1 / (ageHours + 1);
+      const diversity = Math.random();
+
+      // Final Explore Score
+      const score = 0.6 * recency + 0.4 * diversity;
+
+      return {
+        ...postToPublic(post),
+        liked: likedIdsSet.has(String(post.id)),
+        score,
+      };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 20);
+  } catch (err) {
+    console.error("[explore] Error generating Explore feed:", err);
+    return [];
+  }
+}
+
 module.exports = {
-  getUserLikedPosts,
-  buildUserVector,
-  computeSimilarity,
   getForYouFeed,
+  getExploreFeed,
   dot,
   normalize,
 };
-

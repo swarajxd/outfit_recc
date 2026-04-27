@@ -1,6 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
+const { updateUserTaste } = require("./tasteService");
 
-// ✅ NEW: Like Service
+// ✅ FIX: User taste vector system expanded
 // This service handles all logic related to post likes, including adding,
 // removing, and fetching likes from Supabase.
 
@@ -20,38 +21,48 @@ async function addLike(userId, postId) {
   try {
     console.log(`[likeService] ➕ addLike: user=${userId}, post=${postId}`);
     
-    // Check if like already exists to avoid unnecessary error logging from Supabase
-    const { data: existing, error: checkError } = await supabaseAdmin
-      .from("likes")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("post_id", postId)
-      .maybeSingle();
-
-    if (checkError) {
-      console.error(`[likeService] ❌ Error checking existing like:`, checkError);
-      throw checkError;
-    }
-
-    if (existing) {
-      console.log(`[likeService] ℹ️ Like already exists for user=${userId}, post=${postId}`);
-      return { liked: true };
-    }
-
+    // Use upsert with onConflict to handle duplicates gracefully (ON CONFLICT DO NOTHING)
     const { error } = await supabaseAdmin
       .from("likes")
-      .insert([{ user_id: userId, post_id: postId }]);
+      .upsert(
+        { user_id: userId, post_id: postId },
+        { onConflict: 'user_id,post_id', ignoreDuplicates: true }
+      );
 
     if (error) {
       console.error(`[likeService] ❌ Supabase Insert Error:`, error);
-      // If it's a unique constraint violation, we still return liked: true
-      if (error.code === '23505') {
-        return { liked: true };
-      }
       throw error;
     }
 
     console.log(`[likeService] ✅ Like added successfully to DB`);
+
+    // ✅ FIX: Taste vector update (Part 3, Step 14)
+    // Fetch post with all embeddings and update user taste vector asynchronously
+    (async () => {
+      try {
+        const { data: post, error: postError } = await supabaseAdmin
+          .from("posts")
+          .select("visual_embedding, text_embedding, combined_embedding, attributes")
+          .eq("id", postId)
+          .maybeSingle();
+
+        if (postError) {
+          console.error(`[likeService] Error fetching post for taste update:`, postError);
+          return;
+        }
+
+        if (!post || !post.combined_embedding) {
+          console.warn("Skipping taste update: No embeddings found for post", postId);
+          return;
+        }
+
+        console.log(`[likeService] Calling updateUserTaste for user ${userId}`);
+        await updateUserTaste(userId, post);
+      } catch (err) {
+        console.error(`[likeService] Taste update failed:`, err.message);
+      }
+    })();
+
     return { liked: true };
   } catch (err) {
     console.error(`[likeService] 💥 CRITICAL ERROR in addLike:`, err.message);

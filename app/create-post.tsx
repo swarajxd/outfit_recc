@@ -1,4 +1,4 @@
-import { useAuth, useUser } from "@clerk/clerk-expo"; // useAuth may provide a method to get token
+import { useUser } from "@clerk/clerk-expo";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -20,7 +20,6 @@ import { SERVER_BASE } from "./utils/config";
 export default function CreatePostScreen() {
   const router = useRouter();
   const { user } = useUser();
-  const { getToken } = useAuth();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [caption, setCaption] = useState("");
@@ -102,16 +101,7 @@ export default function CreatePostScreen() {
 
       // 3) Get Clerk token to authenticate request to server
       // In development we support dev token format: "dev:<clerkUserId>"
-      let authHeader = "Bearer dev:" + user.id;
-      try {
-        if (getToken) {
-          const token = await getToken({ template: "supabase" });
-          authHeader = `Bearer ${token}`;
-        }
-      } catch (e) {
-        // fallback to dev token
-        authHeader = `Bearer dev:${user.id}`;
-      }
+      const authHeader = `Bearer dev:${user.id}`;
 
       // 4) Create post record in Supabase
       const createResp = await fetch(`${SERVER_BASE}/api/create-post`, {

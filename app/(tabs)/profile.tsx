@@ -1,5 +1,7 @@
 import { useUser } from "@clerk/clerk-expo";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -19,6 +21,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { v4 as uuidv4 } from "uuid";
 import { SERVER_BASE } from "../utils/config";
 
+
+
 const PRIMARY = "#FF6B00";
 const BG = "#000000";
 const WIDTH = Dimensions.get("window").width;
@@ -36,7 +40,8 @@ const POST_IMAGES = [
   "https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=300&q=80",
 ];
 
-const PROFILE_TABS = ["Posts", "Saved", "Wardrobe"];
+const PROFILE_TABS_SELF = ["Posts", "Saved", "Wardrobe"];
+const PROFILE_TABS_OTHER = ["Posts", "Saved"];
 
 // Default values for profile
 const DEFAULT_NAME = "Style Enthusiast";
@@ -50,12 +55,14 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(0);
   const { user, isLoaded } = useUser();
+  const router = useRouter();
+  const searchParams = useLocalSearchParams<{ userId?: string }>();
 
   // Extract user data with defaults
   const userName =
     user?.firstName && user?.lastName
       ? `${user.firstName} ${user.lastName}`
-      : user?.firstName || user?.lastName || DEFAULT_NAME;
+      : user?.firstName || user?.lastName || user?.fullName || DEFAULT_NAME;
   const userHandle = user?.username
     ? `@${user.username}`
     : user?.emailAddresses?.[0]?.emailAddress
@@ -66,6 +73,8 @@ export default function ProfileScreen() {
     (user?.unsafeMetadata as { profileImageUrl?: string })?.profileImageUrl ||
     user?.imageUrl ||
     DEFAULT_AVATAR;
+
+
 
   // Edit profile state
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
@@ -93,6 +102,27 @@ export default function ProfileScreen() {
   const [following, setFollowing] = useState<number | null>(null);
   const [styleScore, setStyleScore] = useState<number | null>(null);
 
+  type ProfileLite = {
+    clerk_id: string | null;
+    username?: string | null;
+    full_name?: string | null;
+    profile_image_url?: string | null;
+    role?: string | null;
+    bio?: string | null;
+  };
+
+  const [targetProfile, setTargetProfile] = useState<ProfileLite | null>(null);
+  const [isTargetProfileLoading, setIsTargetProfileLoading] = useState(false);
+  const [isFollowingTarget, setIsFollowingTarget] = useState(false);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
+
+  const [relationModalType, setRelationModalType] = useState<
+    "followers" | "following" | null
+  >(null);
+  const [isRelationModalOpen, setIsRelationModalOpen] = useState(false);
+  const [relationUsers, setRelationUsers] = useState<ProfileLite[]>([]);
+  const [relationLoading, setRelationLoading] = useState(false);
+
   // Posts state (real backend instead of static images)
   interface PostItem {
     id: string;
@@ -103,16 +133,69 @@ export default function ProfileScreen() {
   const [isPostsLoading, setIsPostsLoading] = useState(false);
 
   // Derive user_id from Clerk
-  const userId = user?.id || "default_user";
+  const viewerUserId = user?.id || null;
+  
+  // Determine if we're viewing another user's profile from URL params
+const isViewingOtherProfile =
+  searchParams.userId && typeof searchParams.userId === "string";
+
+const profileUserId =
+  (searchParams.userId && typeof searchParams.userId === "string")
+    ? searchParams.userId
+    : viewerUserId || "default_user";
+  
+  const isSelf = !!viewerUserId && String(profileUserId) === String(viewerUserId);
+  const PROFILE_TABS = isSelf ? PROFILE_TABS_SELF : PROFILE_TABS_OTHER;
+  useEffect(() => {
+  setActiveTab(0);
+}, [profileUserId]);
+
+
+  // Auto-sync current user's Clerk data to Supabase on first load
+  React.useEffect(() => {
+    const syncClerkToSupabase = async () => {
+      if (!isLoaded || !user || !isSelf) return;
+      
+      try {
+        const resp = await fetch(`${SERVER_BASE}/api/profile/upsert`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-Id": String(user.id),
+          },
+          body: JSON.stringify({
+            clerk_id: user.id,
+            username: user.username || undefined,
+            full_name: user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || undefined,
+            profile_image_url: (user.unsafeMetadata as { profileImageUrl?: string })?.profileImageUrl || user.imageUrl || undefined,
+            role: (user.unsafeMetadata as { role?: string })?.role || undefined,
+            bio: (user.unsafeMetadata as { bio?: string })?.bio || undefined,
+          }),
+        });
+        if (resp.ok) {
+          // Silently synced
+        } else {
+          console.warn("Failed to sync to Supabase:", await resp.text());
+        }
+      } catch (err) {
+        console.warn("Error syncing to Supabase:", err);
+      }
+    };
+    
+    syncClerkToSupabase();
+  }, [isLoaded, user, isSelf]);
 
   // ── Fetch profile stats (followers/following/style) ──────────────────────
   const fetchStats = useCallback(async () => {
+    if (!viewerUserId) return;
     try {
       const resp = await fetch(
-        `${SERVER_BASE}/api/profile/stats?user_id=${encodeURIComponent(userId)}`,
+        `${SERVER_BASE}/api/profile/stats?user_id=${encodeURIComponent(
+          String(profileUserId),
+        )}`,
         {
           headers: {
-            "X-User-Id": userId,
+            "X-User-Id": String(viewerUserId),
           },
         },
       );
@@ -127,7 +210,7 @@ export default function ProfileScreen() {
       console.warn("profile stats fetch error:", err);
       // leave defaults/nulls – UI will still show something
     }
-  }, [userId]);
+  }, [viewerUserId, profileUserId]);
 
   useEffect(() => {
     if (isLoaded) {
@@ -139,12 +222,15 @@ export default function ProfileScreen() {
   const fetchPosts = useCallback(async () => {
     setIsPostsLoading(true);
     try {
+      const headers: Record<string, string> = {};
+      if (viewerUserId) headers["X-User-Id"] = String(viewerUserId);
+
       const resp = await fetch(
-        `${SERVER_BASE}/api/profile/posts?user_id=${encodeURIComponent(userId)}`,
+        `${SERVER_BASE}/api/profile/posts?user_id=${encodeURIComponent(
+          String(profileUserId),
+        )}`,
         {
-          headers: {
-            "X-User-Id": userId,
-          },
+          headers,
         },
       );
       if (!resp.ok) throw new Error("Failed to fetch posts");
@@ -160,21 +246,62 @@ export default function ProfileScreen() {
     } finally {
       setIsPostsLoading(false);
     }
-  }, [userId]);
+  }, [viewerUserId, profileUserId]);
 
-  // Load posts when tab switches to "Posts"
+  // Load posts when tab switches to "Posts" or "Saved"
   useEffect(() => {
     if (activeTab === 0) {
+      // Posts tab
       fetchPosts();
+    } else if (activeTab === 1) {
+      // Saved tab - load saved posts from AsyncStorage
+      fetchSavedPosts();
     }
   }, [activeTab, fetchPosts]);
+
+const fetchSavedPosts = useCallback(async () => {
+  if (!profileUserId) return;
+
+  setIsPostsLoading(true);
+
+  try {
+    const resp = await fetch(
+      `${SERVER_BASE}/api/profile/saved?user_id=${profileUserId}`
+    );
+
+    const text = await resp.text();
+    console.log("RAW SAVED RESPONSE:", text);
+
+    const json = JSON.parse(text);
+
+    if (!resp.ok) {
+      throw new Error(json?.error || "Failed to fetch saved");
+    }
+
+    const items = (json.posts || []).map((p:any) => ({
+      id: p.id,
+      image_url: p.image_url,
+      caption: p.caption ?? "",
+      owner_clerk_id: p.owner_clerk_id,
+    }));
+
+    setPosts(items);
+  } catch (err) {
+    console.error("PROFILE SAVED ERROR:", err);
+    setPosts([]);
+  } finally {
+    setIsPostsLoading(false);
+  }
+}, [profileUserId]);
 
   // ── Fetch wardrobe items (segmented images from uploads dir) ───────────
   const fetchWardrobe = useCallback(async () => {
     setIsWardrobeLoading(true);
     try {
       const resp = await fetch(
-        `${SERVER_BASE}/api/profile/wardrobe/${encodeURIComponent(userId)}`,
+        `${SERVER_BASE}/api/profile/wardrobe/${encodeURIComponent(
+          String(profileUserId),
+        )}`,
       );
       if (!resp.ok) throw new Error("Failed to fetch wardrobe");
       const json = await resp.json();
@@ -197,11 +324,153 @@ export default function ProfileScreen() {
     } finally {
       setIsWardrobeLoading(false);
     }
-  }, [userId]);
+  }, [profileUserId]);
+
+  // ── Fetch public profile info for non-self views ────────────────────────
+  const fetchTargetProfile = useCallback(async () => {
+    if (isSelf) {
+      setTargetProfile(null);
+      setIsTargetProfileLoading(false);
+      return;
+    }
+
+    setIsTargetProfileLoading(true);
+    try {
+      const resp = await fetch(
+        `${SERVER_BASE}/api/profile/public?user_id=${encodeURIComponent(
+          String(profileUserId),
+        )}`,
+      );
+      if (!resp.ok) throw new Error("Failed to fetch public profile");
+      const json = await resp.json();
+
+      setTargetProfile(json || null);
+    } catch (err) {
+      console.warn("target profile fetch error:", err);
+      setTargetProfile(null);
+    } finally {
+      setIsTargetProfileLoading(false);
+    }
+  }, [isSelf, profileUserId]);
+
+  useEffect(() => {
+    fetchTargetProfile();
+  }, [fetchTargetProfile]);
+
+  // ── Follow status for non-self views ─────────────────────────────────────
+  const fetchFollowStatus = useCallback(async () => {
+    if (!isLoaded || !viewerUserId) return;
+    if (isSelf) {
+      setIsFollowingTarget(false);
+      return;
+    }
+    try {
+      const resp = await fetch(
+        `${SERVER_BASE}/api/profile/follow-status?target_user_id=${encodeURIComponent(
+          String(profileUserId),
+        )}`,
+        {
+          headers: {
+            "X-User-Id": String(viewerUserId),
+          },
+        },
+      );
+      if (!resp.ok) throw new Error("Failed to fetch follow status");
+      const json = await resp.json();
+      setIsFollowingTarget(!!json.following);
+    } catch (err) {
+      console.warn("follow-status fetch error:", err);
+      setIsFollowingTarget(false);
+    }
+  }, [isLoaded, isSelf, profileUserId, viewerUserId]);
+
+  useEffect(() => {
+    fetchFollowStatus();
+  }, [fetchFollowStatus]);
+
+  // ── Follow/unfollow + relation list modal ──────────────────────────────
+  const fetchRelationUsers = useCallback(
+    async (type: "followers" | "following") => {
+      try {
+        setRelationLoading(true);
+        const endpoint =
+          type === "followers" ? "followers" : "following";
+        const resp = await fetch(
+          `${SERVER_BASE}/api/profile/${endpoint}?user_id=${encodeURIComponent(
+            String(profileUserId),
+          )}&limit=50`,
+          {
+            headers: {
+              "X-User-Id": String(viewerUserId),
+            },
+          },
+        );
+        if (!resp.ok) throw new Error(`Failed to fetch ${endpoint}`);
+        const json = await resp.json();
+        setRelationUsers(Array.isArray(json.users) ? json.users : []);
+      } catch (err) {
+        console.warn("relation list fetch error:", err);
+        setRelationUsers([]);
+      } finally {
+        setRelationLoading(false);
+      }
+    },
+    [profileUserId, viewerUserId],
+  );
+
+  const openRelationModal = (type: "followers" | "following") => {
+    setRelationModalType(type);
+    setIsRelationModalOpen(true);
+    fetchRelationUsers(type);
+  };
+
+  const toggleFollow = useCallback(async () => {
+    if (isSelf) return;
+    if (isFollowLoading) return;
+    if (!viewerUserId) {
+      Alert.alert("Please wait", "User session is still loading.");
+      return;
+    }
+
+    setIsFollowLoading(true);
+    try {
+      const action = isFollowingTarget ? "unfollow" : "follow";
+      const resp = await fetch(`${SERVER_BASE}/api/profile/${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": String(viewerUserId),
+        },
+        body: JSON.stringify({ target_user_id: String(profileUserId) }),
+      });
+
+      if (!resp.ok) throw new Error(`Failed to ${action}`);
+      const json = await resp.json();
+
+      // Optimistically update UI, then refresh counts.
+      setIsFollowingTarget(!!json.following);
+      await fetchStats();
+      await fetchFollowStatus();
+    } catch (err) {
+      console.warn("toggleFollow error:", err);
+      // Best-effort rollback to server state.
+      await fetchFollowStatus();
+    } finally {
+      setIsFollowLoading(false);
+    }
+  }, [
+    fetchFollowStatus,
+    fetchStats,
+    isFollowLoading,
+    isFollowingTarget,
+    isSelf,
+    profileUserId,
+    viewerUserId,
+  ]);
 
   // Load wardrobe when tab switches to "Wardrobe"
   useEffect(() => {
-    if (activeTab === 2) {
+    if (isSelf && activeTab === 2) {
       fetchWardrobe();
     }
   }, [activeTab, fetchWardrobe]);
@@ -241,11 +510,21 @@ export default function ProfileScreen() {
           name: "wardrobe.jpg",
         } as any);
       }
-      formData.append("user_id", userId);
+      formData.append("user_id", String(viewerUserId));
 
-      const uploadResp = await fetch(
+      // Helper to add timeout to fetch
+      const fetchWithTimeout = (url: string, options: any, timeoutMs = 30000) =>
+        Promise.race([
+          fetch(url, options),
+          new Promise<Response>((_, reject) =>
+            setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
+          ),
+        ]);
+
+      const uploadResp = await fetchWithTimeout(
         `${SERVER_BASE}/api/profile/upload-wardrobe`,
         { method: "POST", body: formData },
+        30000
       );
       if (!uploadResp.ok) throw new Error("Upload failed");
       const uploadJson = await uploadResp.json();
@@ -258,29 +537,38 @@ export default function ProfileScreen() {
       const maxAttempts = 120; // ~2 min with 1s interval
       const poll = async (): Promise<void> => {
         attempts++;
-        const statusResp = await fetch(
-          `${SERVER_BASE}/api/profile/job/${encodeURIComponent(jobId)}`,
-        );
-        const statusJson = await statusResp.json();
-
-        if (statusJson.status === "completed") {
-          setUploadProgress("");
-          setIsUploading(false);
-          Alert.alert(
-            "Success",
-            `${statusJson.results?.items_total || 0} item(s) added to your wardrobe!`,
+        try {
+          const statusResp = await fetchWithTimeout(
+            `${SERVER_BASE}/api/profile/job/${encodeURIComponent(jobId)}`,
+            {},
+            15000
           );
-          fetchWardrobe();
-          return;
+          const statusJson = await statusResp.json();
+
+          if (statusJson.status === "completed") {
+            setUploadProgress("");
+            setIsUploading(false);
+            Alert.alert(
+              "Success",
+              `${statusJson.results?.items_total || 0} item(s) added to your wardrobe!`,
+            );
+            fetchWardrobe();
+            return;
+          }
+          if (statusJson.status === "error") {
+            throw new Error(statusJson.error || "Processing failed");
+          }
+          if (attempts >= maxAttempts) {
+            throw new Error("Processing timed out");
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+          return poll();
+        } catch (err: any) {
+          if (attempts >= maxAttempts) throw err;
+          console.warn(`[poll attempt ${attempts}] Error:`, err.message);
+          await new Promise((r) => setTimeout(r, 1000));
+          return poll();
         }
-        if (statusJson.status === "error") {
-          throw new Error(statusJson.error || "Processing failed");
-        }
-        if (attempts >= maxAttempts) {
-          throw new Error("Processing timed out");
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-        return poll();
       };
       await poll();
     } catch (err: any) {
@@ -393,17 +681,14 @@ export default function ProfileScreen() {
 
       // Upload profile image to Cloudinary first if changed
       if (editAvatarUri) {
-        console.log("Uploading to Cloudinary:", editAvatarUri);
         const cloudinaryResult = await uploadToCloudinary(editAvatarUri);
         cloudinaryImageUrl = cloudinaryResult.secure_url;
-        console.log("Cloudinary upload success:", cloudinaryImageUrl);
       }
 
-      // Update basic info
+      // Update basic info (note: username is read-only in Clerk, managed via dashboard)
       await user.update({
         firstName: editFirstName || undefined,
         lastName: editLastName || undefined,
-        username: editUsername || undefined,
       });
 
       // Update unsafeMetadata with role, bio, and cloudinary image URL
@@ -437,6 +722,26 @@ export default function ProfileScreen() {
         }
       }
 
+      // Save profile data to Supabase for viewing by other users
+      const resp = await fetch(`${SERVER_BASE}/api/profile/upsert`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": String(user.id),
+        },
+        body: JSON.stringify({
+          clerk_id: user.id,
+          username: editUsername || undefined,
+          full_name: `${editFirstName || ""} ${editLastName || ""}`.trim() || undefined,
+          profile_image_url: cloudinaryImageUrl || user.imageUrl || undefined,
+          role: editRole || undefined,
+          bio: editBio || undefined,
+        }),
+      });
+      if (!resp.ok) {
+        // Log silently
+      }
+
       Alert.alert("Success", "Profile updated successfully!");
       setIsEditModalVisible(false);
     } catch (error: any) {
@@ -461,12 +766,65 @@ export default function ProfileScreen() {
     (user?.unsafeMetadata as { bio?: string })?.bio ||
     DEFAULT_BIO;
 
+  const profileNameText = isSelf
+    ? userName
+    : targetProfile?.full_name || DEFAULT_NAME;
+  const profileRoleText = isSelf
+    ? displayRole
+    : targetProfile?.role || DEFAULT_ROLE;
+  const profileBioText = isSelf
+    ? displayBio
+    : targetProfile?.bio || DEFAULT_BIO;
+  const profileAvatarText = isSelf
+    ? userAvatar
+    : targetProfile?.profile_image_url || DEFAULT_AVATAR;
+  const profileHandleText = isSelf
+    ? userHandle
+    : targetProfile?.username
+      ? targetProfile.username.startsWith("@")
+        ? targetProfile.username
+        : `@${targetProfile.username}`
+      : "@stylesense_user";
+
+  // SAFETY CHECK: When viewing another profile, ensure we're not showing logged-in user data
+  const displayingOwnProfile = isSelf;
+  const displayingOtherProfile = isViewingOtherProfile && !isSelf;
+
+  if (displayingOtherProfile && !targetProfile && !isTargetProfileLoading) {
+    // This shouldn't happen but if it does, show an error state
+
+  }
+
+  const followerText = followers === null ? "—" : String(followers);
+  const followingText = following === null ? "—" : String(following);
+
+  // Show loading screen based on context
+  // For own profile: wait for Clerk to load
+  if (isSelf && (!isLoaded || !user)) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={PRIMARY} />
+        <Text style={{ color: "rgba(255, 255, 255, 0.6)", marginTop: 12 }}>Loading profile...</Text>
+      </View>
+    );
+  }
+
+  // For other users' profiles: wait for target profile to load if still loading
+  if (isViewingOtherProfile && isTargetProfileLoading && !targetProfile) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={PRIMARY} />
+        <Text style={{ color: "rgba(255, 255, 255, 0.6)", marginTop: 12 }}>Loading user profile...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Top Bar */}
         <View style={styles.topBar}>
-          <Text style={styles.topBarHandle}>{userHandle}</Text>
+          <Text style={styles.topBarHandle}>{profileHandleText}</Text>
         </View>
 
         {/* Avatar */}
@@ -476,7 +834,7 @@ export default function ProfileScreen() {
             <View style={styles.avatarBorder}>
               <Image
                 source={{
-                  uri: userAvatar,
+                  uri: profileAvatarText,
                 }}
                 style={styles.avatarImage}
               />
@@ -487,17 +845,64 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{userName}</Text>
-            <Text style={styles.profileRole}>{displayRole}</Text>
-            <Text style={styles.profileBio}>{displayBio}</Text>
+            <Text style={styles.profileName}>{profileNameText}</Text>
+            <Text style={styles.profileRole}>{profileRoleText}</Text>
+            <Text style={styles.profileBio}>{profileBioText}</Text>
           </View>
 
           {/* Action Buttons */}
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.editBtn} onPress={openEditModal}>
-              <Text style={styles.editBtnText}>Edit Profile</Text>
-            </TouchableOpacity>
+            {isSelf ? (
+              <TouchableOpacity style={styles.editBtn} onPress={openEditModal}>
+                <Text style={styles.editBtnText}>Edit Profile</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.editBtn,
+                  isFollowingTarget
+                    ? { borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255,255,255,0.06)" }
+                    : null,
+                ]}
+                onPress={toggleFollow}
+                disabled={isFollowLoading || !viewerUserId}
+              >
+                <Text
+                  style={[
+                    styles.editBtnText,
+                    isFollowingTarget
+                      ? { color: "#fff" }
+                      : null,
+                  ]}
+                >
+                  {isFollowLoading
+                    ? "Working…"
+                    : isFollowingTarget
+                      ? "Unfollow"
+                      : "Follow"}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
+        </View>
+
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => openRelationModal("followers")}
+          >
+            <Text style={styles.statValue}>{followerText}</Text>
+            <Text style={styles.statLabel}>Followers</Text>
+          </TouchableOpacity>
+          <View style={styles.statDivider} />
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => openRelationModal("following")}
+          >
+            <Text style={styles.statValue}>{followingText}</Text>
+            <Text style={styles.statLabel}>Following</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Tabs */}
@@ -522,7 +927,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Tab Content */}
-        {activeTab === 2 ? (
+        {isSelf && activeTab === 2 ? (
           /* ── Wardrobe Tab ─────────────────────────────────────────── */
           <View style={styles.wardrobeSection}>
             {/* Wardrobe grid */}
@@ -721,6 +1126,117 @@ export default function ProfileScreen() {
             </View>
 
             <View style={{ height: 40 }} />
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Followers / Following Modal */}
+      <Modal
+        visible={isRelationModalOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setIsRelationModalOpen(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              onPress={() => setIsRelationModalOpen(false)}
+            >
+              <Text style={styles.modalCancelText}>Close</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>
+              {relationModalType === "followers"
+                ? "Followers"
+                : relationModalType === "following"
+                  ? "Following"
+                  : "Connections"}
+            </Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {relationLoading ? (
+              <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                <ActivityIndicator size="large" color={PRIMARY} />
+                <Text
+                  style={{
+                    color: "rgba(255,255,255,0.5)",
+                    marginTop: 10,
+                    fontSize: 13,
+                    fontWeight: "700",
+                  }}
+                >
+                  Loading…
+                </Text>
+              </View>
+            ) : relationUsers.length === 0 ? (
+              <View style={{ paddingVertical: 50, alignItems: "center" }}>
+                <Text style={{ fontSize: 44 }}>🤝</Text>
+                <Text style={{ color: "#fff", fontSize: 16, fontWeight: "800" }}>
+                  No users yet
+                </Text>
+                <Text
+                  style={{
+                    color: "rgba(255,255,255,0.45)",
+                    fontSize: 13,
+                    marginTop: 8,
+                    textAlign: "center",
+                    paddingHorizontal: 26,
+                    lineHeight: 18,
+                  }}
+                >
+                  This list will appear once people start following and being followed.
+                </Text>
+              </View>
+            ) : (
+              relationUsers.map((u, idx) => {
+                const handle = u?.username
+                  ? u.username.startsWith("@")
+                    ? u.username
+                    : `@${u.username}`
+                  : null;
+                const name =
+                  u.full_name || handle || u.clerk_id || `User #${idx + 1}`;
+                const avatarUri = u.profile_image_url || DEFAULT_AVATAR;
+
+                return (
+                  <TouchableOpacity
+                    key={String(u.clerk_id || idx)}
+                    style={styles.relationRow}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      const nextId = u.clerk_id;
+                      if (!nextId) return;
+                      setIsRelationModalOpen(false);
+                      router.push({
+                      pathname: "/profile",
+                      params: { userId: String(nextId) },
+                    });
+                    }}
+                  >
+                    <Image source={{ uri: avatarUri }} style={styles.relationAvatar} />
+                    <View style={styles.relationTextBlock}>
+                      <Text style={styles.relationName} numberOfLines={1}>
+                        {name}
+                      </Text>
+                      {handle ? (
+                        <Text style={styles.relationHandle} numberOfLines={1}>
+                          {handle}
+                        </Text>
+                      ) : (
+                        <Text style={styles.relationHandle} numberOfLines={1}>
+                          {String(u.clerk_id || "")}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.relationChevron}>›</Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -988,6 +1504,41 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     paddingTop: 14,
+  },
+  // ── Relations Modal styles ─────────────────────────────────────────────
+  relationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.07)",
+  },
+  relationAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  relationTextBlock: { flex: 1, gap: 3 },
+  relationName: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  relationHandle: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  relationChevron: {
+    color: "rgba(255,255,255,0.35)",
+    fontSize: 18,
+    fontWeight: "800",
   },
   // ── Wardrobe styles ────────────────────────────────────────────────────
   wardrobeSection: {

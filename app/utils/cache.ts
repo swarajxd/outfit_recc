@@ -31,3 +31,9 @@ const createTokenCache = () => {
 
 // Token cache only works on native platforms
 export const tokenCache = Platform.OS !== 'web' ? createTokenCache() : undefined;
+
+// Expo Router scans files under app/ as routes.
+// Keep a no-op default export so this utility file does not error during route manifest generation.
+export default function CacheUtilRoute() {
+    return null;
+}

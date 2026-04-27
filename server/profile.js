@@ -90,24 +90,29 @@ async function fetchClerkUserById(clerkId) {
       headers: { Authorization: `Bearer ${secret}` },
     });
     if (!resp.ok) {
-      console.warn(`[fetchClerkUserById] Clerk API returned ${resp.status} for user ${clerkId}`);
+      console.warn(
+        `[fetchClerkUserById] Clerk API returned ${resp.status} for user ${clerkId}`,
+      );
       return null;
     }
     const data = await resp.json();
     return data;
   } catch (err) {
-    console.error(`[fetchClerkUserById] Error fetching user ${clerkId}:`, err.message);
+    console.error(
+      `[fetchClerkUserById] Error fetching user ${clerkId}:`,
+      err.message,
+    );
     return null;
   }
 }
 
 function normalizeClerkUser(clerkUser) {
   if (!clerkUser || typeof clerkUser !== "object") return null;
-  
+
   const firstName = clerkUser.first_name || "";
   const lastName = clerkUser.last_name || "";
   const fullName = `${firstName} ${lastName}`.trim() || null;
-  
+
   // Generate username from first/last name if not set
   let username = clerkUser.username || null;
   if (!username && (firstName || lastName)) {
@@ -117,21 +122,28 @@ function normalizeClerkUser(clerkUser) {
       username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
     }
   }
-  
+
   // Fallback: use email prefix if no name
   let email = null;
-  if (clerkUser.email_addresses && Array.isArray(clerkUser.email_addresses) && clerkUser.email_addresses.length > 0) {
-    email = clerkUser.email_addresses[0].email_address || clerkUser.email_addresses[0];
+  if (
+    clerkUser.email_addresses &&
+    Array.isArray(clerkUser.email_addresses) &&
+    clerkUser.email_addresses.length > 0
+  ) {
+    email =
+      clerkUser.email_addresses[0].email_address ||
+      clerkUser.email_addresses[0];
   } else if (clerkUser.primary_email_address?.email_address) {
     email = clerkUser.primary_email_address.email_address;
   }
-  
+
   if (!username && email) {
     username = email.split("@")[0];
   }
-  
-  const profileImage = clerkUser.image_url || clerkUser.profile_image_url || null;
-  
+
+  const profileImage =
+    clerkUser.image_url || clerkUser.profile_image_url || null;
+
   const normalized = {
     clerk_id: clerkUser.id ? String(clerkUser.id) : null,
     username: username ? String(username) : null,
@@ -140,7 +152,7 @@ function normalizeClerkUser(clerkUser) {
     role: null,
     bio: null,
   };
-  
+
   console.log(`[normalizeClerkUser] Normalized profile:`, normalized);
   return normalized;
 }
@@ -205,9 +217,9 @@ function rewriteImageUrls(obj, nodeBaseUrl) {
       typeof val === "string" &&
       (key === "image" || key === "image_url" || key.endsWith("_url"))
     ) {
-      // 1. If it's a localhost/127.0.0.1 Python static URL, rewrite it to use the current Node base URL
+      // 1. If it's a localhost/127.0.0.1/10.0.2.2/10.33.168.132 Python static URL, rewrite it to use the current Node base URL
       const pyStaticMatch = val.match(
-        /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+(\/static\/.+)$/,
+        /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+(\/static\/.+)$/,
       );
       if (pyStaticMatch) {
         obj[key] = `${nodeBaseUrl}${pyStaticMatch[1]}`;
@@ -285,6 +297,9 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "missing image file" });
 
     const userId = req.body.user_id || "default_user";
+    const useImagen = String(req.body.use_imagen || "false")
+      .trim()
+      .toLowerCase();
 
     // Build form with only fields Python API expects
     const form = new FormData();
@@ -293,20 +308,32 @@ router.post("/upload-wardrobe", upload.single("image"), async (req, res) => {
       contentType: req.file.mimetype || "image/jpeg",
     });
     form.append("user_id", userId);
-    // Note: do NOT include "use_imagen" - Python API doesn't use it
+    // Forward AI mannequin mode flag to Python API.
+    // /upload-outfit expects `use_imagen` and controls Imagen3 generation from it.
+    form.append(
+      "use_imagen",
+      useImagen === "true" || useImagen === "1" || useImagen === "yes"
+        ? "true"
+        : "false",
+    );
 
     const headers = form.getHeaders();
     const body = await formDataToBuffer(form);
     headers["Content-Length"] = String(body.length);
 
-    const response = await fetchWithRetry(`${OUTFIT_API_URL}/upload-outfit`, {
-      method: "POST",
-      body,
-      headers,
-    }, 6, 1500);
-    
+    const response = await fetchWithRetry(
+      `${OUTFIT_API_URL}/upload-outfit`,
+      {
+        method: "POST",
+        body,
+        headers,
+      },
+      6,
+      1500,
+    );
+
     const result = await response.json();
-    
+
     if (!response.ok) return res.status(response.status).json(result);
     res.json(result);
   } catch (err) {
@@ -425,6 +452,8 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
   try {
     const { userId, itemId } = req.params;
 
+    console.log(`[delete-item] START: userId="${userId}", itemId="${itemId}"`);
+
     if (!userId || !itemId) {
       return res
         .status(400)
@@ -432,14 +461,40 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
     }
 
     // ── 1. Fetch the item so we know the image_url before deleting ─────────
+    // We check both item_id (UUID) and potentially attributes->item_id if it's stored there
+    console.log(
+      `[delete-item] Querying Supabase: user_id="${userId}", item_id="${itemId}"`,
+    );
+
+    // Robust UUID check - if it's not a UUID, Supabase query will crash
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(itemId)) {
+      console.warn(
+        `[delete-item] itemId "${itemId}" is not a valid UUID format`,
+      );
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "invalid item id format (must be UUID)",
+        });
+    }
+
     const { data: existing, error: fetchErr } = await supabaseAdmin
       .from("wardrobe_items")
       .select("item_id, image_url, attributes")
       .eq("user_id", userId)
       .eq("item_id", itemId)
-      .single();
+      .maybeSingle(); // Use maybeSingle to avoid 406 if no rows
 
-    if (fetchErr || !existing) {
+    if (fetchErr) {
+      console.error("[delete-item] Supabase fetch error:", fetchErr);
+      return res.status(500).json({ success: false, error: fetchErr.message });
+    }
+
+    if (!existing) {
+      console.warn(`[delete-item] Item ${itemId} not found for user ${userId}`);
       return res.status(404).json({ success: false, error: "item not found" });
     }
 
@@ -449,6 +504,7 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
       null;
 
     // ── 2. Delete from Supabase ────────────────────────────────────────────
+    console.log(`[delete-item] Deleting from Supabase table...`);
     const { error: deleteErr } = await supabaseAdmin
       .from("wardrobe_items")
       .delete()
@@ -456,7 +512,7 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
       .eq("item_id", itemId);
 
     if (deleteErr) {
-      console.error("supabase delete error", deleteErr);
+      console.error("[delete-item] Supabase delete error:", deleteErr);
       return res.status(500).json({
         success: false,
         error: deleteErr.message || String(deleteErr),
@@ -464,51 +520,75 @@ router.delete("/wardrobe/:userId/item/:itemId", async (req, res) => {
     }
 
     // ── 3. Delete image file from disk (best-effort, local paths only) ─────
-    // Cloudinary / external URLs are skipped — only local /static/... paths
     if (imageUrl && !imageUrl.startsWith("http")) {
       try {
         let absPath = imageUrl;
-        // Convert /static/... URL to absolute path
         const staticMatch = imageUrl.match(/\/static\/(.+)$/);
-        if (staticMatch) absPath = path.join(OUTFIT_MODEL_DIR, staticMatch[1]);
-        if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+        if (staticMatch) {
+          absPath = path.join(OUTFIT_MODEL_DIR, staticMatch[1]);
+        }
+        console.log(`[delete-item] Attempting disk delete: ${absPath}`);
+        if (fs.existsSync(absPath)) {
+          fs.unlinkSync(absPath);
+          console.log(`[delete-item] Deleted file from disk`);
+        }
       } catch (e) {
-        console.warn("could not delete image file (non-fatal):", e.message);
+        console.warn("[delete-item] disk cleanup failed:", e.message);
       }
     }
 
     // ── 4. Remove from vector file (best-effort) ───────────────────────────
-    // This prevents the deleted item from ghost-matching future uploads.
     const vectorPath = path.join(
       OUTFIT_MODEL_DIR,
-      "..",
       "wardrobe_vectors",
       `${userId}.json`,
     );
+    console.log(`[delete-item] Checking vector file: ${vectorPath}`);
+
     if (fs.existsSync(vectorPath)) {
       try {
-        const vectors = JSON.parse(fs.readFileSync(vectorPath, "utf8")) || [];
+        const raw = fs.readFileSync(vectorPath, "utf8");
+        const vectors = JSON.parse(raw) || [];
+        const initialCount = vectors.length;
+
+        // Filter by item_id or by image path filename
         const filename = imageUrl
           ? path.basename(imageUrl.replace(/\\/g, "/"))
           : null;
-        const filtered = filename
-          ? vectors.filter(
-              (v) =>
-                !String(v.image_path || "")
-                  .replace(/\\/g, "/")
-                  .endsWith(filename),
-            )
-          : vectors;
-        fs.writeFileSync(vectorPath, JSON.stringify(filtered, null, 2), "utf8");
+
+        const filtered = vectors.filter((v) => {
+          // Check item_id match
+          if (v.item_id === itemId) return false;
+          // Check image_path match
+          if (
+            filename &&
+            String(v.image_path || "")
+              .replace(/\\/g, "/")
+              .endsWith(filename)
+          )
+            return false;
+          return true;
+        });
+
+        if (filtered.length < initialCount) {
+          fs.writeFileSync(
+            vectorPath,
+            JSON.stringify(filtered, null, 2),
+            "utf8",
+          );
+          console.log(
+            `[delete-item] Removed ${initialCount - filtered.length} entry/entries from vector JSON`,
+          );
+        }
       } catch (e) {
-        console.warn("could not update vector file (non-fatal):", e.message);
+        console.warn("[delete-item] vector cleanup failed:", e.message);
       }
     }
 
-    console.log(`[wardrobe] deleted item ${itemId} for user ${userId}`);
+    console.log(`[delete-item] SUCCESS: item ${itemId} deleted`);
     res.json({ success: true, deleted: itemId });
   } catch (err) {
-    console.error("delete-item error", err);
+    console.error("[delete-item] CRITICAL error:", err);
     res.status(500).json({ success: false, error: err.message || String(err) });
   }
 });
@@ -646,20 +726,24 @@ router.get("/public", async (req, res) => {
         console.warn(`[profile/public] Supabase query error: ${error.message}`);
         throw error;
       }
-      
+
       if (data) {
         console.log(`[profile/public] Found profile in Supabase:`, data);
         const normalized = normalizeProfileRow(data);
         if (normalized?.clerk_id) return res.json(normalized);
       } else {
-        console.warn(`[profile/public] No profile found in Supabase for user ${userId}`);
+        console.warn(
+          `[profile/public] No profile found in Supabase for user ${userId}`,
+        );
       }
     } catch (e) {
       console.warn("[profile/public] profiles table lookup failed:", e.message);
     }
 
     // Fallback to Clerk API for profile basics.
-    console.log(`[profile/public] Attempting Clerk API lookup for user: ${userId}`);
+    console.log(
+      `[profile/public] Attempting Clerk API lookup for user: ${userId}`,
+    );
     const clerkUser = await fetchClerkUserById(userId);
     if (clerkUser) {
       console.log(`[profile/public] Found user in Clerk:`, {
@@ -675,7 +759,9 @@ router.get("/public", async (req, res) => {
     }
 
     // Fallback if profiles table doesn't exist or doesn't have row yet.
-    console.warn(`[profile/public] Returning minimal profile for user: ${userId}`);
+    console.warn(
+      `[profile/public] Returning minimal profile for user: ${userId}`,
+    );
     return res.json({
       clerk_id: String(userId),
       username: null,
@@ -697,16 +783,11 @@ router.get("/public", async (req, res) => {
 router.post("/upsert", async (req, res) => {
   try {
     const userId = getViewerUserId(req);
-    if (!userId) return res.status(401).json({ error: "missing viewer user id" });
+    if (!userId)
+      return res.status(401).json({ error: "missing viewer user id" });
 
-    const {
-      clerk_id,
-      username,
-      full_name,
-      profile_image_url,
-      role,
-      bio,
-    } = req.body;
+    const { clerk_id, username, full_name, profile_image_url, role, bio } =
+      req.body;
 
     if (!clerk_id) {
       return res.status(400).json({ error: "missing clerk_id" });
@@ -731,29 +812,30 @@ router.post("/upsert", async (req, res) => {
     }
 
     // Use Supabase upsert to insert or update
-    const { data, error } = await supabaseAdmin
-      .from("profiles")
-      .upsert(
-        {
-          clerk_id: String(clerk_id),
-          username: String(finalUsername),
-          full_name: full_name ? String(full_name) : null,
-          profile_image_url: profile_image_url ? String(profile_image_url) : null,
-          role: role ? String(role) : null,
-          bio: bio ? String(bio) : null,
-        },
-        { onConflict: "clerk_id" }
-      );
+    const { data, error } = await supabaseAdmin.from("profiles").upsert(
+      {
+        clerk_id: String(clerk_id),
+        username: String(finalUsername),
+        full_name: full_name ? String(full_name) : null,
+        profile_image_url: profile_image_url ? String(profile_image_url) : null,
+        role: role ? String(role) : null,
+        bio: bio ? String(bio) : null,
+      },
+      { onConflict: "clerk_id" },
+    );
 
     if (error) {
       console.error(`[profile/upsert] Supabase error:`, error);
       throw error;
     }
 
-    console.log(`[profile/upsert] Successfully upserted profile for ${clerk_id}`, {
-      username: finalUsername,
-      full_name: full_name || null,
-    });
+    console.log(
+      `[profile/upsert] Successfully upserted profile for ${clerk_id}`,
+      {
+        username: finalUsername,
+        full_name: full_name || null,
+      },
+    );
     res.json({ ok: true, profile: data });
   } catch (err) {
     console.error("[profile/upsert] error:", err);
@@ -777,7 +859,9 @@ router.get("/stats", async (req, res) => {
         .select("follower_clerk_id")
         .eq("following_clerk_id", userId);
       if (error) throw error;
-      followerIdsPrimary = (data || []).map((r) => r.follower_clerk_id).filter(Boolean);
+      followerIdsPrimary = (data || [])
+        .map((r) => r.follower_clerk_id)
+        .filter(Boolean);
     } catch (e) {
       console.warn("[profile/stats] followers count failed:", e.message);
     }
@@ -788,7 +872,9 @@ router.get("/stats", async (req, res) => {
         .select("following_clerk_id")
         .eq("follower_clerk_id", userId);
       if (error) throw error;
-      followingIdsPrimary = (data || []).map((r) => r.following_clerk_id).filter(Boolean);
+      followingIdsPrimary = (data || [])
+        .map((r) => r.following_clerk_id)
+        .filter(Boolean);
     } catch (e) {
       console.warn("[profile/stats] following count failed:", e.message);
     }
@@ -870,9 +956,11 @@ router.post("/follow", async (req, res) => {
 
     let wroteToPrimary = false;
     try {
-      const { error } = await supabaseAdmin.from("follows").insert([
-        { follower_clerk_id: viewerId, following_clerk_id: targetUserId },
-      ]);
+      const { error } = await supabaseAdmin
+        .from("follows")
+        .insert([
+          { follower_clerk_id: viewerId, following_clerk_id: targetUserId },
+        ]);
       if (error) throw error;
       wroteToPrimary = true;
     } catch (e) {
@@ -883,7 +971,12 @@ router.post("/follow", async (req, res) => {
     addFollowFallback(viewerId, targetUserId);
 
     if (!wroteToPrimary) {
-      return res.json({ ok: true, following: true, self: false, fallback: true });
+      return res.json({
+        ok: true,
+        following: true,
+        self: false,
+        fallback: true,
+      });
     }
     res.json({ ok: true, following: true, self: false });
   } catch (err) {
@@ -921,7 +1014,12 @@ router.post("/unfollow", async (req, res) => {
     removeFollowFallback(viewerId, targetUserId);
 
     if (!wroteToPrimary) {
-      return res.json({ ok: true, following: false, self: false, fallback: true });
+      return res.json({
+        ok: true,
+        following: false,
+        self: false,
+        fallback: true,
+      });
     }
 
     res.json({ ok: true, following: false, self: false });
@@ -950,9 +1048,7 @@ async function fetchProfilesByIds(ids) {
     console.warn("[profile] profiles table not available:", e.message);
   }
 
-  const missingIds = ids
-    .map((id) => String(id))
-    .filter((id) => !byId.has(id));
+  const missingIds = ids.map((id) => String(id)).filter((id) => !byId.has(id));
 
   if (missingIds.length > 0) {
     await Promise.all(
@@ -964,14 +1060,17 @@ async function fetchProfilesByIds(ids) {
     );
   }
 
-  return ids.map((id) => byId.get(String(id)) || {
-    clerk_id: String(id),
-    username: null,
-    full_name: null,
-    profile_image_url: null,
-    role: null,
-    bio: null,
-  });
+  return ids.map(
+    (id) =>
+      byId.get(String(id)) || {
+        clerk_id: String(id),
+        username: null,
+        full_name: null,
+        profile_image_url: null,
+        role: null,
+        bio: null,
+      },
+  );
 }
 
 router.get("/followers", async (req, res) => {
@@ -991,14 +1090,18 @@ router.get("/followers", async (req, res) => {
         .limit(limit)
         .offset(offset);
       if (error) throw error;
-      followerIdsPrimary = (data || []).map((r) => r.follower_clerk_id).filter(Boolean);
+      followerIdsPrimary = (data || [])
+        .map((r) => r.follower_clerk_id)
+        .filter(Boolean);
     } catch (e) {
       console.warn("[profile/followers] query failed:", e.message);
     }
 
     const followerIdsFallback = readFollowsStore()
       .filter((r) => String(r.following_clerk_id) === String(userId))
-      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .sort((a, b) =>
+        String(b.created_at || "").localeCompare(String(a.created_at || "")),
+      )
       .map((r) => r.follower_clerk_id)
       .filter(Boolean);
 
@@ -1011,9 +1114,7 @@ router.get("/followers", async (req, res) => {
     const profiles = await fetchProfilesByIds(followerIds);
 
     // Preserve order from followerIds.
-    const profileMap = new Map(
-      profiles.map((p) => [String(p.clerk_id), p]),
-    );
+    const profileMap = new Map(profiles.map((p) => [String(p.clerk_id), p]));
     const ordered = followerIds
       .map((id) => profileMap.get(String(id)))
       .filter(Boolean);
@@ -1042,14 +1143,18 @@ router.get("/following", async (req, res) => {
         .limit(limit)
         .offset(offset);
       if (error) throw error;
-      followingIdsPrimary = (data || []).map((r) => r.following_clerk_id).filter(Boolean);
+      followingIdsPrimary = (data || [])
+        .map((r) => r.following_clerk_id)
+        .filter(Boolean);
     } catch (e) {
       console.warn("[profile/following] query failed:", e.message);
     }
 
     const followingIdsFallback = readFollowsStore()
       .filter((r) => String(r.follower_clerk_id) === String(userId))
-      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .sort((a, b) =>
+        String(b.created_at || "").localeCompare(String(a.created_at || "")),
+      )
       .map((r) => r.following_clerk_id)
       .filter(Boolean);
 
@@ -1060,9 +1165,7 @@ router.get("/following", async (req, res) => {
     ).slice(offset, offset + limit);
 
     const profiles = await fetchProfilesByIds(followingIds);
-    const profileMap = new Map(
-      profiles.map((p) => [String(p.clerk_id), p]),
-    );
+    const profileMap = new Map(profiles.map((p) => [String(p.clerk_id), p]));
     const ordered = followingIds
       .map((id) => profileMap.get(String(id)))
       .filter(Boolean);
@@ -1089,12 +1192,10 @@ router.get("/search", async (req, res) => {
       const { data, error } = await supabaseAdmin
         .from("profiles")
         .select("*")
-        .or(
-          `username.ilike.${like},full_name.ilike.${like}`,
-        )
+        .or(`username.ilike.${like},full_name.ilike.${like}`)
         .limit(limit);
       if (error) throw error;
-      (data || []).forEach(row => {
+      (data || []).forEach((row) => {
         const normalized = normalizeProfileRow(row);
         if (normalized && normalized.clerk_id) {
           users.push(normalized);
@@ -1108,10 +1209,16 @@ router.get("/search", async (req, res) => {
     // If we need more results or got none, search Clerk API
     if (users.length < Math.min(limit, 5)) {
       try {
-        const secretRaw = process.env.CLERK_SECRET_KEY || process.env.CLERK_API_KEY || process.env.EXPO_CLERK_SECRET_KEY || "";
+        const secretRaw =
+          process.env.CLERK_SECRET_KEY ||
+          process.env.CLERK_API_KEY ||
+          process.env.EXPO_CLERK_SECRET_KEY ||
+          "";
         const secret = String(secretRaw).trim();
         if (!secret) {
-          console.warn("[profile/search] No Clerk API key configured for fallback search");
+          console.warn(
+            "[profile/search] No Clerk API key configured for fallback search",
+          );
         } else {
           // Clerk API doesn't support general query parameter. Fetch all users and filter client-side
           let clerkUrl = `${CLERK_API_BASE}/users?limit=100&offset=0`;
@@ -1121,26 +1228,37 @@ router.get("/search", async (req, res) => {
           if (clerkRes.ok) {
             const clerkDataRaw = await clerkRes.json();
             // Clerk API returns array directly, not { data: [...] }
-            const clerkUsers = Array.isArray(clerkDataRaw) ? clerkDataRaw : (clerkDataRaw.data || []);
+            const clerkUsers = Array.isArray(clerkDataRaw)
+              ? clerkDataRaw
+              : clerkDataRaw.data || [];
             const qLower = q.toLowerCase();
             // Filter users by first_name, last_name, username, or email
             const filtered = clerkUsers
-              .filter(cu => {
+              .filter((cu) => {
                 const fname = (cu.first_name || "").toLowerCase();
                 const lname = (cu.last_name || "").toLowerCase();
                 const uname = (cu.username || "").toLowerCase();
                 // Get email from email_addresses array if available
                 let email = "";
-                if (cu.email_addresses && Array.isArray(cu.email_addresses) && cu.email_addresses.length > 0) {
+                if (
+                  cu.email_addresses &&
+                  Array.isArray(cu.email_addresses) &&
+                  cu.email_addresses.length > 0
+                ) {
                   email = cu.email_addresses[0].email_address || "";
                 } else if (cu.primary_email_address?.email_address) {
                   email = cu.primary_email_address.email_address;
                 }
-                return fname.includes(qLower) || lname.includes(qLower) || uname.includes(qLower) || email.includes(qLower);
+                return (
+                  fname.includes(qLower) ||
+                  lname.includes(qLower) ||
+                  uname.includes(qLower) ||
+                  email.includes(qLower)
+                );
               })
               .slice(0, limit - users.length);
-            
-            filtered.forEach(clerkUser => {
+
+            filtered.forEach((clerkUser) => {
               if (!userIdSet.has(clerkUser.id)) {
                 const normalized = normalizeClerkUser(clerkUser);
                 if (normalized) {
@@ -1150,16 +1268,176 @@ router.get("/search", async (req, res) => {
               }
             });
           } else {
-            console.warn(`[profile/search] Clerk API error: ${clerkRes.status} ${await clerkRes.text()}`);
+            console.warn(
+              `[profile/search] Clerk API error: ${clerkRes.status} ${await clerkRes.text()}`,
+            );
           }
         }
       } catch (e) {
-        console.warn("[profile/search] Clerk fallback search failed:", e.message);
+        console.warn(
+          "[profile/search] Clerk fallback search failed:",
+          e.message,
+        );
       }
     }
 
     res.json({ users: users.slice(0, limit) });
   } catch (err) {
+    res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PREFERENCES — Style onboarding data (shown only once, stored in Supabase)
+//
+// Required Supabase table (run once in your Supabase SQL editor):
+//
+// create table if not exists user_preferences (
+//   clerk_id          text primary key,
+//   gender            text,
+//   styles            text[],
+//   favorite_colors   text[],
+//   disliked_colors   text[],
+//   fit               text,
+//   body_type         text,
+//   skin_tone         text,
+//   height            text,
+//   budget            text,
+//   avoid_items       text[],
+//   occasions         text[],
+//   goals             text[],
+//   created_at        timestamptz default now(),
+//   updated_at        timestamptz default now()
+// );
+// ---------------------------------------------------------------------------
+
+// GET /api/profile/preferences/:clerkId
+// Returns { onboarding_complete: true/false } — the single source of truth.
+// true  → redirect to home (user already did onboarding)
+// false → redirect to pref page
+router.get("/preferences/:clerkId", async (req, res) => {
+  try {
+    const { clerkId } = req.params;
+    if (!clerkId) return res.status(400).json({ error: "missing clerkId" });
+
+    const { data, error } = await supabaseAdmin
+      .from("user_preferences")
+      .select("clerk_id, onboarding_complete")
+      .eq("clerk_id", clerkId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[preferences/get] Supabase error:", error.message);
+      return res.json({ onboarding_complete: false });
+    }
+
+    const done = !!data && data.onboarding_complete === true;
+    console.log(`[preferences/get] ${clerkId} onboarding_complete=${done}`);
+    return res.json({ onboarding_complete: done });
+  } catch (err) {
+    console.error("[preferences/get] error:", err);
+    res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
+// POST /api/profile/preferences
+// Upserts the full style profile for a user. Called when onboarding completes.
+router.post("/preferences", async (req, res) => {
+  try {
+    const viewerUserId = getViewerUserId(req);
+    const {
+      clerk_id,
+      gender,
+      styles,
+      favoriteColors,
+      dislikedColors,
+      fit,
+      bodyType,
+      skinTone,
+      height,
+      budget,
+      avoidItems,
+      occasions,
+      goals,
+    } = req.body;
+
+    const targetId = clerk_id || viewerUserId;
+    if (!targetId) return res.status(400).json({ error: "missing clerk_id" });
+
+    const payload = {
+      clerk_id: String(targetId),
+      onboarding_complete: true, // <- the single source of truth flag
+      gender: gender || null,
+      styles: Array.isArray(styles) ? styles : [],
+      favorite_colors: Array.isArray(favoriteColors) ? favoriteColors : [],
+      disliked_colors: Array.isArray(dislikedColors) ? dislikedColors : [],
+      fit: fit || null,
+      body_type: bodyType || null,
+      skin_tone: skinTone || null,
+      height: height || null,
+      budget: budget || null,
+      avoid_items: Array.isArray(avoidItems) ? avoidItems : [],
+      occasions: Array.isArray(occasions) ? occasions : [],
+      goals: Array.isArray(goals) ? goals : [],
+      updated_at: new Date().toISOString(),
+    };
+
+    console.log(`[preferences/post] Upserting preferences for ${targetId}`);
+    console.log(
+      `[preferences/post] Payload:`,
+      JSON.stringify(payload, null, 2).substring(0, 500),
+    );
+
+    // First, check if table exists and get current data
+    let { data: existing, error: checkErr } = await supabaseAdmin
+      .from("user_preferences")
+      .select("clerk_id")
+      .eq("clerk_id", targetId)
+      .maybeSingle();
+
+    if (checkErr) {
+      console.warn(
+        "[preferences/post] Table check error (table may not exist):",
+        checkErr.message,
+      );
+      existing = null;
+    }
+    console.log(`[preferences/post] Existing record found:`, !!existing);
+
+    // Use upsert (insert or update)
+    const { data, error } = await supabaseAdmin
+      .from("user_preferences")
+      .upsert(payload, { onConflict: "clerk_id" })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("[preferences/post] Supabase upsert error:", error);
+      // Try manual upsert if onConflict fails
+      if (existing) {
+        console.log("[preferences/post] Falling back to UPDATE query");
+        const { data: updateData, error: updateError } = await supabaseAdmin
+          .from("user_preferences")
+          .update(payload)
+          .eq("clerk_id", targetId)
+          .select()
+          .single();
+        if (updateError) {
+          console.error("[preferences/post] UPDATE also failed:", updateError);
+          return res
+            .status(500)
+            .json({ error: updateError.message || String(updateError) });
+        }
+        console.log(`[preferences/post] Updated preferences for ${targetId}`);
+        return res.json({ ok: true, preferences: updateData });
+      }
+      return res.status(500).json({ error: error.message || String(error) });
+    }
+
+    console.log(`[preferences/post] Saved preferences for ${targetId}`);
+    res.json({ ok: true, preferences: data });
+  } catch (err) {
+    console.error("[preferences/post] error:", err);
     res.status(500).json({ error: err.message || String(err) });
   }
 });
