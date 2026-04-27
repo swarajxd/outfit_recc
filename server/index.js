@@ -15,6 +15,7 @@ const { processPost } = require("./services/createPostPipeline");
 const { getForYouFeed } = require("./services/recommendationService");
 const { processPostVectorPipeline } = require("./services/postVectorPipeline");
 const { toggleLike, getUserLikes } = require("./services/likeService");
+const { updateUserTasteFromUpload } = require("./services/tasteService");
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -298,11 +299,11 @@ app.get("/api/following", async (req, res) => {
       if (
         rawImg &&
         rawImg.match(
-          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+\/static\//,
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|192\.168\.0\.109):\d+\/static\//,
         )
       ) {
         const fixedImg = rawImg.replace(
-          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+\/static\//,
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|192\.168\.0\.109):\d+\/static\//,
           `${nodeBase}/static/`,
         );
         p.image_url = fixedImg;
@@ -452,11 +453,11 @@ app.get("/api/profile/posts", async (req, res) => {
       if (
         rawImg &&
         rawImg.match(
-          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+\/static\//,
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|192\.168\.0\.109):\d+\/static\//,
         )
       ) {
         const fixedImg = rawImg.replace(
-          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+\/static\//,
+          /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|192\.168\.0\.109):\d+\/static\//,
           `${nodeBase}/static/`,
         );
         p.image_url = fixedImg;
@@ -739,11 +740,19 @@ app.post("/api/create-post", async (req, res) => {
     processPostVectorPipeline(image_url, clerkUserId, data.id, {
       outfitApiUrl: OUTFIT_API_URL,
     })
-      .then((outfitData) => {
+      .then(async (outfitData) => {
         if (outfitData) {
           console.log(
             `[create-post] Background vector pipeline success for post ${data.id}`,
           );
+          // Feed uploaded-post signals into the same user taste vectors
+          // so taste reflects both liked posts and the user's own uploads.
+          await updateUserTasteFromUpload(clerkUserId, {
+            combined_embedding: outfitData.combined_embedding,
+            visual_embedding: outfitData.visual_embedding,
+            text_embedding: outfitData.text_embedding,
+            attributes: outfitData.attributes,
+          });
         } else {
           console.warn(
             `[create-post] Background vector pipeline failed for post ${data.id}`,

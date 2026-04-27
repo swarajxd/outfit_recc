@@ -16,10 +16,15 @@ function normalize(vec) {
 }
 
 /**
- * Checks if a value is a valid non-empty embedding array.
+ * Returns true only if emb is a non-empty array with non-zero magnitude.
+ * Rejects null, undefined, empty arrays, AND zero arrays ([0,0,...,0]).
+ * Zero arrays pass length checks but have norm=0, making normalize() return null,
+ * which causes the taste vector update to silently write null to the DB.
  */
 function isValidEmbedding(emb) {
-  return Array.isArray(emb) && emb.length > 0;
+  if (!Array.isArray(emb) || emb.length === 0) return false;
+  const magnitude = emb.reduce((s, v) => s + Math.abs(Number(v)), 0);
+  return magnitude > 1e-6;
 }
 
 /**
@@ -73,9 +78,13 @@ function dynamicAlpha(likeCount) {
  * @param {string} userId - Clerk user ID
  * @param {object} post   - Post row: { combined_embedding, visual_embedding, text_embedding, attributes }
  */
-async function updateUserTaste(userId, post) {
+async function updateUserTaste(userId, post, opts = {}) {
   try {
-    console.log(`[tasteService] Updating taste for user: ${userId}`);
+    const incrementLikeCount = opts.incrementLikeCount !== false;
+    const source = opts.source || (incrementLikeCount ? "like" : "upload");
+    console.log(
+      `[tasteService] Updating taste for user: ${userId} (source=${source})`,
+    );
 
     const {
       combined_embedding: newComb,
@@ -119,10 +128,10 @@ async function updateUserTaste(userId, post) {
     }
 
     // ✅ FIX Bug 2: Dynamic alpha based on like count
-    const likeCount = (profile?.like_count || 0) + 1; // +1 for this like
+    const likeCount = (profile?.like_count || 0) + (incrementLikeCount ? 1 : 0);
     const alpha = dynamicAlpha(likeCount);
     console.log(
-      `[tasteService] like_count=${likeCount}, alpha=${alpha} (new like weight=${((1 - alpha) * 100).toFixed(0)}%)`,
+      `[tasteService] like_count=${likeCount}, alpha=${alpha} (source=${source}, new signal weight=${((1 - alpha) * 100).toFixed(0)}%)`,
     );
 
     // Update all 3 taste vectors
@@ -185,17 +194,43 @@ async function updateUserTaste(userId, post) {
       return;
     }
 
+    // ✅ FIX: Only write vectors that are non-null.
+    // If emaUpdate returns null (zero-vector input or bad data), keep the
+    // existing DB value rather than overwriting it with null.
+    const updatePayload = {
+      taste_vector: updatedComb, // mandatory — already guarded above
+      attribute_preferences: updatedAttrPrefs,
+      like_count: likeCount,
+      taste_updated_at: new Date().toISOString(),
+    };
+
+    // Only include visual/text taste vectors if they computed successfully
+    if (updatedVis !== null && updatedVis !== undefined) {
+      updatePayload.visual_taste_vector = updatedVis;
+      console.log(
+        `[tasteService] ✅ visual_taste_vector updated, len=${updatedVis.length}`,
+      );
+    } else {
+      console.warn(
+        `[tasteService] ⚠ visual_taste_vector skipped (null result — zero-vector input?)`,
+      );
+    }
+
+    if (updatedText !== null && updatedText !== undefined) {
+      updatePayload.text_taste_vector = updatedText;
+      console.log(
+        `[tasteService] ✅ text_taste_vector updated, len=${updatedText.length}`,
+      );
+    } else {
+      console.warn(
+        `[tasteService] ⚠ text_taste_vector skipped (null result — zero-vector input?)`,
+      );
+    }
+
     // Write to DB
     const { error: updateError } = await supabaseAdmin
       .from("profiles")
-      .update({
-        taste_vector: updatedComb,
-        visual_taste_vector: updatedVis,
-        text_taste_vector: updatedText,
-        attribute_preferences: updatedAttrPrefs,
-        like_count: likeCount,
-        taste_updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("clerk_id", userId);
 
     if (updateError) {
@@ -204,7 +239,7 @@ async function updateUserTaste(userId, post) {
     }
 
     console.log(
-      `[tasteService] ✅ Taste updated | user=${userId} | alpha=${alpha} | likes=${likeCount}`,
+      `[tasteService] ✅ Taste updated | user=${userId} | alpha=${alpha} | likes=${likeCount} | source=${source}`,
     );
     console.log(
       `[tasteService]    categories tracked: ${Object.keys(updatedAttrPrefs.categories).join(", ") || "none"}`,
@@ -218,6 +253,17 @@ async function updateUserTaste(userId, post) {
       err.message,
     );
   }
+}
+
+/**
+ * Updates user taste profile from the user's own uploaded post embeddings.
+ * This contributes to the same taste vectors as likes, but does not bump like_count.
+ */
+async function updateUserTasteFromUpload(userId, post) {
+  return updateUserTaste(userId, post, {
+    incrementLikeCount: false,
+    source: "upload",
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,6 +304,7 @@ async function getFullTasteProfile(userId) {
 
 module.exports = {
   updateUserTaste,
+  updateUserTasteFromUpload,
   getFullTasteProfile,
   // Legacy compat
   getTasteVector: async (id) => (await getFullTasteProfile(id))?.taste_vector,

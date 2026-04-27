@@ -10,9 +10,9 @@ export const getServerBase = (): string => {
   // Use Platform.select to return the correct URL based on platform
   const platformUrl = Platform.select({
     web: "http://127.0.0.1:4000",
-    android: "http://10.33.168.132:4000",
+    android: "http://192.168.0.109:4000",
     ios: "http://127.0.0.1:4000",
-    default: "http://10.33.168.132:4000",
+    default: "http://192.168.0.109:4000",
   });
 
   // If we're on web, return the localhost URL immediately for safe same-machine dev

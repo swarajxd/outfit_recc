@@ -679,11 +679,12 @@ async function handleSave(post_id: string) {
       let normalizedPosts = normalized;
 
     if (activeTab === "foryou") {
+      // Keep backend ranking (taste-vector score) as primary order.
+      // Fallback to recency only when scores are equal/missing.
       normalizedPosts = [...normalized].sort((a, b) => {
-        const likeDiff =
-          (likeCounts[b.id] || 0) - (likeCounts[a.id] || 0);
-
-        if (likeDiff !== 0) return likeDiff;
+        const scoreA = typeof a.score === "number" ? a.score : -Infinity;
+        const scoreB = typeof b.score === "number" ? b.score : -Infinity;
+        if (scoreB !== scoreA) return scoreB - scoreA;
 
         return (
           new Date(b.created_at).getTime() -

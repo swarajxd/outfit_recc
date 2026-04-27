@@ -179,8 +179,17 @@ async function processPostVectorPipeline(imageUrl, userId, postId, opts = {}) {
         attributes,
       } = results;
 
-      // Check each embedding is a non-empty array
-      const isValidEmbedding = (emb) => Array.isArray(emb) && emb.length > 0;
+      /**
+       * Checks that an embedding is a non-empty array with meaningful values.
+       * Rejects zero arrays ([0,0,...,0]) which look valid but have norm=0 —
+       * they break cosine similarity and corrupt the taste vector update.
+       */
+      const isValidEmbedding = (emb) => {
+        if (!Array.isArray(emb) || emb.length === 0) return false;
+        // Reject zero arrays: sum of absolute values must be > threshold
+        const magnitude = emb.reduce((s, v) => s + Math.abs(Number(v)), 0);
+        return magnitude > 1e-6;
+      };
 
       if (!isValidEmbedding(combined_embedding)) {
         console.error(

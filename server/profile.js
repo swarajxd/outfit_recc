@@ -217,9 +217,9 @@ function rewriteImageUrls(obj, nodeBaseUrl) {
       typeof val === "string" &&
       (key === "image" || key === "image_url" || key.endsWith("_url"))
     ) {
-      // 1. If it's a localhost/127.0.0.1/10.0.2.2/10.33.168.132 Python static URL, rewrite it to use the current Node base URL
+      // 1. If it's a localhost/127.0.0.1/10.0.2.2/192.168.0.109 Python static URL, rewrite it to use the current Node base URL
       const pyStaticMatch = val.match(
-        /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|10\.33\.168\.132):\d+(\/static\/.+)$/,
+        /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|192\.168\.0\.109):\d+(\/static\/.+)$/,
       );
       if (pyStaticMatch) {
         obj[key] = `${nodeBaseUrl}${pyStaticMatch[1]}`;

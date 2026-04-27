@@ -1,5 +1,5 @@
 // app/signin.tsx
-import { useAuth, useOAuth, useSignIn } from "@clerk/clerk-expo";
+import { useAuth, useOAuth, useSignIn, useUser } from "@clerk/clerk-expo";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
@@ -21,6 +21,7 @@ import {
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import { checkAndRedirect } from "../utils/redirectAfterAuth";
 
 // Required for OAuth to work properly
 WebBrowser.maybeCompleteAuthSession();
@@ -68,6 +69,7 @@ const AppleIcon = ({
 export default function SignIn() {
   const { isLoaded, signIn, setActive } = useSignIn();
   const { isSignedIn, signOut } = useAuth();
+  const { user } = useUser();
   const router = useRouter();
 
   // OAuth hooks
@@ -94,10 +96,10 @@ export default function SignIn() {
 
   // Redirect if already signed in
   useEffect(() => {
-    if (isSignedIn) {
-      router.replace("/pref");
+    if (isSignedIn && user?.id) {
+      checkAndRedirect(user.id, router);
     }
-  }, [isSignedIn]);
+  }, [isSignedIn, user?.id, router]);
 
   // Sign out any existing Clerk session when signin page loads
   useEffect(() => {
@@ -173,7 +175,11 @@ export default function SignIn() {
 
       if (createdSessionId) {
         await oAuthSetActive!({ session: createdSessionId });
-        router.replace("/pref");
+        if (user?.id) {
+          await checkAndRedirect(user.id, router);
+        } else {
+          router.replace("/pref");
+        }
       }
     } catch (err: any) {
       console.error("OAuth error:", err);
@@ -210,7 +216,11 @@ export default function SignIn() {
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        router.replace("/pref");
+        if (user?.id) {
+          await checkAndRedirect(user.id, router);
+        } else {
+          router.replace("/pref");
+        }
       } else {
         // Handle other statuses if needed
         console.log("Sign in result:", result);

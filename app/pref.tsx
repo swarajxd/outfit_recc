@@ -28,6 +28,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SERVER_BASE } from "./utils/config";
 import "../assets/pref/streetwear.png";
 
 const { width: W, height: H } = Dimensions.get("window");
@@ -2207,33 +2208,20 @@ export default function SenseAIOnboarding() {
         return;
       }
 
-      // Also check local cache first
-      const cacheKey = `fitsense_pref_done_${userId}`;
-      try {
-        const cached = await AsyncStorage.getItem(cacheKey);
-        if (cached === "true") {
-          router.replace("/(tabs)/home");
-          return;
-        }
-      } catch (err) {
-        console.warn("[pref] Cache check failed:", err);
-      }
-
-      let apiBase =
-        process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000";
-      if (apiBase.endsWith("/")) {
-        apiBase = apiBase.slice(0, -1);
-      }
-
       try {
         const res = await fetch(
-          `${apiBase}/api/profile/preferences/${encodeURIComponent(userId)}`,
+          `${SERVER_BASE}/api/profile/preferences/${encodeURIComponent(userId)}`,
+          {
+            headers: {
+              "x-user-id": userId,
+            },
+          },
         );
         if (res.ok) {
           const json = await res.json();
           if (json.onboarding_complete === true) {
             // Onboarding already done, redirect to home
-            router.replace("/(tabs)/home");
+            router.replace("/(tabs)");
             return;
           }
         }
@@ -2244,7 +2232,7 @@ export default function SenseAIOnboarding() {
     };
 
     checkOnboarding();
-  }, [user?.id]);
+  }, [user?.id, router]);
 
   const set = useCallback((key: keyof Profile, val: any) => {
     setProfileState((p) => ({ ...p, [key]: val }));
@@ -2287,15 +2275,8 @@ export default function SenseAIOnboarding() {
       console.log("[pref] Starting handleFinish...");
       const userId = user?.id;
 
-      // Fix apiBase trailing slash
-      let apiBase =
-        process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000";
-      if (apiBase.endsWith("/")) {
-        apiBase = apiBase.slice(0, -1);
-      }
-
       console.log(
-        `[pref] Saving preferences for user: ${userId} to ${apiBase}`,
+        `[pref] Saving preferences for user: ${userId} to ${SERVER_BASE}`,
       );
 
       // 1. Save full preferences to database (source of truth for "onboarding done")
@@ -2305,7 +2286,7 @@ export default function SenseAIOnboarding() {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-          const resp = await fetch(`${apiBase}/api/profile/preferences`, {
+          const resp = await fetch(`${SERVER_BASE}/api/profile/preferences`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -2379,10 +2360,10 @@ export default function SenseAIOnboarding() {
       }
 
       console.log("[pref] Navigation to home...");
-      router.replace("/(tabs)/home");
+      router.replace("/(tabs)");
     } catch (error) {
       console.error("[pref] Critical error in handleFinish:", error);
-      router.replace("/(tabs)/home");
+      router.replace("/(tabs)");
     }
   };
 
@@ -2423,21 +2404,6 @@ export default function SenseAIOnboarding() {
         }}
       >
         <ActivityIndicator size="large" color="#FF6B00" />
-      </View>
-    );
-  }
-
-  if (!checkedOnboarding) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "#080808",
-        }}
-      >
-        <ActivityIndicator size="large" color={ORANGE} />
       </View>
     );
   }

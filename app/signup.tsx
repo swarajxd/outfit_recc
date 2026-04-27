@@ -1,26 +1,27 @@
 // app/signup.tsx
-import { useAuth, useOAuth, useSignUp } from "@clerk/clerk-expo";
+import { useAuth, useOAuth, useSignUp, useUser } from "@clerk/clerk-expo";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Animated,
+    Dimensions,
+    Easing,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import { checkAndRedirect } from "../utils/redirectAfterAuth";
 
 // Required for OAuth to work properly
 WebBrowser.maybeCompleteAuthSession();
@@ -91,6 +92,7 @@ function validatePassword(password: string, username: string, email: string) {
 export default function SignUp() {
   const { isLoaded, signUp, setActive } = useSignUp();
   const { isSignedIn, signOut } = useAuth();
+  const { user } = useUser();
   const router = useRouter();
 
   // OAuth hooks
@@ -125,10 +127,10 @@ export default function SignUp() {
 
   // Redirect if already signed in
   useEffect(() => {
-    if (isSignedIn) {
-      router.replace("/pref");
+    if (isSignedIn && user?.id) {
+      checkAndRedirect(user.id, router);
     }
-  }, [isSignedIn]);
+  }, [isSignedIn, user?.id, router]);
 
   useEffect(() => {
     // Entrance animation
@@ -199,7 +201,11 @@ export default function SignUp() {
 
       if (createdSessionId) {
         await oAuthSetActive!({ session: createdSessionId });
-        router.replace("/pref");
+        if (user?.id) {
+          await checkAndRedirect(user.id, router);
+        } else {
+          router.replace("/pref");
+        }
       }
     } catch (err: any) {
       console.error("OAuth error:", err);
@@ -247,7 +253,11 @@ export default function SignUp() {
 
       if (res?.status === "complete" && res?.createdSessionId) {
         await setActive({ session: res.createdSessionId });
-        router.replace("/pref");
+        if (user?.id) {
+          await checkAndRedirect(user.id, router);
+        } else {
+          router.replace("/pref");
+        }
         return;
       }
 

@@ -3,6 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import React, { useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Dimensions,
     Image,
     KeyboardAvoidingView,
     Platform,
@@ -15,6 +16,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SERVER_BASE } from "../utils/config";
+
+const W = Dimensions.get("window").width;
+const CARD_W = W - 40;
+const HALF_W = Math.floor(CARD_W / 2);
+const PANEL_H = 250;
+const PANEL_H2 = 180;
+const RANK_LABELS = ["Best Match", "Strong Pick", "Solid Look"];
 
 // ─── Design Tokens (from HTML / design-system.md) ───────────────────────────
 const C = {
@@ -228,29 +236,35 @@ export default function AIScreen() {
                   content: `Here are styled recommendations from ${sourceLabel} for your look.`,
                   outfitCard: true,
                   outfitData: {
-                    upper: result.upper_outfits?.[0] ?? null,
-                    lower: result.lower_outfits?.[0] ?? null,
                     scenario,
+                    upper_outfits: result.upper_outfits ?? [],
+                    lower_outfits: result.lower_outfits ?? [],
+                    outfits: result.outfits ?? [],
+                    upper_intent: result.upper_intent ?? {},
+                    lower_intent: result.lower_intent ?? {},
                   },
                 }
               : m,
           ),
         );
       } else {
+        // PROMPT_ONLY
         if (!result.outfits?.length) throw new Error("No outfits found.");
-        const best = result.outfits[0];
         setMessages((prev) =>
           prev.map((m) =>
             m.id === aiMsgId
               ? {
                   ...m,
                   isTyping: false,
-                  content: `I've curated a look from ${sourceLabel} that matches your style.`,
+                  content: `I've curated looks from ${sourceLabel} that match your style.`,
                   outfitCard: true,
                   outfitData: {
-                    upper: best,
-                    lower: null,
                     scenario,
+                    outfits: result.outfits ?? [],
+                    upper_outfits: [],
+                    lower_outfits: [],
+                    upper_intent: {},
+                    lower_intent: {},
                   },
                 }
               : m,
@@ -553,164 +567,323 @@ function AIResponse({ msg }: { msg: Message }) {
 }
 
 // ─── Outfit Card ──────────────────────────────────────────────────────────────
-function OutfitCard({ data }: { data: any }) {
-  if (!data) return null;
+function SplitPanelCard({
+  outfitWrap,
+  rank,
+  mode = "standard",
+}: {
+  outfitWrap: any;
+  rank: number;
+  mode?: "standard" | "upper" | "lower";
+}) {
+  if (!outfitWrap?.outfit) return null;
 
-  const { upper, lower, scenario } = data;
+  const { outfit, score, reasons } = outfitWrap;
+  const { top, bottom, shoes, outerwear, accessory } = outfit;
 
-  const OutfitSection = ({ outfitWrap }: { outfitWrap: any }) => {
-    if (!outfitWrap?.outfit) return null;
-    const { outfit, score } = outfitWrap;
-    const { top, bottom, shoes, outerwear, accessory } = outfit;
-    const mainPiece = outerwear || top;
+  const isBest = rank === 1;
+  const scoreInt = score !== undefined ? Math.round(score * 100) : null;
+  const rankLabel = RANK_LABELS[rank - 1] ?? `Look ${rank}`;
 
-    return (
-      <>
-        {/* Large hero image */}
-        <View style={OC.imageWrap}>
-          {mainPiece?.image_path ? (
-            <Image
-              source={{ uri: mainPiece.image_path }}
-              style={OC.mainImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={[OC.mainImage, { backgroundColor: C.surfaceContainerHigh }]}
-            />
-          )}
-          {/* Match badge */}
-          <View style={OC.matchBadge}>
-            <Text style={OC.matchIcon}>✦</Text>
-            <Text style={OC.matchText}>
-              {Math.round((score ?? 0.98) * 100)}% Match
-            </Text>
-          </View>
-        </View>
+  let leftSlot: any;
+  let leftLabel: string;
+  let rightSlot: any;
+  let rightLabel: string;
+  let altSlot: any | null = null;
+  let altLabel = "";
 
-        {/* Body */}
-        <View style={OC.body}>
-          <View style={OC.titleRow}>
-            <Text style={OC.title} numberOfLines={1}>
-              {mainPiece?.name ?? "Structured Linen Silhouette"}
-            </Text>
-            <Text style={OC.price}>€{mainPiece?.price ?? "120"}</Text>
-          </View>
+  if (mode === "upper") {
+    // uploaded top/shirt/tshirt => main: other segments, alt: best top alternative
+    leftSlot = bottom;
+    leftLabel = "BOTTOM";
+    rightSlot = shoes;
+    rightLabel = "SHOES";
+    altSlot = top;
+    altLabel = "BEST ALT TOP";
+  } else if (mode === "lower") {
+    // uploaded lower => main: other segments, alt: best lower alternative
+    leftSlot = outerwear || top;
+    leftLabel = outerwear ? "OUTERWEAR" : "TOP";
+    rightSlot = shoes;
+    rightLabel = "SHOES";
+    altSlot = bottom;
+    altLabel = "BEST ALT BOTTOM";
+  } else {
+    leftSlot = outerwear || top;
+    leftLabel = outerwear ? "OUTERWEAR" : "TOP";
+    rightSlot = bottom;
+    rightLabel = "BOTTOM";
+  }
 
-          <View style={OC.tagsRow}>
-            <View style={OC.tag}>
-              <Text style={OC.tagText}>
-                {mainPiece?.attributes?.material?.toUpperCase() ?? "BESPOKE"}
-              </Text>
-            </View>
-            <View style={OC.tag}>
-              <Text style={OC.tagText}>
-                {mainPiece?.attributes?.style_category?.toUpperCase() ?? "LINEN"}
-              </Text>
-            </View>
-          </View>
+  let row2Left: any;
+  let row2LeftLabel: string;
+  let row2Right: any;
+  let row2RightLabel: string;
 
-          <Text style={OC.description} numberOfLines={3}>
-            {mainPiece?.description ??
-              mainPiece?.attributes?.description ??
-              `This ${mainPiece?.attributes?.color ?? ""} ${
-                mainPiece?.category ?? "piece"
-              } features a ${mainPiece?.attributes?.fit ?? "regular"} fit with ${
-                mainPiece?.attributes?.pattern ?? "solid"
-              } pattern, perfect for your ${
-                mainPiece?.attributes?.aesthetic ?? "modern"
-              } look.`}
-          </Text>
+  if (mode === "standard") {
+    row2Left = accessory;
+    row2LeftLabel = "ACCESSORY";
+    row2Right = shoes;
+    row2RightLabel = "SHOES";
+  } else {
+    row2Left = accessory;
+    row2LeftLabel = "ACCESSORY";
+    row2Right = altSlot;
+    row2RightLabel = altLabel;
+  }
 
-          {/* Actions row */}
-          <View style={OC.actionsRow}>
-            <View style={OC.swatches}>
-              <View style={[OC.swatch, OC.swatchActive]} />
-              <View
-                style={[
-                  OC.swatch,
-                  { backgroundColor: C.tertiary, opacity: 0.5 },
-                ]}
-              />
-              <View
-                style={[
-                  OC.swatch,
-                  { backgroundColor: C.surfaceVariant, opacity: 0.5 },
-                ]}
-              />
-            </View>
-            <View style={OC.iconBtns}>
-              <TouchableOpacity>
-                <Text style={OC.iconBtn}>🔖</Text>
-              </TouchableOpacity>
-              <TouchableOpacity>
-                <Text style={OC.iconBtn}>♡</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={OC.buyBtn}>
-                <Text style={OC.buyText}>BUY</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+  const hasRow2 = row2Left || row2Right;
 
-        {/* Complete the look */}
-        <View style={OC.accessories}>
-          <Text style={OC.accTitle}>COMPLETE THE LOOK</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={OC.accScroll}
-          >
-            {[
-              { item: shoes, label: shoes?.name ?? "Vesta Sneakers" },
-              { item: accessory, label: accessory?.name ?? "Orbit Timepiece" },
-              { item: bottom, label: bottom?.name ?? "Nomad Carryall" },
-            ].map((acc, i) => (
-              <View key={i} style={OC.accItem}>
-                <View style={OC.accImgWrap}>
-                  {acc.item?.image_path ? (
-                    <Image
-                      source={{ uri: acc.item.image_path }}
-                      style={OC.accImg}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View
-                      style={[
-                        OC.accImg,
-                        { backgroundColor: C.surfaceContainerHigh },
-                      ]}
-                    />
-                  )}
-                </View>
-                <Text style={OC.accLabel}>{acc.label}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      </>
-    );
-  };
+  const footerItems: { cat: string; name: string }[] = [];
+  if (leftSlot?.attributes?.style_category || leftSlot?.category) {
+    footerItems.push({
+      cat: leftLabel,
+      name: leftSlot?.attributes?.style_category ?? leftSlot?.category ?? leftLabel,
+    });
+  }
+  if (rightSlot?.attributes?.style_category || rightSlot?.category) {
+    footerItems.push({
+      cat: rightLabel,
+      name: rightSlot?.attributes?.style_category ?? rightSlot?.category ?? rightLabel,
+    });
+  }
+  if (accessory && mode !== "standard") {
+    footerItems.push({
+      cat: "ACCESSORY",
+      name: accessory?.attributes?.style_category ?? accessory?.category ?? "Accessory",
+    });
+  }
+  if (altSlot) {
+    footerItems.push({
+      cat: altLabel,
+      name: altSlot?.attributes?.style_category ?? altSlot?.category ?? altLabel,
+    });
+  }
 
   return (
-    <View style={OC.card}>
-      {upper && (
-        <View>
-          {scenario === "IMAGE_UPPER_LOWER" && (
-            <Text style={OC.sectionLabel}>UPPER LOOK</Text>
+    <View style={[OC.card, isBest && OC.cardBest]}>
+      <View style={OC.panels}>
+        <View style={OC.panelLeft}>
+          {leftSlot?.image_path ? (
+            <Image
+              source={{ uri: leftSlot.image_path }}
+              style={OC.panelImg}
+              resizeMode="contain"
+            />
+          ) : (
+            <Text style={OC.panelEmoji}>
+              {leftLabel === "BOTTOM" ? "👖" : leftLabel === "SHOES" ? "👟" : "👕"}
+            </Text>
           )}
-          <OutfitSection outfitWrap={upper} />
+          <View style={OC.panelLabel}>
+            <Text style={OC.panelLabelTxt}>{leftLabel}</Text>
+          </View>
+        </View>
+
+        <View style={OC.divider} />
+
+        <View style={OC.panelRight}>
+          {rightSlot?.image_path ? (
+            <Image
+              source={{ uri: rightSlot.image_path }}
+              style={OC.panelImg}
+              resizeMode="contain"
+            />
+          ) : (
+            <Text style={OC.panelEmoji}>
+              {rightLabel === "SHOES" ? "👟" : rightLabel === "BOTTOM" ? "👖" : "👕"}
+            </Text>
+          )}
+          <View style={OC.panelLabel}>
+            <Text style={OC.panelLabelTxt}>{rightLabel}</Text>
+          </View>
+        </View>
+
+        <View style={[OC.rankBadge, isBest && OC.rankBadgeBest]}>
+          <Text style={[OC.rankTxt, isBest && OC.rankTxtBest]}>{rankLabel}</Text>
+        </View>
+
+        {scoreInt !== null && (
+          <View style={[OC.scoreBadge, isBest && OC.scoreBadgeBest]}>
+            <Text style={[OC.scoreNum, isBest && OC.scoreNumBest]}>{scoreInt}</Text>
+            <Text style={[OC.scorePts, isBest && OC.scorePtsBest]}>pts</Text>
+          </View>
+        )}
+      </View>
+
+      {hasRow2 && (
+        <View style={OC.panels2}>
+          <View style={OC.panel2Cell}>
+            {row2Left?.image_path ? (
+              <Image
+                source={{ uri: row2Left.image_path }}
+                style={OC.panelImg2}
+                resizeMode="contain"
+              />
+            ) : row2Left ? (
+              <Text style={OC.panelEmoji}>👜</Text>
+            ) : (
+              <View style={OC.panelEmpty} />
+            )}
+            <View style={OC.panelLabel}>
+              <Text style={OC.panelLabelTxt}>{row2LeftLabel}</Text>
+            </View>
+          </View>
+
+          <View style={OC.divider} />
+
+          <View style={[OC.panel2Cell, OC.panel2CellRight]}>
+            {row2Right?.image_path ? (
+              <Image
+                source={{ uri: row2Right.image_path }}
+                style={OC.panelImg2}
+                resizeMode="contain"
+              />
+            ) : row2Right ? (
+              <Text style={OC.panelEmoji}>
+                {row2RightLabel.startsWith("BEST ALT") ? "🔄" : "👟"}
+              </Text>
+            ) : (
+              <View style={OC.panelEmpty} />
+            )}
+            <View style={OC.panelLabel}>
+              <Text style={OC.panelLabelTxt}>{row2RightLabel}</Text>
+            </View>
+          </View>
         </View>
       )}
 
-      {upper && lower && <View style={OC.sectionDivider} />}
+      <View style={OC.footer}>
+        <View style={OC.names}>
+          {footerItems.map((fi, i) => (
+            <View key={i} style={OC.nameRow}>
+              <Text style={OC.nameCat}>{fi.cat}</Text>
+              <Text style={OC.nameVal} numberOfLines={1}>
+                {fi.name}
+              </Text>
+            </View>
+          ))}
+        </View>
 
-      {lower && (
+        {(reasons?.length ?? 0) > 0 && (
+          <View style={OC.chips}>
+            {(reasons as string[]).slice(0, 3).map((r, i) => (
+              <View key={i} style={OC.chip}>
+                <Text style={OC.chipTxt}>{r}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function OutfitCard({ data }: { data: any }) {
+  if (!data) return null;
+
+  const { scenario, outfits, upper_outfits, lower_outfits } = data;
+
+  if (scenario === "PROMPT_ONLY") {
+    const list: any[] = (outfits ?? []).slice(0, 3);
+    if (list.length === 0) return null;
+
+    return (
+      <View style={OC.resultSection}>
+        <View style={OC.sectionHdr}>
+          <Text style={OC.sectionTitle}>Curated Looks</Text>
+          <Text style={OC.sectionSub}>
+            {list.length} outfit{list.length !== 1 ? "s" : ""}
+          </Text>
+        </View>
+        <View style={{ gap: 16 }}>
+          {list.map((o, i) => (
+            <SplitPanelCard key={i} outfitWrap={o} rank={i + 1} mode="standard" />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  const upperList: any[] = (upper_outfits ?? []).slice(0, 2);
+  const lowerList: any[] = (lower_outfits ?? []).slice(0, 2);
+  const fallbackList: any[] = (outfits ?? []).slice(0, 2);
+
+  if (
+    upperList.length === 0 &&
+    lowerList.length === 0 &&
+    fallbackList.length === 0
+  ) {
+    return null;
+  }
+
+  if (upperList.length === 0 && lowerList.length === 0) {
+    return (
+      <View style={OC.resultSection}>
+        <View style={OC.sectionHdr}>
+          <Text style={OC.sectionTitle}>Curated Looks</Text>
+          <Text style={OC.sectionSub}>
+            {fallbackList.length} outfit{fallbackList.length !== 1 ? "s" : ""}
+          </Text>
+        </View>
+        <View style={{ gap: 16 }}>
+          {fallbackList.map((o, i) => (
+            <SplitPanelCard key={i} outfitWrap={o} rank={i + 1} mode="standard" />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={OC.resultSection}>
+      {upperList.length > 0 && (
         <View>
-          {scenario === "IMAGE_UPPER_LOWER" && (
-            <Text style={OC.sectionLabel}>LOWER LOOK</Text>
-          )}
-          <OutfitSection outfitWrap={lower} />
+          <View style={OC.sectionHdr}>
+            <Text style={OC.sectionTitle}>Styled Around Your Top</Text>
+            <Text style={OC.sectionSub}>
+              {upperList.length} look{upperList.length !== 1 ? "s" : ""}
+            </Text>
+          </View>
+          <Text style={OC.sectionHint}>
+            Main panels show other segments · BEST ALT TOP shows the best shirt/t-shirt alternative
+          </Text>
+          <View style={{ gap: 16 }}>
+            {upperList.map((o, i) => (
+              <SplitPanelCard
+                key={`upper_${i}`}
+                outfitWrap={o}
+                rank={i + 1}
+                mode="upper"
+              />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {upperList.length > 0 && lowerList.length > 0 && <View style={OC.bigDivider} />}
+
+      {lowerList.length > 0 && (
+        <View>
+          <View style={OC.sectionHdr}>
+            <Text style={OC.sectionTitle}>Styled Around Your Bottom</Text>
+            <Text style={OC.sectionSub}>
+              {lowerList.length} look{lowerList.length !== 1 ? "s" : ""}
+            </Text>
+          </View>
+          <Text style={OC.sectionHint}>
+            Main panels show other segments · BEST ALT BOTTOM shows the best lower alternative
+          </Text>
+          <View style={{ gap: 16 }}>
+            {lowerList.map((o, i) => (
+              <SplitPanelCard
+                key={`lower_${i}`}
+                outfitWrap={o}
+                rank={i + 1}
+                mode="lower"
+              />
+            ))}
+          </View>
         </View>
       )}
     </View>
@@ -975,135 +1148,187 @@ const AI_S = StyleSheet.create({
 });
 
 const OC = StyleSheet.create({
-  card: {
-    backgroundColor: C.surfaceContainerHigh,
-    borderRadius: 24,
-    overflow: "hidden",
-    boxShadow: "0px 10px 20px rgba(0,0,0,0.4)",
-    elevation: 8,
-  },
-
-  imageWrap: { height: 360, position: "relative" },
-  mainImage: { width: "100%", height: "100%" },
-  matchBadge: {
-    position: "absolute",
-    top: 16,
-    left: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(53,52,55,0.55)",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  matchIcon: { color: C.primary, fontSize: 12 },
-  matchText: { color: C.primary, fontSize: 12, fontWeight: "700" },
-
-  body: { padding: 20 },
-  titleRow: {
+  resultSection: { gap: 16 },
+  sectionHdr: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 10,
+    alignItems: "flex-end",
+    marginBottom: 4,
   },
-  title: {
+  sectionTitle: {
     color: C.onSurface,
-    fontSize: 20,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-    flex: 1,
-    marginRight: 12,
-  },
-  price: { color: C.tertiary, fontSize: 18, fontWeight: "500" },
-
-  tagsRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
-  tag: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: "#0E0E10",
-  },
-  tagText: {
-    color: C.secondaryFixed,
-    fontSize: 10,
+    fontSize: 18,
     fontWeight: "700",
-    letterSpacing: 1.5,
+    letterSpacing: -0.3,
+  },
+  sectionSub: { color: "rgba(229,225,228,0.4)", fontSize: 11 },
+  sectionHint: {
+    color: "rgba(229,225,228,0.4)",
+    fontSize: 10,
+    lineHeight: 14,
+    marginBottom: 12,
+    fontStyle: "italic",
+  },
+  bigDivider: {
+    height: 1,
+    backgroundColor: "rgba(71,70,74,0.3)",
+    marginVertical: 20,
   },
 
-  description: {
-    color: C.onSurfaceVariant,
-    fontSize: 14,
-    lineHeight: 22,
-    marginBottom: 20,
+  card: {
+    width: CARD_W,
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: C.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    elevation: 6,
   },
+  cardBest: { borderColor: `${C.primary}60` },
 
-  actionsRow: {
+  panels: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    height: PANEL_H,
+    backgroundColor: "#F1EDE7",
+    position: "relative",
+    overflow: "hidden",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#C8BFB5",
+  },
+  panelLeft: {
+    width: HALF_W,
+    height: PANEL_H,
+    backgroundColor: "#EDE8E2",
     alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(71,70,74,0.15)",
-    paddingTop: 16,
+    justifyContent: "center",
+    overflow: "hidden",
   },
-  swatches: { flexDirection: "row", gap: 6 },
-  swatch: { width: 16, height: 16, borderRadius: 8 },
-  swatchActive: {
-    backgroundColor: "#E5E1E4",
-    borderWidth: 2,
-    borderColor: C.primary,
+  panelRight: {
+    width: HALF_W,
+    height: PANEL_H,
+    backgroundColor: "#E8E3DC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
-  iconBtns: { flexDirection: "row", alignItems: "center", gap: 14 },
-  iconBtn: { fontSize: 20, color: C.onSurfaceVariant },
-  buyBtn: {
-    paddingHorizontal: 22,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: C.primary,
-    boxShadow: `0px 0px 8px ${C.primary}4D`,
+  panelImg: { width: HALF_W, height: PANEL_H - 28 },
+  panelEmoji: { fontSize: 56, textAlign: "center" },
+  panelLabel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 26,
+    backgroundColor: "rgba(235,230,222,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#C8BFB5",
   },
-  buyText: {
-    color: C.onPrimaryFixed,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1.5,
-  },
-
-  accessories: { paddingHorizontal: 20, paddingBottom: 20 },
-  accTitle: {
-    color: C.tertiary,
+  panelLabelTxt: {
     fontSize: 9,
     fontWeight: "700",
-    letterSpacing: 2.5,
-    textTransform: "uppercase",
-    marginBottom: 14,
-  },
-  accScroll: { gap: 24, paddingRight: 8 },
-  accItem: { flexDirection: "row", alignItems: "center", gap: 12 },
-  accImgWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
-    overflow: "hidden",
-    backgroundColor: C.surfaceContainerLowest,
-  },
-  accImg: { width: "100%", height: "100%" },
-  accLabel: { color: C.onSurface, fontSize: 11, fontWeight: "500" },
-
-  sectionLabel: {
-    color: C.tertiary,
-    fontSize: 10,
-    fontWeight: "800",
     letterSpacing: 2,
+    color: "#7A6A5A",
+  },
+  panelEmpty: { flex: 1 },
+
+  divider: {
+    width: StyleSheet.hairlineWidth,
+    height: "100%" as any,
+    backgroundColor: "#C8BFB5",
+  },
+
+  panels2: {
+    flexDirection: "row",
+    height: PANEL_H2,
+    backgroundColor: "#F1EDE7",
+    overflow: "hidden",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#C8BFB5",
+  },
+  panel2Cell: {
+    width: HALF_W,
+    height: PANEL_H2,
+    backgroundColor: "#EDE8E2",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  panel2CellRight: { backgroundColor: "#E8E3DC" },
+  panelImg2: { width: HALF_W, height: PANEL_H2 - 26 },
+
+  rankBadge: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    backgroundColor: "rgba(20,20,20,0.78)",
+    borderRadius: 20,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  rankBadgeBest: { backgroundColor: C.primary, borderColor: "transparent" },
+  rankTxt: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  rankTxtBest: { color: C.surfaceContainerLowest },
+
+  scoreBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    backgroundColor: "rgba(20,20,20,0.78)",
+    borderRadius: 14,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  scoreBadgeBest: { backgroundColor: C.primary, borderColor: "transparent" },
+  scoreNum: { color: C.onSurface, fontSize: 17, fontWeight: "800" },
+  scoreNumBest: { color: C.surfaceContainerLowest },
+  scorePts: {
+    color: "rgba(229,225,228,0.4)",
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+  },
+  scorePtsBest: { color: "rgba(20,20,20,0.7)" },
+
+  footer: {
+    backgroundColor: C.surfaceContainerLow,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  names: { gap: 5, marginBottom: 10 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  nameCat: {
+    width: 80,
+    fontSize: 9,
+    fontWeight: "700",
+    color: C.primary,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 4,
   },
-  sectionDivider: {
-    height: 1,
-    backgroundColor: "rgba(71,70,74,0.2)",
-    marginHorizontal: 20,
-    marginVertical: 8,
+  nameVal: { flex: 1, fontSize: 13, fontWeight: "500", color: C.onSurface },
+
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: {
+    backgroundColor: "rgba(255,182,139,0.15)",
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,182,139,0.2)",
   },
+  chipTxt: { color: C.tertiary, fontSize: 11 },
 });
