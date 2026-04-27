@@ -1,27 +1,24 @@
 import { useUser } from "@clerk/clerk-expo";
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   Image,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  ActivityIndicator,
-  FlatList,
-  StatusBar,
+  View
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "../../lib/supabase";
-import { SERVER_BASE } from "../utils/config";
 import CommentModal from "../../components/CommentModal";
+import { SERVER_BASE } from "../utils/config";
 
 // ─── Design Tokens ──────────────────────────────────────────────────────────
 const PRIMARY = "#FF4D00";
@@ -444,23 +441,7 @@ export default function ExploreScreen() {
           )}
         </View>
 
-        {/* Category chips */}
-        {!isSearching && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-          >
-            {CATEGORIES.map((cat, i) => (
-              <CategoryChip
-                key={cat.label}
-                cat={cat}
-                active={activeCategory === i}
-                onPress={() => setActiveCategory(i)}
-              />
-            ))}
-          </ScrollView>
-        )}
+        
       </Animated.View>
 
       {/* ── Content ── */}
